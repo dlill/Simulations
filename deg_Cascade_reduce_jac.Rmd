@@ -1,0 +1,246 @@
+---
+title: "Three tier cascade with degradation and synthesis of z"
+author: "Daniel Lill"
+date: "13 January 2017"
+output: pdf_document
+---
+
+
+# Load libraries and define some useful paths
+```{r Libraries, results='hide', echo=T, message=FALSE}
+library(MRAr)
+library(scales)
+path <- "~/Promotion/Projects/MRA/Cascade/"
+modelpath <- paste0(path, "Model/deg_")
+pathout <- paste0(path, "Output/")
+```
+
+
+# Setup Model 
+This is the setup of the ODE model.
+
+### Prediction function
+odemodel writes a C-function, which is executed in x and xs.
+x is a regular prediction function while xs only finds and returns the steady states.
+If the odemodel has been calculated already, it can be loaded with "load".
+```{r Prediction function}
+all_models  <- str_subset(list.files(modelpath), "Cascade")
+modelname   <- "Cascade"
+mymodel     <- as.eqnlist(read.csv(paste0(modelpath, modelname, ".csv")))
+# mymodel
+
+# myodemodel <- odemodel(mymodel, modelname = modelname, deriv = T)
+# save(myodemodel, file = paste0(path, "odemodel",modelname, ".RData"))
+load(paste0(path, "odemodel",modelname, ".RData"))
+
+
+# Prediction function
+x <- Xs(odemodel = myodemodel)
+# Prediction function for steady states
+xs <- Xs_steady(myodemodel)
+print(mymodel)
+```
+
+### Modules, their observables and the observation function
+Observation function which depends also on the optimization parameters. With their help, the complexes can smoothly be switched on in the observation.
+```{r Observation function}
+modules <- c("x","y", "z")
+
+obs <- c(  "x2+a_1*x2COMPy1",
+           "y2+a_2*y2COMPz1", 
+           "z2")
+g <- Y(as.eqnvec(structure(obs, names = modules)), mymodel, compile = TRUE, modelname = "obsfn", attach.input = FALSE)
+```
+
+An observation function to easily compare complexes switched on or off
+```{r Observation function 2}
+modules2 <- c("x","comp1","x+comp" ,"y", "comp2", "y+comp", "z")
+
+obs2 <- c(  "x2",
+            "x2COMPy1",
+  "x2+x2COMPy1",
+  "y2",
+  "y2COMPz1",
+           "y2+y2COMPz1", 
+           "z2")
+g2 <- Y(as.eqnvec(structure(obs2, names = modules2)), mymodel, compile = TRUE, modelname = "obsfn2", attach.input = FALSE)
+```
+
+### Parameters
+Load all parameters and format them for further use.
+```{r Parameters}
+
+pars_raw <- read.csv(paste0(modelpath, "pars.csv"), header = FALSE)  # dynamical parameters
+pars_raw <- structure(pars_raw$V2, names = as.character(pars_raw$V1))
+ic_raw <- read.csv(paste0(modelpath, "IC.csv"), header = F)          # initial conditions
+ic_raw <- structure(ic_raw$V2, names = as.character(ic_raw$V1))
+# sort ics like they appear in x, so it can be used in stode()
+vars_x <- attr(x, "parameters")[attr(x, "parameters") %in% names(ic_raw)]
+ic_raw <- ic_raw[vars_x]
+
+
+pars_opt_0 <- c(a_1 = 0, a_2 = 0)                                      # parameters to switch on complexes
+# pars_raw <-c(pars, pars_opt_0)
+
+pars_0 <- pars <- c(ic_raw, pars_raw, pars_opt_0)
+
+
+# check if all parameters are assigned a value. Both lines should evaluate to the same number.
+x_pars <- (g*xs) %>% attr("parameters")
+names(pars) %in% x_pars %>% sum()
+x_pars %in% names(pars) %>% sum()
+
+```
+
+
+# Perturb modules
+Now the module can be simulated to generate perturbation data.
+
+## Parameter trafos for convenient perturbation data
+Set up the perturbations
+```{r Define perturbations}
+# Which pars shall be perturbed?
+which_pars_perturbed_0 <- which_pars_perturbed <- c("x1", "y1", "ksyn")
+
+p_pert <- p_pert_fun(which_pars_perturbed = which_pars_perturbed_0,
+                     perturbation_strength = 1.1,
+                     pars = pars_0)
+```
+
+### Perturbation data generation and elements to keep
+Just to show the code...
+This function will actually be evaluated each time a new condition is tested.
+```{r Generate perturbation data}
+perturbation_prediction_0 <-  (xs*p_pert)(times = c(0,Inf), pars = pars_0, deriv = F)
+r_kept_0 <- r_kept_fun()
+```
+
+### Fitting
+Just to show the code...
+```{r Fit, eval=FALSE}
+myfits <- mstrust(obj_alpha, center =  pars_opt_0+0.5, studyname = "Fits", cores = 4, fits = 10, sd = 0.3)
+myfits %>% as.parframe() %>% plotValues()
+best_fit <- myfits %>% as.parframe()
+best_fit <- best_fit[abs(best_fit$a_1) < 1 & abs(best_fit$a_2) < 1, ] %>% as.parvec()
+```
+
+
+# Find good Parameter values to compare behaviour for different conditions
+Run this chunk of code with the "plot"-line uncommented to see predictions.
+Once happy, comment out the plotting and proceed.
+```{r Find good pars}
+ic_list <- list(ksyn = signif(exp(seq(-3,3, by = 3)), digits = 1), k7 = c(0.1) ,kdeg2 = c(0.2), kdeg1 = c(0.2), k31 = c(1e-4,1e-2), k4 = c(.05,2))
+
+pars <- pars_0
+pars[names(reduce_ic_list(ic_list)[[2]])] <- reduce_ic_list(ic_list)[[2]]
+ic_list <- reduce_ic_list(ic_list)[[1]]
+p_ic <- p_ic_fun(ic_list)
+# plot((x*p_ic)(times = seq(0,1000, length.out = 50), pars) + them)
+
+print(pars)
+```
+
+# Fit all conditions
+Fit the multiple conditions and save the fits to a file.
+Run this only once before knitting and knit the document with the loaded dataset.
+```{r Fit multiple conditions, eval=FALSE}
+# multiple_fits <- run_simulations(ic_list = ic_list,
+#                                  nfits = 50,
+#                                  pars = pars)
+# 
+# save(multiple_fits, file = "Gain_Multiplefits.RData")
+```
+Load the file and analyze the fits.
+
+# Analyze the Data and put it out in a nice format.
+
+Analyze the fits to a knitr-Document
+```{r Analyze Fits to knitr-Document, results='asis', out.width='45%'}
+load("Gain_Multiplefits.RData")
+multiple_fits <- lapply(seq_along(multiple_fits), function(i) {
+  if(is.null(multiple_fits[[i]]$condition)) multiple_fits[[i]]$condition <- names(multiple_fits)[i]
+  return(multiple_fits[[i]])
+  })
+output <- lapply(multiple_fits, function(fit) {
+  
+  cat("\\newpage
+      # Condition: ",(fit$condition %>% str_split("_") %>% extract2(1) %>% paste(collapse = ", ") %>% str_replace_all("=", " = ")), "\n \n")
+  
+  # Plot the result of the mstrust()
+  print(plotValues(fit$all_fits) )
+  print(plot(fit$prediction))
+  
+  cat(" \n Local response matrices before and after optimization.\n")
+  print(xtable(fit$r_0, digits = 5), comment = F, floating = F)
+  cat(" ")
+  print(xtable(fit$r_kept, digits = 5), comment = F, floating = F)
+  cat(" ")
+  print(xtable(fit$r_best_fit, digits = 5), comment = F, floating = F)
+  
+  cat("\n Best fit: \n")
+  print(fit$best_fit %>% unclass %>%  matrix(.,nrow = 1, dimnames = list(NULL, names(.))) %>% xtable(digits = 3), comment = F, floating = F)
+  
+  cat("\n Steady state: \n")
+  print(xtable(as.matrix(fit$steady_states[[1]])), comment = F, floating = F)
+  
+  return()
+  })
+```
+
+
+
+# Jacobian of reduced system
+The Jacobian of the reduced system is just given by the total derivatives of f_i wrt x_j:
+
+```{r, eval=FALSE, echo=FALSE, include=FALSE}
+sens <- myodemodel$extended %>% attr("equations")
+sens_names <- myodemodel$extended  %>% attr("equations") %>% names()
+states <- names(ic_raw)
+jac_names <- outer(states, states, paste, sep = ".")
+sens <- sens[sens_names%in%jac_names]  # take only jacobian. sensitivities wrt to pars shouldn't appear in the equations.
+sens
+
+sens_fun <- funC0(sens, parameters = names(c(ic_raw,pars_raw)))
+
+```
+
+```{r}
+steady_states <- xs(times = c(0,Inf), pars = pars, deriv = T)
+steady_states_deriv <- attr(steady_states[[1]], "deriv")
+jac <- do.call(sens_fun, as.list(c(pred, pars_raw)))
+
+jac <- matrix(jac, nrow = length(states), ncol = length(states), dimnames = list(paste0("f", states), states))
+jac
+
+pred_deriv <- matrix(pred_deriv, nrow = length(states), dimnames = list(states, states))
+# pred_deriv
+
+
+module_list <- list(x= c(1,2,3),y=c(3,4,5,6), z = c(6,7,8))
+readouts <- c(2,5,8)
+
+jac_red <- jac[readouts[1], module_list[[1]]]
+jac_red[!module_list[[1]]%in%readouts[1]]
+
+pred_deriv[!module_list[[1]]%in%readouts[1],module_list[[1]]%in%readouts[1]]
+
+# pred_deriv
+```
+
+
+
+
+```{r include=F, echo=FALSE}
+modules4 <- c("x2","x2COMPy1","y2", "y2COMPz1","z1")
+
+obs4 <- c("x2",
+          "x2COMPy1",
+          "y2",
+          "y2COMPz1",
+          "z2")
+g4 <- Y(as.eqnvec(structure(obs4, names = modules4)), mymodel, compile = TRUE, modelname = "obsfn4", attach.input = FALSE)
+```
+
+
+
+

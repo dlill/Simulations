@@ -1,0 +1,13 @@
+.Rproj.user*
+*.Rhistory
+*.RData
+*.Ruserdata
+*.c
+*.o
+*.so
+*.Rproj.user
+Fits/
+*.pdf
+*.tex
+Outputs*
+.Rproj.user

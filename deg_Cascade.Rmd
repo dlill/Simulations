@@ -1,0 +1,328 @@
+---
+title: "Three tier cascade with degradation and synthesis of z"
+author: "Daniel Lill"
+date: "13 January 2017"
+output: pdf_document
+---
+
+# Load libraries and define some useful paths
+
+```{r Libraries, results='hide', echo=FALSE, message=FALSE}
+library(MRAr)
+library(scales)
+path <- "~/Promotion/Projects/MRA/Cascade/"
+modelpath <- paste0(path, "Model/")
+pathout <- paste0(path, "Output/")
+```
+
+```{r Names for Fit storage of different initial Conditions}
+# fit_name <- "Multiplefits.RData"
+# fit_name <- "Gain_Multiplefits.RData"
+# fit_name <- paste0(c("Pert1","Pert2", "Pert3", "Pert4"), ".RData")
+fit_name <- "SynDeg_low_values.RData"
+```
+
+```{r Call render without overwriting any previous documents, echo=FALSE, eval=FALSE}
+# rmarkdown::render("deg_Cascade.Rmd", output_file = str_replace(fit_name, "RData", "pdf"))
+rmarkdown::render("deg_Cascade.Rmd", output_file = "slowSynDegEverywhere_1.pdf")
+```
+
+# Setup Model 
+This is the setup of the ODE model.
+
+### Prediction function
+odemodel writes a C-function, which is executed in x and xs.
+x is a regular prediction function while xs only finds and returns the steady states.
+If the odemodel has been calculated already, it can be loaded with "load".
+```{r Prediction function}
+modelname   <- "deg_Cascade"
+mymodel     <- as.eqnlist(read.csv(paste0(modelpath, modelname, ".csv")))
+# mymodel
+
+# myodemodel <- odemodel(mymodel, modelname = modelname, deriv = T)
+# save(myodemodel, file = paste0(path, "odemodel",modelname, ".RData"))
+load(paste0(path, "odemodel",modelname, ".RData"))
+
+
+# Prediction function
+x <- Xs(odemodel = myodemodel)
+# Prediction function for steady states
+xs <- Xs_steady(myodemodel)
+print(mymodel)
+```
+
+### Modules, their observables and the observation function
+Observation function which depends also on the optimization parameters. With their help, the complexes can smoothly be switched on in the observation.
+```{r Observation function}
+modules <- c("x","y", "z")
+
+obs <- c(  "x2+a_1*x2COMPy1",
+           "y2+a_2*y2COMPz1", 
+           "z2")
+g <- Y(as.eqnvec(structure(obs, names = modules)), mymodel, compile = TRUE, modelname = "obsfn", attach.input = FALSE)
+```
+
+### Parameters
+Load all parameters and format them for further use.
+```{r Parameters}
+
+pars_raw <- read.csv(paste0(modelpath, "deg_pars.csv"), header = FALSE)  # dynamical parameters
+pars_raw <- structure(pars_raw$V2, names = as.character(pars_raw$V1))
+ic_raw <- read.csv(paste0(modelpath, "deg_IC.csv"), header = F)          # initial conditions
+ic_raw <- structure(ic_raw$V2, names = as.character(ic_raw$V1))
+# sort ics like they appear in x, so it can be used in stode()
+vars_x <- attr(x, "parameters")[attr(x, "parameters") %in% names(ic_raw)]
+ic_raw <- ic_raw[vars_x]
+
+pars_opt_0 <- setdiff((g) %>% attr("parameters"),names(c(pars_raw,ic_raw)))
+pars_opt_0 <- structure(rep(0, length(pars_opt_0)), names = pars_opt_0)
+
+pars_0 <- pars <- c(ic_raw, pars_raw, pars_opt_0)
+
+
+# check if all parameters are assigned a value. Both lines should evaluate to the same number.
+x_pars <- unique(union((g) %>% attr("parameters"),(xs) %>% attr("parameters")))
+names(pars) %in% x_pars %>% sum()
+x_pars %in% names(pars) %>% sum()
+
+```
+
+
+# Perturb modules
+Now the module can be simulated to generate perturbation data.
+
+## Parameter trafos for convenient perturbation data
+Set up the perturbations
+```{r which pars are perturbed?, eval=F}
+# Which pars shall be perturbed?
+which_pars_perturbed_0 <- which_pars_perturbed <- c("x1", "y1", "ksyn")
+```
+
+```{r define perturbation conditions, eval=FALSE}
+p_pert <- p_pert_fun(which_pars_perturbed = which_pars_perturbed_0,
+                     perturbation_strength = 1.1,
+                     pars = pars_0)
+```
+
+### Perturbation data generation and elements to keep
+Just to show the code...
+This function will actually be evaluated each time a new condition is tested.
+```{r Generate perturbation data, eval=FALSE}
+perturbation_prediction_0 <-  (xs*p_pert)(times = c(0,Inf), pars = pars_0, deriv = F)
+r_kept_0 <- r_kept_fun()
+```
+
+### Fitting
+Just to show the code...
+```{r Fit, eval=FALSE}
+myfits <- mstrust(obj_alpha, center =  pars_opt_0+0.5, studyname = "Fits", cores = 4, fits = 10, sd = 0.3)
+myfits %>% as.parframe() %>% plotValues()
+best_fit <- myfits %>% as.parframe()
+best_fit <- best_fit[abs(best_fit$a_1) < 1 & abs(best_fit$a_2) < 1, ] %>% as.parvec()
+```
+
+
+# Find good Parameter values to compare behaviour for different conditions
+Run this chunk of code with the "plot"-line uncommented to see predictions.
+Once happy, comment out the plotting and proceed.
+```{r Find good pars}
+ic_list <- list(x1 = 60,y1 = 60, z1 = 60,
+                ksyny1 = c(1),
+                kdegy1 = c(0.01,0.1),
+                k31 =c(0.0005, 0.005)
+                )
+
+pars <- pars_0
+pars[names(reduce_ic_list(ic_list)[[2]])] <- reduce_ic_list(ic_list)[[2]]
+ic_list <- reduce_ic_list(ic_list)[[1]]
+p_ic <- p_ic_fun(ic_list)
+# plot((x*p_ic)(times = seq(0,1000, length.out = 50), pars))
+
+# print(pars)
+```
+
+# Fit and analyze different conditions and perturbations
+
+### Create lists for different settings
+```{r Summary of pars and ic_list}
+which_pars_perturbed_list <- list()
+ic_list_list <- list()
+pars_list <- list()
+setting_description <- c("Synthesis and degradation of each species",
+                         "Synthesis and degradation of each species",
+                         "No degradation of y2",
+                         "No degradation of y2 and z2"
+                         )
+```
+
+## Setting 1: Synthesis and degradation of each species.
+```{r pars_1}
+which_pars_perturbed_list[[1]] <- c("ksynx1", "ksyny1", "ksynz1")
+
+ic_list <- list(x1 = 5,
+                y1 = 5, 
+                z1 = 5,
+                kdegx2 = pars_0["kdegx2"]*10^(-4:-2),
+                kdegy2 = pars_0["kdegy2"]*10^(-4:-2)
+                )
+
+pars <- pars_0
+pars[names(pars) %>% str_detect("syn|deg")] <- pars[names(pars) %>% str_detect("syn|deg")]*10^(-2)
+pars[names(reduce_ic_list(ic_list)[[2]])] <- reduce_ic_list(ic_list)[[2]]
+ic_list <- reduce_ic_list(ic_list)[[1]]
+# p_ic <- p_ic_fun(ic_list)
+# plot((x*p_ic)(times = seq(0,1000, length.out = 50), pars))
+
+pars_list[[1]] <- pars
+ic_list_list[[1]] <- ic_list
+```
+
+## Setting 2: Synthesis and degradation of each species
+```{r pars_2, echo=FALSE}
+which_pars_perturbed_list[[2]] <- c("ksynx1", "ksyny1", "kdegz2")
+
+ic_list <- list(x1 = 5,
+                y1 = 5, 
+                z1 = 5,
+                kdegx2 = pars_0["kdegx2"]*10^(-4:-2),
+                kdegy2 = pars_0["kdegy2"]*10^(-4:-2)
+                )
+
+pars <- pars_0
+pars[names(pars) %>% str_detect("syn|deg")] <- pars[names(pars) %>% str_detect("syn|deg")]*10^(-2)
+pars[names(reduce_ic_list(ic_list)[[2]])] <- reduce_ic_list(ic_list)[[2]]
+ic_list <- reduce_ic_list(ic_list)[[1]]
+# p_ic <- p_ic_fun(ic_list)
+# plot((x*p_ic)(times = seq(0,1000, length.out = 50), pars))
+
+pars_list[[2]] <- pars
+ic_list_list[[2]] <- ic_list
+```
+
+## Setting 3: No degradation of y2
+```{r pars_3}
+which_pars_perturbed_list[[3]] <- c("ksynx1", "ksyny1", "ksynz1")
+
+ic_list <- list(x1 = 5,
+                y1 = 5, 
+                z1 = 5,
+                kdegx2 = pars_0["kdegx2"]*10^(-4:-2),
+                kdegy2 = 0
+                )
+
+pars <- pars_0
+pars[names(pars) %>% str_detect("syn|deg")] <- pars[names(pars) %>% str_detect("syn|deg")]*10^(-2)
+pars[names(reduce_ic_list(ic_list)[[2]])] <- reduce_ic_list(ic_list)[[2]]
+ic_list <- reduce_ic_list(ic_list)[[1]]
+# p_ic <- p_ic_fun(ic_list)
+# plot((x*p_ic)(times = seq(0,1000, length.out = 50), pars))
+pars_list[[3]] <- pars
+ic_list_list[[3]] <- ic_list
+```
+
+## Setting 4: No degradation of y2 and z2
+```{r pars_4}
+which_pars_perturbed_list[[4]] <- c("ksynx1", "ksyny1", "ksynz1")
+
+ic_list <- list(x1 = 5,
+                y1 = 5, 
+                z1 = 5,
+                kdegx2 = pars_0["kdegx2"]*10^(-4:-2),
+                kdegy2 = 0,
+                kdegz2 = 0
+                )
+
+pars <- pars_0
+pars[names(pars) %>% str_detect("syn|deg")] <- pars[names(pars) %>% str_detect("syn|deg")]*10^(-2)
+pars[names(reduce_ic_list(ic_list)[[2]])] <- reduce_ic_list(ic_list)[[2]]
+ic_list <- reduce_ic_list(ic_list)[[1]]
+p_ic <- p_ic_fun(ic_list)
+plot((x*p_ic)(times = seq(0,100000, length.out = 50), pars))
+
+pars_list[[4]] <- pars
+ic_list_list[[4]] <- ic_list
+```
+
+
+## Fit the multiple conditions and save the fits to a file.
+Run this only once before knitting and knit the document with the loaded dataset.
+```{r Fit multiple conditions, eval=FALSE}
+machine <- "localhost"
+MRA_job1<- runbg({
+ myfits <- mclapply(seq_along(pars_list), function(i) {
+    # cat("Setting ", i, " of ", length(pars_list), " \n")
+     run_simulations(ic_list = ic_list_list[[i]],
+                                     nfits = 3,
+                                     cores = 3,
+                                     pars = pars_list[[i]],
+                                     which_pars_perturbed = which_pars_perturbed_list[[i]])
+
+
+  }, mc.cores = 1)
+  names(myfits) <- paste0("Setting", seq_along(pars_list))
+  myfits
+}, machine = machine, filename = "MRA_job_intermediates")
+mytime <- 0
+while(!MRA_job1$check()) {
+  cat("Running since ", mytime, "s. \n")
+  Sys.sleep(5)
+  mytime <- mytime + 5
+}
+MRA_job1$check()
+multiple_fits <- MRA_job1$get()
+multiple_fits <- multiple_fits[[machine]]
+
+save(multiple_fits, file = fit_name)
+```
+
+
+
+## Analyze the fits
+```{r Analyze Fits to knitr-Document, results='asis', out.width='45%'}
+# Load the multiple fits
+load(fit_name)
+
+lapply(seq_along(pars_list), function(setting) {
+  
+  cat("\\newpage
+# Fit setting: ", setting, ": ", setting_description[setting], "
+\n
+### Standard pars of the following fits \n")
+  print(pars_list[[setting]])
+    
+  
+  
+  # multiple_fits <- lapply(seq_along(multiple_fits), function(j) {
+  #   if(is.null(multiple_fits[[j]]$condition)) multiple_fits[[j]]$condition <- names(multiple_fits)[j]
+  #   return(multiple_fits[[j]])
+  # })
+  output <- lapply(multiple_fits[[setting]], function(cond) {
+    
+    cat("\\newpage
+      # Condition: ",(cond$condition %>% str_split("_") %>% extract2(1) %>% paste(collapse = ", ") %>% str_replace_all("=", " = ")), "\n
+      # Perturbed Parameters: ", cond$which_pars_perturbed, "\n")
+    
+    # Plot the result of the mstrust()
+    print(plotValues(cond$all_fits) )
+    print(plot(cond$prediction))
+    
+    cat(" \n Local response matrices before and after optimization.\n")
+    print(xtable(cond$r_0, digits = 5), comment = F, floating = F)
+    cat(" ")
+    print(xtable(cond$r_kept, digits = 5), comment = F, floating = F)
+    cat(" ")
+    print(xtable(cond$r_best_fit, digits = 5), comment = F, floating = F)
+    
+    cat("\n Best fit with reasonable parameter: \n")
+    print(cond$best_fit %>% unclass %>%  matrix(.,nrow = 1, dimnames = list(NULL, names(.))) %>% xtable(digits = 3), comment = F, floating = F)
+    
+    cat("\n Steady state: \n")
+    print(xtable(as.matrix(cond$steady_states[[1]])), comment = F, floating = F)
+    
+    cat("\n All fits: \n")
+    print(xtable(cond$all_fits, digits = 4), comment = F, floating = F)
+    return()
+  })
+})
+```
+
