@@ -459,6 +459,15 @@ g <- g1 <- Y(as.eqnvec(structure(obs1, names = modules1)), mymodel, compile = TR
 ```
 
 
+```{r Observation function with better modularization in m-module, but not in e-module.}
+modules2 <- c("Cm2e1","e2")
+
+obs2 <- c(  "a_1*m2+Cm2e1",
+                   "e2")
+g2 <- Y(as.eqnvec(structure(obs2, names = modules2)), mymodel, compile = TRUE, modelname = "obsfn2", attach.input = FALSE)
+```
+
+
 ### Parameters.
 Load all parameters and format them for further use.
 ```{r Parameters}
@@ -492,31 +501,32 @@ Now the module can be simulated to generate perturbation data.
 Set up the perturbations
 ```{r which pars are perturbed, eval=FALSE}
 # Which pars shall be perturbed?
-# which_pars_perturbed_0 <- which_pars_perturbed <- c("m1", "e1")
-```
+which_pars_perturbed_0 <- which_pars_perturbed <- c("m1", "e1")
 
-
-```{r define perturbation conditions, eval=FALSE}
 p_pert <- p_pert_fun(which_pars_perturbed = which_pars_perturbed_0,
                      perturbation_strength = 1.1,
                      pars = pars_0)
 ```
 
+
 ### Perturbation data generation and elements to keep.
 Just to show the code...
 This function will actually be evaluated each time a new condition is tested.
+
+
 ```{r Generate perturbation data, eval=FALSE}
 perturbation_prediction_0 <-  (xs*p_pert)(times = c(0,Inf), pars = pars_0, deriv = F)
-r_kept_0 <- r_kept_fun()
+r_kept_0 <- r_kept_fun(obs_fun = g0, obs_fun_2 = g2)
+
 ```
 
 ### Fitting.
 Just to show the code...
 ```{r Fit, eval=FALSE}
-myfits <- mstrust(obj_alpha, center =  pars_opt_0+0.5, studyname = "Fits", cores = 4, fits = 10, sd = 0.3)
+myfits <- mstrust(obj_alpha, center =  pars_opt_0+0.5, studyname = "Fits", cores = 4, fits = 10, sd = 0.3, obs_fun = g1)
 myfits %>% as.parframe() %>% plotValues()
-best_fit <- myfits %>% as.parframe()
-best_fit <- best_fit[abs(best_fit$a_1) < 1 & abs(best_fit$a_2) < 1, ] %>% as.parvec()
+myfits %>% as.parframe()
+# best_fit <- best_fit[abs(best_fit$a_1) < 1, ] %>% as.parvec()
 ```
 
 
