@@ -1,77 +1,82 @@
 ---
-title: "Three tier cascade"
+title: "Cascade-different-perturbations"
 author: "Daniel Lill"
-date: "13 January 2017"
-output: pdf_document
+output: 
+  pdf_document:
+    keep_tex: true
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE)
-```
+# Load libraries and define some useful paths
 
-
-## Setup of model (x,g) and initial parameters (pars_0)
-### Load libraries and define some useful paths
-```{r echo=FALSE}
+```{r Libraries, results='hide', echo=FALSE, message=FALSE}
 library(MRAr)
 library(scales)
+library(xtable)
 path <- "~/Promotion/Projects/MRA/Cascade/"
-modelpath <- paste0(path, "Model/")
 pathout <- paste0(path, "Output/")
 ```
 
+```{r Names for Fit storage of different initial Conditions}
+fit_name <- "Cascade-different-perturbations"
+```
 
-### x Model and prediction function
+```{r Call render without overwriting any previous documents, echo=FALSE, eval=FALSE}
+rmarkdown::render("Cascade.Rmd", output_file = paste0(pathout, fit_name, format(Sys.time(), "%Y%m%d-%H%M"), ".pdf"))
+```
+# Cascade
 
-This is the setup of the ODEmodel. Odemodel writes a C-function, which is executed in x and xs.
+## Setup Model 
+This is the setup of the ODE model.
+
+### Prediction function
+odemodel writes a C-function, which is executed in x and xs.
 x is a regular prediction function while xs only finds and returns the steady states.
-
-```{r}
-all_models  <- str_subset(list.files(modelpath), "Cascade")
+If the odemodel has been calculated already, it can be loaded with "load".
+```{r Prediction function Cascade}
+modelpath <- paste0(path, "Models/Cascade/")
 modelname   <- "Cascade"
 mymodel     <- as.eqnlist(read.csv(paste0(modelpath, modelname, ".csv")))
 # mymodel
 
-myodemodel <- odemodel(mymodel, modelname = modelname, deriv = T)
-# save(myodemodel, file = paste0(path, "odemodel",modelname))
-# myodemodel <- attach(paste0(path, "odemodel",modelname))
+# myodemodel <- odemodel(mymodel, modelname = modelname, deriv = T)
+# save(myodemodel, file = paste0(modelpath, "odemodel",modelname, ".RData"))
+load(paste0(modelpath, "odemodel",modelname, ".RData"))
 
 
 # Prediction function
 x <- Xs(odemodel = myodemodel)
 # Prediction function for steady states
 xs <- Xs_steady(myodemodel)
+print(mymodel)
 ```
 
-### g Modules, their observables and the observation function
+### Modules, their observables and the observation function
 Observation function which depends also on the optimization parameters. With their help, the complexes can smoothly be switched on in the observation.
-```{r}
-modules <- c("x","y", "z")
 
-obs <- c(  "x2+a_1*complex01",
-           "y2+a_2*complex02", 
-           "z2")
-g <- Y(as.eqnvec(structure(obs, names = modules)), mymodel, compile = TRUE, modelname = "obsfn", attach.input = FALSE)
-# Default value of predfun for testing
-predfun <- (g*xs)
-```
-An observation function to easily compare complexes switched on or off
-```{r}
-modules2 <- c("x","comp1","x+comp" ,"y", "comp2", "y+comp", "z")
+This is the naive modularization used in the Prabakaran Paper, desregarding, which species are actually the communicating ones. This is fair enough, because usually the "active" forms are consedered to be the communicating species in a non-parametric network reconstruction.
+```{r Naive observation function Cascade}
+modules0 <- c("x2","y2", "z2")
 
-obs2 <- c(  "x2",
-            "complex01",
-  "x2+complex01",
-  "y2",
-  "complex02",
-           "y2+complex02", 
-           "z2")
-g2 <- Y(as.eqnvec(structure(obs2, names = modules2)), mymodel, compile = TRUE, modelname = "obsfn2", attach.input = FALSE)
+obs0 <- c(  "x2+a_1*Cx2y1",
+            "y2+a_2*Cy2z1",
+            "z2")
+g <- g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), mymodel, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
 ```
+
+Better modularization (also, set some defaults.)
+```{r good observation function Cascade}
+modules1 <- c("Cx2y1","Cy2z1", "z2")
+
+obs1 <- c("a_1*x2+Cx2y1",
+         "a_2*y2+Cy2z1",
+         "z2")
+g1 <- Y(as.eqnvec(structure(obs1, names = modules1)), mymodel, compile = TRUE, modelname = "obsfn1", attach.input = FALSE)
+```
+
 
 ### Parameters
 Load all parameters and format them for further use.
-```{r}
+```{r Parameters Cascade}
 
 pars_raw <- read.csv(paste0(modelpath, "pars.csv"), header = FALSE)  # dynamical parameters
 pars_raw <- structure(pars_raw$V2, names = as.character(pars_raw$V1))
@@ -81,606 +86,243 @@ ic_raw <- structure(ic_raw$V2, names = as.character(ic_raw$V1))
 vars_x <- attr(x, "parameters")[attr(x, "parameters") %in% names(ic_raw)]
 ic_raw <- ic_raw[vars_x]
 
-
-pars_opt_0 <- c(a_1 = 0, a_2 = 0)                                      # parameters to switch on complexes
-# pars_raw <-c(pars, pars_opt_0)
+pars_opt_0 <- setdiff((g) %>% attr("parameters"),names(c(pars_raw,ic_raw)))
+pars_opt_0 <- structure(rep(0, length(pars_opt_0)), names = pars_opt_0)
 
 pars_0 <- pars <- c(ic_raw, pars_raw, pars_opt_0)
 
 
-pars_opt_fun <- function(a, pars = pars_0) {
-  mypars <- pars
-  mypars["a_1"] <- a[1]
-  mypars["a_2"] <- a[2]
-  return(mypars)
-}
+# check if all parameters are assigned a value. Both lines should evaluate to the same number.
+# x_pars <- unique(union((g) %>% attr("parameters"),(xs) %>% attr("parameters")))
+# names(pars) %in% x_pars %>% sum()
+# x_pars %in% names(pars) %>% sum()
 
+```
+
+
+## Show the code
+### Perturb modules
+Now the module can be simulated to generate perturbation data.
+
+### Parameter trafos for convenient perturbation data
+Just to show the code...
+Set up the perturbations
+```{r  which pars are perturbed  Cascade, eval=FALSE}
 # Which pars shall be perturbed?
 which_pars_perturbed_0 <- which_pars_perturbed <- c("x1", "y1", "z1")
-
-
-# check if all parameters are assigned a value. Both lines should evaluate to the same number.
-x_pars <- (g*xs) %>% attr("parameters")
-names(pars) %in% x_pars %>% sum()
-x_pars %in% names(pars) %>% sum()
-
 ```
 
 
-```{r}
-deriv <- (g*xs)(times = c(0,Inf), pars = pars, deriv = T)[[1]] %>% attr("deriv")
-deriv <- deriv[,-1]
-states <- names(ic_raw)
+```{r define perturbation conditions Cascade, eval=FALSE}
+p_pert <- p_pert_fun(which_pars_perturbed = which_pars_perturbed_0,
+                     perturbation_strength = 1.1,
+                     pars = pars_0)
+```
 
-deriv <- matrix(deriv, nrow = length(modules), ncol = length(pars), dimnames = list(modules, names(pars)))
+### Perturbation data generation and elements to keep
+Just to show the code...
+This function will actually be evaluated each time a new condition is tested.
+```{r Generate perturbation data Cascade, eval=FALSE}
+pars_0
 
-observables <- list(x= c("x2", "complex01"), y=c("y2","complex02"), z = "z2")
-deriv_red <- sapply(observables, function(obs) {
-  # print(deriv[,obs])
-  apply(deriv[obs,, drop = F],2,sum)
-}) %>% t()
-deriv_red
-R_c <- R_0 <- r_numDeriv_fun()
+perturbation_prediction_0 <-  (xs*p_pert)(times = c(0,Inf), pars = pars_0, deriv = F)
+# debugonce(r_kept_fun)
+r_kept_0 <- r_kept_fun(obs_fun = g0, obs_fun_2 = g1)
+```
 
-
-R_alpha_fun <- function(pars_optimization, R_0, R_c, observables) {
-  # detect rows where the 
-  comp_rows <- sapply(names(pars_optimization), str_detect, string = observables) %>% t %>% multiply_by(pars_optimization) %>% rowsum(group = rep(1, length(pars_optimization))) %>% matrix(ncol = ncol(R_0[[cond]]), nrow = nrow(R_0[[cond]]))
-  
-  R_alpha <- lapply(conditions, function(cond) {
-    R_0[[cond]] + R_c[[cond]]*comp_rows
-  })
-  names(R_alpha) <- conditions
-  
-  return(R_alpha)
-
-}
-x <- matrix(runif(100), ncol = 5)
-group <- sample(1:8, 20, TRUE)
-xsum <- rowsum(x, group)
-x
-group
-xsum
-pars_optimization <- pars_opt_0+0.5
+### Fitting
+Just to show the code...
+```{r Fit Cascade, eval=FALSE}
+myfits <- mstrust(obj_alpha, center =  pars_opt_0+0.5, studyname = "Fits", cores = 4, fits = 10, sd = 0.3)
+myfits %>% as.parframe() %>% plotValues()
+best_fit <- myfits %>% as.parframe()
+best_fit <- best_fit[abs(best_fit$a_1) < 1 & abs(best_fit$a_2) < 1, ] %>% as.parvec()
 ```
 
 
 
-
-### Parameter trafos
-Just to play around a bit. This is a quick way to set up different conditions.
-```{r}
-k4 <- c(50,100,200)
-ic_list <- list(k4 = k4)
-
-p_ic <- p_ic_fun(ic_list)
-p_ic_list <-p_ic_list_fun(ic_list)
-
-p <- p_ic_fun(list(k1=100))
-```
-
-### First Plot
-```{r First plot}
-times <- seq(0,10000, by = 1)
-# pars[3] <- pars[3]*1.01
-mypred <- (g*x*p_ic)(times, pars_opt_fun(c(1,1)), deriv = F) # use the regular prediction function here.
-
-myplot <- mypred %>% plot()
-myplot + scale_x_continuous(breaks = pretty_breaks(n=2))
-```
-
-### Test xs, the prediction function for steady states 
-
-```{r}
-xs(times = c(0,Inf), pars = pars, deriv = T)
-(xs*p_ic)(times = c(0,Inf), pars, deriv = F)
-```
-
-
-### Dose response curves of gainlf
-I chose to keep "time" in the plots, which is the time of the system that is needed to reach steady state when starting from the initial conditions given by pars_0.
-```{r}
-p_ic <- p_ic_fun(list(z1=c(50,100,200)))
-
-dosages = exp(seq(-1,6, by = 1))
-par_dose <- "gainlf"
-dose_response <- dose_response_fun(par_dose = par_dose, dosages = dosages, pars = pars_0, predfun = (g2*xs*p_ic))
-
-dr_plot <- qplot(data = dose_response, x = log(par_dose), y = concentration, color = condition, geom = "line")
-dr_plot <- dr_plot + facet_wrap(facets = ~observable, scales = "free") + theme_dMod() + scale_color_dMod() +xlab(paste("log", par_dose)) + scale_x_continuous(breaks = pretty_breaks(n=3))
-dr_plot 
-```
-
-
-
-## Optimization procedure in original pars.
-
-### In dependency of gainlf
-Set up different conditions with feedbacks of different strength.
-```{r}
-
-ic_list <- list(gainlf = c(-1,1,10,50,100,1000))
-p_ic <- p_ic_fun(ic_list = ic_list)
-p_ic_list <- p_ic_list_fun(ic_list = ic_list)
-conditions <- attr(p_ic, "conditions")
-
-r_kept <- r_elements_kept_fun(pars = pars_0,
-                       predfun = (g*xs*p_ic),
-                       which_pars_perturbed = which_pars_perturbed_0,
-                       pars_optimization = pars_opt_0)
-
-r_0 <- r_numDeriv_fun(predfun = (g*xs*p_ic))
-r_1 <- r_numDeriv_fun(predfun = (g*xs*p_ic), pars = pars_opt_fun(c(1,1)))
-
-fits <- runtime( lapply(seq_along(conditions), function(cond) {
-  
-  fit <- trust(obj_frobenius, parinit = pars_opt_0, rinit = .5, rmax = .5, predfun = (g*xs*(p_ic_list[[cond]])), r_kept = r_kept)
-  
-  r_optimized <- r_numDeriv_fun(predfun = (g*xs*p_ic_list[[cond]]), pars_optimization = fit$argument)
-  
-  return(list(r_kept = r_kept[[cond]],  
-              r_0 = r_0[[cond]], 
-              r_1 = r_1[[cond]], 
-              r_optimized = r_optimized, 
-              fit = fit))
-}))
-names(fits) <- conditions
-
-r_opt <- lapply(seq_along(conditions), function(cond) {
-  fits[[cond]]$r_optimized
-})
-
-```
-
-```{r}
-cond <- 5
-
-
-signs <- (sign(r_0[[cond]]) - sign(r_1[[cond]])) %>% as.logical() %>% matrix(nrow = nrow(r_0[[cond]]))
-abs_vals <- (abs(r_0[[cond]]) < 1e-3) | (abs(r_1[[cond]]) < 1e-3)
-
-cat("condition: ", conditions[cond])
-r_0[[cond]]
-r_1[[cond]]
-signs
-abs_vals
-
-r_opt[[cond]]
-```
-
-
-## New ratio of y2 and complex02
-
-In the upper case, the complex02 was always bigger than y2 itself. 
-Because of that, the complex has sequestration was always stronger than the feedback.
-Change that now such that y2 \~ 5\*complex01
-
-### An observation function to compare the abundances of y2 and complex02
-```{r}
-modules3 <- c("x","comp1","xpluscomp" ,"y", "comp2", "logydividedbycomp", "z")
-
-obs3 <- c(  "x2",
-            "complex01",
-            "x2+complex01",
-            "y2",
-            "complex02",
-            "log(y2/complex02)", 
-            "z2")
-g3 <- Y(as.eqnvec(structure(obs3, names = modules3)), mymodel, compile = TRUE, modelname = "obsfn3", attach.input = FALSE)
-```
-
-### Dose response curves to find out about the best value of k7
-I chose to keep "time" in the plots, which is the time of the system that is needed to reach steady state when starting from the initial conditions given by pars_0.
-```{r}
-p_ic <- p_ic_fun(list(k7=c(0.01,0.15,1)))
-
-dosages = seq(-1,11)
-par_dose <- "gainlf"
-dose_response <- dose_response_fun(par_dose = par_dose, dosages = dosages, pars = pars_0, predfun = (g2*xs*p_ic))
-
-dr_plot <- qplot(data = dose_response, x = par_dose, y = concentration, color = condition, geom = "line")
-dr_plot <- dr_plot + facet_wrap(facets = ~observable, scales = "free") + theme_dMod() + scale_color_dMod() +xlab(par_dose) + scale_x_continuous(breaks = pretty_breaks(n=3))
-dr_plot 
-```
-
-This dose response plot is again a dr_plot of z, but in the new parameters.
-If k1 = 0.15, the effects cancel for positive feedback and the optimization doesn't work.
-If k1 = 1, the optimization works.
-```{r}
+## Find good Parameter values to compare behaviour for different conditions
+Run this chunk of code with the "plot"-line uncommented to see predictions.
+Once happy, comment out the plotting and proceed.
+```{r Find good pars Cascade, eval=FALSE}
+ic_list <- list(k7 = 0.1,
+                k4 = 0.1
+                )
 pars <- pars_0
-pars["k7"] <- 1
-# pars["k7"] <- .15
-
-p_ic <- p_ic_fun(list(z1=c(100,50,200,400)))
-
-dosages = exp(seq(-1,6, by = 1))
-par_dose <- "gainlf"
-dose_response <- dose_response_fun(par_dose = par_dose, dosages = dosages, pars = pars, predfun = (g3*xs*p_ic))
-
-dr_plot <- qplot(data = dose_response, x = log(par_dose), y = concentration, color = condition, geom = "line")
-dr_plot <- dr_plot + facet_wrap(facets = ~observable, scales = "free") + theme_dMod() + scale_color_dMod() +xlab(paste("log", par_dose)) + scale_x_continuous(breaks = pretty_breaks(n=3))
-dr_plot 
-```
-
-### Fitting with the new pars
-```{r}
-pars <- pars_0
-pars["k7"] <- 1
-# pars["k7"] <- .15
-
-ic_list <- list(gainlf = c(-1,1,10,50,100))
-p_ic <- p_ic_fun(ic_list = ic_list)
-p_ic_list <- p_ic_list_fun(ic_list = ic_list)
-conditions <- attr(p_ic, "conditions")
-
-r_kept <- r_elements_kept_fun(pars = pars,
-                       predfun = (g*xs*p_ic),
-                       which_pars_perturbed = which_pars_perturbed_0,
-                       pars_optimization = pars_opt_0)
-
-r_0 <- r_numDeriv_fun(predfun = (g*xs*p_ic), pars = pars)
-r_1 <- r_numDeriv_fun(predfun = (g*xs*p_ic), pars = pars_opt_fun(c(1,1), pars = pars))
-
-fits <- runtime( lapply(seq_along(conditions), function(cond) {
-  
-  fit <- trust(obj_frobenius, parinit = pars_opt_0, rinit = .5, rmax = .5, parscale = c(1,1), predfun = (g*xs*(p_ic_list[[cond]])), r_kept = r_kept, pars = pars)
-  
-  r_optimized <- r_numDeriv_fun(pars = pars, predfun = (g*xs*(p_ic_list[[cond]])), pars_optimization = fit$argument)
-  
-  return(list(r_kept = r_kept[[cond]],  
-              r_0 = r_0[[cond]], 
-              r_1 = r_1[[cond]], 
-              r_optimized = r_optimized, 
-              fit = fit))
-}))
-names(fits) <- conditions
-
-r_opt <- lapply(seq_along(conditions), function(cond) {
-  fits[[cond]]$r_optimized
-})
-
-```
-
-
-
-## Output
-
-```{r steady states of the conditions}
-ic_list <- list(k7 = c(0.01,0.15,1), gainlf = c(-1,1,10))
+pars[names(reduce_ic_list(ic_list)[[2]])] <- reduce_ic_list(ic_list)[[2]]
+ic_list <- reduce_ic_list(ic_list)[[1]]
 p_ic <- p_ic_fun(ic_list)
-
-conditions <- attr(p_ic, "conditions")
-
-steady_states <- (xs*p_ic)(times = c(0,Inf), pars = pars_0, deriv = F)
-steady_states <- data.frame(expand.grid(ic_list), do.call(rbind, steady_states)[,-1] )
-
-print(xtable(steady_states, caption = "Steady states of the different conditions.", digits = 5), file = paste0(pathout, "0steadystates.tex"), floating = T)
+plot((x*p_ic)(times = seq(0,1000, length.out = 50), pars))
+# print(pars)
+mymodel
 ```
 
-```{r Parameters}
+## Fit and analyze different conditions and perturbations
 
-print(xtable(data.frame(Parameter = names(pars_0), Value = pars_0), caption = "Parameter values"), file = paste0(pathout, "0pars.tex"), floating = T)
-
+### Create lists for different settings
+```{r Summary of pars and ic_list Cascade}
+which_pars_perturbed_list <- list()
+ic_list_list <- list()
+pars_list <- list()
+obs_fun_list <- list()
+setting_description <- c("No feedback + moiety conservation",
+                         "Feedback + moiety conservation",
+                         "Feedback + synthesis and degradation of z",
+                         "Feedback + synthesis and degradation of all species",
+                         "Feedback + moiety conservation in different parameters than at setting 2")
 ```
 
-Fitting for output
-```{r Fit for output}
+## Setting 1: No feedback + moiety conservation
+```{r Setting1  Cascade}
+obs_fun_list <- lapply(1:10, function(i) g0)
+which_pars_perturbed_list <- list(c("x1", "y1","z1"),
+                                  c("x1", "k5","z1"),
+                                  c("x1", "v5","z1"),
+                                  c("x1", "k61","z1"),
+                                  c("x1", "k7","z1"),
+                                  c("x1", "y1","v8"),
+                                  c("x1", "y1","k8"),
+                                  c("x1", "k5","k8"),
+                                  c("x1", "v5","k8"),
+                                  c("x1", "v5","v8")
+                                  )
+                                       
+ic_list_list <- lapply(1:10, function(i) list(k4=c(0.1,10)))
+
 pars <- pars_0
 
-ic_list <- list(k7 = c(0.01, 0.15,1), gainlf = c(-1,1,10))
-p_ic <- p_ic_fun(ic_list)
-p_ic_list <- p_ic_list_fun(ic_list = ic_list)
-conditions <- attr(p_ic, "conditions")
-
-r_kept <- r_elements_kept_fun(pars = pars,
-                       predfun = (g*xs*p_ic),
-                       which_pars_perturbed = which_pars_perturbed_0,
-                       pars_optimization = pars_opt_0)
-
-r_0 <- r_numDeriv_fun(predfun = (g*xs*p_ic), pars = pars)
-r_1 <- r_numDeriv_fun(predfun = (g*xs*p_ic), pars = pars_opt_fun(c(1,1), pars = pars))
-
-fits <- lapply(seq_along(conditions), function(cond) {
-
-  
-  fit <- trust(obj_frobenius, parinit = pars_opt_0, rinit = .5, rmax = .5, parscale = c(1,1), predfun = (g*xs*(p_ic_list[[cond]])), r_kept = r_kept[[cond]])
-
-  r_optimized <- r_numDeriv_fun(predfun = (g*xs*(p_ic_list[[cond]])), pars_optimization = fit$argument)
-
-  return(list(cond = pars[names(ic_df)],
-    r_optimized = r_optimized,
-              fit = fit))
-})
-names(fits) <- conditions
-
-do.call(rbind, fits)
-r_opt <- lapply(seq_along(conditions), function(cond) {
-  fits[[cond]]$r_optimized
-})
-
-fit_list <- lapply(names(fits), function(cond) {
-  fits[[cond]]$fit
-})
-
-mypf <- as.parframe(as.parlist(fit_list)) 
-mypf <- mypf[order(mypf$index)]
-rownames(mypf) <- conditions
-mypf
-```
-
-```{r Output of fits}
-
-lapply(seq_along(conditions), function(cond) {
-  filename <- paste0("condition",cond)
-  nice_cond <- conditions[[cond]] %>% str_replace("_", ", ")
-  
-  print(xtable(as.data.frame(r_kept[[cond]]), caption = paste(nice_cond, ": Elements to minimize"), digits = 5), file = paste0(pathout, filename, "1rkept.tex"), floating = T)
-  print(xtable(as.data.frame(r_0[[cond]]), caption = paste(nice_cond, ": Matrix before optimization"), digits = 5), file = paste0(pathout, filename, "2r0.tex"), floating = T)
-  print(xtable(as.data.frame(r_opt[[cond]][[1]]), caption = paste(nice_cond, ": Matrix after optimization"), digits = 5), file = paste0(pathout, filename, "3ropt.tex"), floating = T)
-  })
-
-
-
-```
-
-# Do a parameter trafo to confine the optimization parameters
-```{r}
-mytrafo <- structure(names(pars), names = names(pars))[!(names(pars_0) %in% c("a_1","a_2"))]
-opt_trafo <- structure(paste0("atan(tan", names(pars_opt),")/(3.1415926)+0.5"), names = names(pars_opt))
-p_opt <- P(trafo = c(mytrafo, opt_trafo))
-p_wup <- P(trafo = opt_trafo)
-```
-
-```{r Fit for output}
-pars <- pars_0[!(names(pars_0) %in% c("a_1","a_2"))]
-pars <- c(pars, tana_1 = 0, tana_2=0)
-
-pars_opt <- c(tana_1 = 0, tana_2=0)
-
-ic_list <- list(k7 = c(0.01,0.15,1), gainlf = c(-1,1,10))
-p_ic <- p_ic_fun(ic_list)
-p_ic_list <- p_ic_list_fun(ic_list = ic_list)
-conditions <- attr(p_ic, "conditions")
-
-r_kept <- r_elements_kept_fun(pars = pars_0,
-                       predfun = (g*xs*p_ic),
-                       which_pars_perturbed = which_pars_perturbed_0,
-                       pars_optimization = pars_opt_0)
-
-r_0 <- r_numDeriv_fun(predfun = (g*xs*p_ic), pars = pars)
-r_1 <- r_numDeriv_fun(predfun = (g*xs*p_ic), pars = pars_opt_fun(c(1,1)))
-
-fits <- runtime( lapply(seq_along(conditions), function(cond) {
-  
-  fit <- trust(obj_frobenius, parinit = pars_opt, rinit = .5, rmax = .5, parscale = c(1,1), predfun = (g*xs*(p_ic_list[[cond]])*p_opt), r_kept = r_kept, pars = pars)
-  
-  r_optimized <- r_numDeriv_fun(pars = pars, predfun = (g*xs*(p_ic_list[[cond]])*p_opt), pars_optimization = fit$argument)
-  
-  return(list(r_kept = r_kept[[cond]],  
-              r_0 = r_0[[cond]], 
-              r_1 = r_1[[cond]], 
-              r_optimized = r_optimized, 
-              fit = fit))
-}))
-names(fits) <- conditions
-
-r_opt <- lapply(seq_along(conditions), function(cond) {
-  fits[[cond]]$r_optimized
-})
-
-fit_args <- lapply(names(fits), function(cond) {
-  p_wup(fits[[cond]]$fit$argument)
-})
-names(fit_args) <- names(fits)
-fit_args
+# pars[names(reduce_ic_list(ic_list)[[2]])] <- reduce_ic_list(ic_list)[[2]] #This needs to be considered, when I want to test more parameter-conditions
+# ic_list <- reduce_ic_list(ic_list)#[[1]]
+# p_ic <- p_ic_fun(ic_list)
+# plot((x*p_ic)(times = seq(0,1000, length.out = 50), pars))
+# 
+pars_list <- lapply(1:10, function(i) pars)
+# ic_list_list[[1]] <- ic_list
 ```
 
 
-
-
-## Play around with fractional changes as derivatives
-
-```{r}
-r_logderiv_fractional_fun <- function(pars = pars_0,
-                       predfun = (g*xs),
-                       which_pars_perturbed = which_pars_perturbed_0,
-                       pars_optimization = NULL) {
-
-  if(!is.null(pars_optimization)) pars[names(pars_optimization)] <- pars_optimization
-
-  conditions <- attr(predfun, "conditions")
-  if(is.null(conditions)) conditions <- 1
-
-  steady_states <- predfun(times =c(0,Inf), pars = pars,deriv = F)
-
-  # apply a 10 percent perturbation
-  frac_derivs <- lapply(which_pars_perturbed, function(par_pert){
+## Fit the multiple conditions and save the fits to a file.
+Run this only once before knitting and knit the document with the loaded dataset.
+```{r Fit multiple conditions Cascade, eval=FALSE}
+machine <- "localhost"
+fit_job1<- runbg({
+  myfits <- mclapply(seq_along(pars_list), function(i) {
+    # cat("Setting ", i, " of ", length(pars_list), " \n")
+    run_simulations(ic_list = ic_list_list[[i]],
+                    nfits = 6,
+                    cores = 3,
+                    pars = pars_list[[i]],
+                    which_pars_perturbed = which_pars_perturbed_list[[i]],
+                    obs_fun = obs_fun_list[[i]])
     
-    mypars <- pars
-    mypars[par_pert] <- mypars[par_pert]*1.1
-    
-    new_steady_states <- predfun(times = c(0,Inf), pars = mypars, deriv = F)
-    
-    lapply(seq_along(conditions), function(cond){
-      fractional_change <- 2*
-        (new_steady_states[[cond]][-1] - steady_states[[cond]][-1])/
-        (new_steady_states[[cond]][-1] + steady_states[[cond]][-1])
-    })
-  })
-  
-  # frac_derivs is a list with levels [[par_pert]][[condition]]
-  # each entry is a column of the global response matrix R.
-  # Change the order of the indices and cbind the resulting columns.
-  r <- lapply(seq_along(conditions), function(cond) {
-    
-    R <- lapply(seq_along(which_pars_perturbed), function(wp){
-      frac_derivs[[wp]][[cond]]
-    }) %>% do.call(cbind,.)
-    
-    local_response_matrix_eq10(R)
-  })
-  
-  names(r) <- conditions
-  return(r)
+
+  }, mc.cores = 1)
+  names(myfits) <- paste0("Setting", seq_along(pars_list))
+  myfits
+}, machine = machine, filename = "fit_job1")
+save.image()
+```
+
+```{r Get the fit Cascade, eval=FALSE}
+mytime <- 0
+while(!fit_job1$check()) {
+  Sys.sleep(5)
+  mytime <- mytime + 5
 }
+beepr::beep(2)
+multiple_fits <- fit_job1$get()
+multiple_fits <- multiple_fits[[machine]]
+# multiple_fits
+# fit_job1$purge()
+save(multiple_fits, file = paste0(pathout,fit_name,".RData"))
 ```
 
 
+
+## Analyze the fits
+<!-- This is now to be run when pressing "render" -->
 ```{r}
-r_logderiv_fun  <- function(pars = pars_0,
-                       predfun = (g*xs),
-                       which_pars_perturbed = which_pars_perturbed_0,
-                       pars_optimization = NULL, 
-                       r_fun = r_numDeriv_fun) {
+# Load the multiple fits
+load(paste0(pathout,fit_name,".RData"))
+```
 
-  if(!is.null(pars_optimization)) pars[names(pars_optimization)] <- pars_optimization
 
-  conditions <- attr(predfun, "conditions")
-  if(is.null(conditions)) conditions <- 1
+```{r Analyze Fits to knitr-Document Cascade, results='asis', out.width='45%'}
 
-  steady_states <- predfun(times =c(0,Inf), pars = pars,deriv = F)
-  r <- r_fun(pars = pars,
-                       predfun = predfun,
-                       which_pars_perturbed = which_pars_perturbed,
-                       pars_optimization = pars_optimization)
+
+lapply(seq_along(pars_list), function(setting) {
   
-  r_logderiv <- lapply(seq_along(conditions), function(cond) {
-    my_steady_states <- steady_states[[cond]][-1]
-    my_r <- r[[cond]]
+  cat("\\newpage
+# Fit setting: ", setting, ": ", setting_description[setting], "
+\n
+### Standard pars of the following fits \n")
+  print(xtable(as.matrix(pars_list[[setting]], nrow = 1), digits = 3), comment = F, floating = F)
     
-    # divide by x_i
-    my_r <- my_r/my_steady_states
+  
+  
+  # multiple_fits <- lapply(seq_along(multiple_fits), function(j) {
+  #   if(is.null(multiple_fits[[j]]$condition)) multiple_fits[[j]]$condition <- names(multiple_fits)[j]
+  #   return(multiple_fits[[j]])
+  # })
+  output <- lapply(multiple_fits[[setting]], function(cond) {
     
-    # multiply by x_j
-    my_r <- my_r %>% t %>% multiply_by(my_steady_states) %>% t
+    cat("\\newpage
+      # Perturbed Parameters: ", cond$which_pars_perturbed, "\n
+      # Condition: ",(cond$condition %>% str_split("_") %>% extract2(1) %>% paste(collapse = ", ") %>% str_replace_all("=", " = ")), "\n"
+      )
+    
+    # Plot the result of the mstrust()
+    print(plotValues(cond$all_fits) )
+    print(plot(cond$prediction))
+    
+    cat(" \n Local response matrices before and after optimization.\n")
+    print(xtable(cond$r_0, digits = 5), comment = F, floating = F)
+    cat(" ")
+    print(xtable(cond$r_kept, digits = 5), comment = F, floating = F)
+    cat(" ")
+    print(xtable(cond$r_best_fit, digits = 5), comment = F, floating = F)
+    
+    cat("\n Best fit with reasonable parameter: \n")
+    print(cond$best_fit %>% unclass %>%  matrix(.,nrow = 1, dimnames = list(NULL, names(.))) %>% xtable(digits = 3), comment = F, floating = F)
+    
+    cat("\n Steady state: \n")
+    print(xtable(as.matrix(cond$steady_states[[1]])), comment = F, floating = F)
+    
+    cat("\n All fits: \n")
+    print(xtable(cond$all_fits, digits = 4), comment = F, floating = F)
+    return()
   })
-  names(r_logderiv) <- conditions
-  return(r_logderiv)
-}
+})
 ```
 
 
 
 
 
-## New approach which is more measurable
-Here, R = Delta_j x_i + alpha Delta x_i:y
-For this, a new observation function is needed:
-```{r}
-modules4 <- c("x","xCOMPy","y", "yCOMPz","z")
-
-obs4 <- c("x2",
-          "complex01",
-          "y2",
-          "complex02",
-          "z2")
-g4 <- Y(as.eqnvec(structure(obs4, names = modules4)), mymodel, compile = TRUE, modelname = "obsfn4", attach.input = FALSE)
-```
-
-```{r}
-r_logderiv_fractional_2_comp_fun <- function(pars = pars_0,
-                                      predfun = (g4*xs),
-                                      which_pars_perturbed = which_pars_perturbed_0,
-                                      pars_optimization = NULL) {
-
-  if(!is.null(pars_optimization)) pars[names(pars_optimization)] <- pars_optimization
-
-  conditions <- attr(predfun, "conditions")
-  if(is.null(conditions)) conditions <- 1
-
-  steady_states <- predfun(times =c(0,Inf), pars = pars,deriv = F)
-
-
-  
-  # apply a 10 percent perturbation
-  frac_derivs <- lapply(which_pars_perturbed, function(par_pert){
-
-    mypars <- pars
-    mypars[par_pert] <- mypars[par_pert]*1.1
-
-    new_steady_states <- predfun(times = c(0,Inf), pars = mypars, deriv = F)
-
-    lapply(seq_along(conditions), function(cond){
-      fractional_change <- 2*
-        (new_steady_states[[cond]][-1] - steady_states[[cond]][-1])/
-        (new_steady_states[[cond]][-1] + steady_states[[cond]][-1])
-    })
-  })
-  
-    # analyze which components need to be added to where
-  
-  comp <- names(steady_states[[1]][,-1]) %>% structure(., names = .)
-  comp_det <- str_detect(comp, "COMP") %>% which 
-  comp_det <- pars[paste0("a_", seq_along(comp_det))] %>% structure(comp_det, names = .)
-  comp_add_to <- sapply(str_split(comp, "COMP"), function(i) i[1]) %>% structure(names = comp)
-  comp_add_matrix <- outer(comp, comp_add_to, "==")
-  comp_add_matrix[,comp_det] <- t(t(comp_add_matrix[,comp_det]) * as.numeric(names(comp_det)))
-  
-  # frac_derivs is a list with levels [[par_pert]][[condition]]
-  # each entry is a column of the global response matrix R.
-  # Change the order of the indices and cbind the resulting columns.
-  r <- lapply(seq_along(conditions), function(cond) {
-    R <- lapply(seq_along(which_pars_perturbed), function(wp){
-      frac_derivs[[wp]][[cond]]
-    }) %>% do.call(cbind,.)
-    R <- apply(comp_add_matrix, 1, function(i) {
-    t(R)%*%i
-    })
-    R <- t(R[,-comp_det])
-    return(local_response_matrix_eq10(R))
-  })
-  names(r) <- conditions
-  
-  return(r)
-}
-```
 
 
 
-```{r}
-r_logderiv_fractional_fun <- function(pars = pars_0,
-                                      predfun = (g*xs),
-                                      which_pars_perturbed = which_pars_perturbed_0,
-                                      pars_optimization = NULL) {
-
-  if(!is.null(pars_optimization)) pars[names(pars_optimization)] <- pars_optimization
-
-  conditions <- attr(predfun, "conditions")
-  if(is.null(conditions)) conditions <- 1
-
-  steady_states <- predfun(times =c(0,Inf), pars = pars,deriv = F)
-
-  # apply a 10 percent perturbation
-  frac_derivs <- lapply(which_pars_perturbed, function(par_pert){
-
-    mypars <- pars
-    mypars[par_pert] <- mypars[par_pert]*1.1
-
-    new_steady_states <- predfun(times = c(0,Inf), pars = mypars, deriv = F)
-
-    lapply(seq_along(conditions), function(cond){
-      fractional_change <- 2*
-        (new_steady_states[[cond]][-1] - steady_states[[cond]][-1])/
-        (new_steady_states[[cond]][-1] + steady_states[[cond]][-1])
-    })
-  })
-
-  # frac_derivs is a list with levels [[par_pert]][[condition]]
-  # each entry is a column of the global response matrix R.
-  # Change the order of the indices and cbind the resulting columns.
-  r <- lapply(seq_along(conditions), function(cond) {
-
-    R <- lapply(seq_along(which_pars_perturbed), function(wp){
-      frac_derivs[[wp]][[cond]]
-    }) %>% do.call(cbind,.)
-
-    # local_response_matrix_eq10(R)
-  })
-
-  names(r) <- conditions
-  return(r)
-}
 
 
-```
+
+<!-- ------------------------------------------------------------------------------------------------- -->
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- ------------------------------------------------------------------------------------------------- -->
+
+
+
+
+
+
 
