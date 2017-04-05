@@ -12,7 +12,7 @@ output:
 library(MRAr)
 library(scales)
 library(xtable)
-path <- "~/Promotion/Projects/MRA/Cascade/" #getwd()
+path <- getwd()
 pathout <- paste0(path, "Output/")
 ```
 
