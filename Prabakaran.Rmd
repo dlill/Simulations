@@ -17,10 +17,7 @@ pathout <- paste0(path, "Output/")
 ```
 
 ```{r Names for Fit storage of different initial Conditions}
-# fit_name <- "Multiplefits.RData"
-# fit_name <- "Gain_Multiplefits.RData"
-# fit_name <- paste0(c("Pert1","Pert2", "Pert3", "Pert4"), ".RData")
-fit_name <- "Summary"
+fit_name <- "Prabakaran"
 ```
 
 ```{r Call render without overwriting any previous documents, echo=FALSE, eval=FALSE}
@@ -57,20 +54,20 @@ Observation function which depends also on the optimization parameters. With the
 
 This is the naive modularization used in the Prabakaran Paper, desregarding, which species are actually the communicating ones. This is fair enough, because usually the "active" forms are consedered to be the communicating species in a non-parametric network reconstruction.
 ```{r Naive observation function}
-modules0 <- c("m2","e2")
+modules <- modules0 <- c("m2","e2tot")
 
-obs0 <- c(  "m2+a_1*Cm2e1",
-            "e2")
-g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), mymodel, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
+obs <- obs0 <- c(  "m2+a_1*Cm2e1",
+            "e2+Ce2p1")
+g <- g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), mymodel, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
 ```
 
 Better modularization (also, set some defaults.)
 ```{r good observation function}
-modules <- modules1 <- c("Cm2e1","e1")
+modules1 <- c("Cm2e1","e1")
 
-obs <- obs1 <- c(  "a_1*m2+Cm2e1",
+obs1 <- c(  "a_1*m2+Cm2e1",
                    "e1")
-g <- g1 <- Y(as.eqnvec(structure(obs1, names = modules1)), mymodel, compile = TRUE, modelname = "obsfn1", attach.input = FALSE)
+g1 <- Y(as.eqnvec(structure(obs1, names = modules1)), mymodel, compile = TRUE, modelname = "obsfn1", attach.input = FALSE)
 ```
 
 

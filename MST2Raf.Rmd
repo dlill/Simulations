@@ -1,5 +1,5 @@
 ---
-title: "Cascade-feedback-analysis"
+title: "MST2-Raf"
 author: "Daniel Lill"
 output: 
   pdf_document:
@@ -17,11 +17,11 @@ pathout <- paste0(path, "Output/")
 ```
 
 ```{r Names for Fit storage of different initial Conditions}
-fit_name <- "Cascade-feedback-analysis"
+fit_name <- "MST2-Raf"
 ```
 
-```{r Call render without overwriting any previous documents, echo=FALSE, eval=FALSE, message=FALSE}
-rmarkdown::render("Cascade.Rmd", output_file = paste0(pathout, fit_name, format(Sys.time(), "%Y%m%d-%H%M"), ".pdf"))
+```{r Call render without overwriting any previous documents, echo=FALSE, eval=FALSE}
+rmarkdown::render("MST2Raf.Rmd", output_file = paste0(pathout, fit_name, format(Sys.time(), "%Y%m%d-%H%M"), ".pdf"))
 ```
 # Cascade
 
@@ -33,8 +33,8 @@ odemodel writes a C-function, which is executed in x and xs.
 x is a regular prediction function while xs only finds and returns the steady states.
 If the odemodel has been calculated already, it can be loaded with "load".
 ```{r Prediction function Cascade}
-modelpath <- paste0(path, "Models/Cascade/")
-modelname   <- "Cascade"
+modelpath <- paste0(path, "Models/MST2Raf/")
+modelname   <- "MST2Raf"
 mymodel     <- as.eqnlist(read.csv(paste0(modelpath, modelname, ".csv")))
 # mymodel
 
@@ -52,24 +52,27 @@ print(mymodel)
 ### Modules, their observables and the observation function
 Observation function which depends also on the optimization parameters. With their help, the complexes can smoothly be switched on in the observation.
 
-This is the naive modularization used in the Prabakaran Paper, desregarding, which species are actually the communicating ones. This is fair enough, because usually the "active" forms are consedered to be the communicating species in a non-parametric network reconstruction.
-```{r Naive observation function Cascade}
-modules0 <- c("x2","y2", "z2")
+```{r Observation function}
+modules <- c("Raf1a", "MST2a_tot","LATS1a", "MEKpp", "ERKpp")
 
-obs0 <- c(  "x2+a_1*Cx2y1",
-            "y2+a_2*Cy2z1",
-            "z2")
-g <- g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), mymodel, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
+obs <- c(  "Raf1a + a_1*(RaMk+ RapMk)", 
+           "k14a/(k14a+k14b)*MST2a+ k14b/(k14a+k14b)*MaF1A + a_2*(pMpR + MpR)", 
+           "LATS1a", 
+           "ppMEK", 
+           "ppERK")
+g <- g0 <- Y(as.eqnvec(structure(obs, names = modules)), mymodel, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
 ```
 
 Better modularization (also, set some defaults.)
-```{r good observation function Cascade}
-modules1 <- c("Cx2y1","Cy2z1", "z2")
+```{r Observation function the other way round}
+modules <- c("Raf1a", "MST2a_tot","LATS1a", "MEKpp", "ERKpp")
 
-obs1 <- c("a_1*x2+Cx2y1",
-         "a_2*y2+Cy2z1",
-         "z2")
-g1 <- Y(as.eqnvec(structure(obs1, names = modules1)), mymodel, compile = TRUE, modelname = "obsfn1", attach.input = FALSE)
+obs <- c(  "a_1*Raf1a + (RaMk+ RapMk)", 
+           "a_2*(k14a/(k14a+k14b)*MST2a+ k14b/(k14a+k14b)*MaF1A) + (pMpR + MpR)", 
+           "LATS1a", 
+           "ppMEK", 
+           "ppERK")
+g1 <- Y(as.eqnvec(structure(obs, names = modules)), mymodel, compile = TRUE, modelname = "obsfn1", attach.input = FALSE)
 ```
 
 
@@ -105,13 +108,13 @@ Now the module can be simulated to generate perturbation data.
 ### Parameter trafos for convenient perturbation data
 Just to show the code...
 Set up the perturbations
-```{r  which pars are perturbed  Cascade, eval=FALSE}
+```{r  which pars are perturbed  Cascade, results='hide'}
 # Which pars shall be perturbed?
-which_pars_perturbed_0 <- which_pars_perturbed <- c("x1", "y1", "z1")
+which_pars_perturbed_0 <- which_pars_perturbed <- c("pRaf1", "MST2","LATS1", "MEK", "ERK")
 ```
 
 
-```{r define perturbation conditions Cascade, eval=FALSE}
+```{r define perturbation conditions Cascade, results='hide'}
 p_pert <- p_pert_fun(which_pars_perturbed = which_pars_perturbed_0,
                      perturbation_strength = 1.1,
                      pars = pars_0)
@@ -121,23 +124,9 @@ p_pert <- p_pert_fun(which_pars_perturbed = which_pars_perturbed_0,
 Just to show the code...
 This function will actually be evaluated each time a new condition is tested.
 ```{r Generate perturbation data Cascade, eval=FALSE}
-newpars <- c(k7 = c(0.2),
-             k4 = c(1),
-             k31 = c(0.001),
-             # k1 = 10,
-             v5 = c(200),
-             gainlf = c(5),
-             z1=c(100),
-             k10 =150
-)
-pars <- pars_0
-pars[names(newpars)] <- newpars
-
-# perturbation_prediction_0 <-  (xs*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
-debugonce(r_kept_fun)
-r_kept_0 <- r_kept_fun(obs_fun = g0)
-# (g*xs*p_pert)(times =c(0,Inf), pars = pars)
-
+perturbation_prediction_0 <-  (xs*p_pert)(times = c(0,Inf), pars = pars_0, deriv = F)
+# debugonce(r_kept_fun)
+r_kept_0 <- r_kept_fun(obs_fun = g0, obs_fun_2 = g1)
 ```
 
 ### Fitting
@@ -153,48 +142,19 @@ best_fit <- best_fit[abs(best_fit$a_1) < 1 & abs(best_fit$a_2) < 1, ] %>% as.par
 
 ## Find good Parameter values to compare behaviour for different conditions
 Run this chunk of code with the "plot"-line uncommented to see predictions.
-
-A good procedure to do this, is to look at the parameters of the complex first. 
-1. If kf and kr are much smaller than kcat, nothing will have a big impact. 
-2. When trying to provoke an impact, these pars need to be adjusted first.
-3. Then one can also look at the model equations again and of course the predictions. Try to think, which parameters are actually blocking a desired output.
-4. Also think about the orders of magnitude of in- and outgoing arrows at each node.
-5. Which states are at zero, which are at maximum value (ie 100)?
-
+Once happy, comment out the plotting and proceed.
 ```{r Find good pars Cascade, eval=FALSE}
-ic_list <- list(k7 = c(0.2),
-                k4 = c(1),
-                k31 = c(0.001),
-                # k1 = 10,
-                v5 = c(200),
-                gainlf = c(5,50),
-                z1=c(100,120),
-                k10 =150
+ic_list <- list(k7 = 0.1,
+                k4 = 0.1,
+                gainuf = c(0,0.1,0.5,1,5,10,20,50,100)
                 )
 pars <- pars_0
 pars[names(reduce_ic_list(ic_list)[[2]])] <- reduce_ic_list(ic_list)[[2]]
 ic_list <- reduce_ic_list(ic_list)[[1]]
 p_ic <- p_ic_fun(ic_list)
 plot((x*p_ic)(times = seq(0,1000, length.out = 50), pars))
-cat("pars: \n")
-pars
-cat("pars_0: \n")
-pars_0
+# print(pars)
 mymodel
-```
-
-### Plot of the different feedback strengths
-This value will then be multiplied with the reaction rate k61\*y2\*z1
-```{r}
-
-# mymodel
-# pars["k10"]
-gain <- function(z2, gainlf, k10) (1 + gainlf*(z2/(k10 + z2)))/(1 + (z2/(k10 + z2)))
-mydf <- data.frame(x=rep(1:150,5))
-df <- within(mydf, {
-  y <- lapply(c(0,0.1,5,10,50), function(i) gain(unique(x), i, k10 = 100)) %>% do.call(c,.)
-  color <- rep(as.character(c(0,0.1,5,10,50)), each = length(unique(x)))})
-qplot(data= df, x=x,y=y, color = color, geom = "path", xlab = "z2", ylab = "Multiplicative factor") + theme_dMod() + scale_color_dMod() + guides(color=guide_legend(title = "gainlf"))
 ```
 
 ## Fit and analyze different conditions and perturbations
@@ -205,63 +165,41 @@ which_pars_perturbed_list <- list()
 ic_list_list <- list()
 pars_list <- list()
 obs_fun_list <- list()
-setting_description <- c("Feedback from z2 to x2_y1_to_comp",
-                         "Feedback from z2 to act_xs"
-                         )
+setting_description <- " "
 ```
 
-## Setting 1: Feedback from z2 to x2_y1_to_comp
-```{r Setting 1}
-obs_fun_list[[1]]   <-  g0
-which_pars_perturbed_list[[1]] <- c("x1", "y1","z1")
+## Setting 1: Feedback from z2 to y2_z1_to_comp
+```{r Setting1  Cascade}
+obs_fun_list <- lapply(1, function(i) g0)
+obs_fun_2_list <- lapply(1, function(i) g1)
+which_pars_perturbed_list <- list(c("x1", "y1","z1"))
                                        
-ic_list <- list(k7 = c(0.2),
-                k4 = c(1),
-                k31 = c(0.001),
-                k1 = 10,
-                v5 = c(200),
-                gainlf = c(1,5,50),
-                z1=c(100)
-                )
+ic_list_list <- lapply(1, function(i) list(k4=c(1), gainlf = c(0,0.1,1,10,100)))
 
 pars <- pars_0
-pars[names(reduce_ic_list(ic_list)[[2]])] <- reduce_ic_list(ic_list)[[2]] #This needs to be considered, when I want to test more parameter-conditions
-pars_list[[1]] <-  pars
 
-ic_list_list[[1]] <- reduce_ic_list(ic_list)[[1]]
-
-
-p_ic <- p_ic_fun(reduce_ic_list(ic_list)[[1]])
-plot((x*p_ic)(times = seq(0,1000, length.out = 50), pars))
+# pars[names(reduce_ic_list(ic_list)[[2]])] <- reduce_ic_list(ic_list)[[2]] #This needs to be considered, when I want to test more parameter-conditions
+# ic_list <- reduce_ic_list(ic_list)#[[1]]
+# p_ic <- p_ic_fun(ic_list)
+# plot((x*p_ic)(times = seq(0,1000, length.out = 50), pars))
+# 
+pars_list <- lapply(1, function(i) pars)
+# # ic_list_list[[1]] <- ic_list
 ```
 
-## Setting 2: Feedback from z2 to act_x
-```{r Setting 2}
-obs_fun_list[[2]]   <-  g0
-which_pars_perturbed_list[[2]] <- c("x1", "y1","z1")
-                                       
-ic_list <- list(k7 = c(0.2),
-                k4 = c(1),
-                k31 = c(0.001),
-                k1 = 10,
-                v5 = c(200),
-                gainuf = c(1,5,50),
-                z1=c(100)
-                )
+### Plot of the different feedback strengths
+This value is multiplied with the reaction rate k61\*y2\*z1
+```{r}
 
-pars <- pars_0
-pars[names(reduce_ic_list(ic_list)[[2]])] <- reduce_ic_list(ic_list)[[2]] #This needs to be considered, when I want to test more parameter-conditions
-pars_list[[2]] <-  pars
-
-ic_list_list[[2]] <- reduce_ic_list(ic_list)[[1]]
-
-p_ic <- p_ic_fun(reduce_ic_list(ic_list)[[1]])
-plot((x*p_ic)(times = seq(0,1000, length.out = 50), pars))
+# mymodel
+# pars["k10"]
+gain <- function(z2, gainlf, k10) (1 + gainlf*(z2/(k10 + z2)))/(1 + (z2/(k10 + z2)))
+mydf <- data.frame(x=rep(1:40,5))
+df <- within(mydf, {
+  y <- lapply(c(0,0.1,2,10,50), function(i) gain(unique(x), i, pars["k10"])) %>% do.call(c,.)
+  color <- rep(as.character(c(0,0.1,2,10,50)), each = length(unique(x)))})
+qplot(data= df, x=x,y=y, color = color, geom = "path", xlab = "z2", ylab = "Multiplicative factor") + theme_dMod() + scale_color_dMod() + guides(color=guide_legend(title = "gainlf"))
 ```
-
-
-
-
 
 
 
@@ -278,7 +216,8 @@ fit_job1<- runbg({
                     cores = 3,
                     pars = pars_list[[i]],
                     which_pars_perturbed = which_pars_perturbed_list[[i]],
-                    obs_fun = obs_fun_list[[i]]
+                    obs_fun = obs_fun_list[[i]],
+                    obs_fun_2 = obs_fun_2_list[[i]]
                     )
     
 
@@ -307,12 +246,10 @@ fit_job1$purge()
 
 ## Analyze the fits
 <!-- This is now to be run when pressing "render" -->
-```{r Load the fits}
+```{r Analyze Fits to knitr-Document Cascade, results='asis', out.width='45%'}
 # Load the multiple fits
 load(paste0(pathout,fit_name, ".RData"))
-```
 
-```{r Analyze Fits to knitr-Document Cascade, results='asis', out.width='45%'}
 lapply(seq_along(pars_list), function(setting) {
   
   cat("\\newpage
@@ -328,7 +265,7 @@ lapply(seq_along(pars_list), function(setting) {
   #   return(multiple_fits[[j]])
   # })
   output <- lapply(multiple_fits[[setting]], function(cond) {
-
+    
     cat("\\newpage
       # Condition: ",(cond$condition %>% str_split("_") %>% extract2(1) %>% paste(collapse = ", ") %>% str_replace_all("=", " = ")), "\n" )
     cat("\\textbf{Perturbed Parameters}: ", cond$which_pars_perturbed, "\n" )
