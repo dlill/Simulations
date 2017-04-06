@@ -1,5 +1,5 @@
 ---
-title: "Cascade-feedback-analysis"
+title: "Cascade-feedback-analysis-pertub-v1k4k7"
 author: "Daniel Lill"
 output:
   word_document: default
@@ -18,7 +18,7 @@ pathout <- paste0(path, "Output/")
 ```
 
 ```{r Names for Fit storage of different initial Conditions}
-fit_name <- "Cascade-feedback-analysis"
+fit_name <- "Cascade-feedback-analysis-pertub-v1k4k7"
 ```
 
 
@@ -324,7 +324,7 @@ setting_description <- c("Small complex concentrations",
 ## Setting 1: Small complex concentrationss
 ```{r Setting 1}
 obs_fun_list[[1]]   <-  g0
-which_pars_perturbed_list[[1]] <- c("x1", "y1","z1")
+which_pars_perturbed_list[[1]] <- c("v1", "k4", "k7")
 
 data <- data_fun(50,2,50,2,30)
 obj <- normL2(data,(x*p_nosyndeg))
@@ -345,7 +345,7 @@ plot((x*p_ic)(times = seq(0,1000, length.out = 50), pars))
 ## Setting 2: Medium small complex concentrations
 ```{r Setting 2}
 obs_fun_list[[2]]   <-  g0
-which_pars_perturbed_list[[2]] <- c("x1", "y1","z1")
+which_pars_perturbed_list[[2]] <- c("v1", "k4", "k7")
                                        
 data <- data_fun(50,5,50,5,30)
 obj <- normL2(data,(x*p_nosyndeg))
@@ -366,7 +366,7 @@ plot((x*p_ic)(times = seq(0,1000, length.out = 50), pars))
 ## Setting 3: Medium complex concentrations
 ```{r Setting 3}
 obs_fun_list[[3]]   <-  g0
-which_pars_perturbed_list[[3]] <- c("x1", "y1","z1")
+which_pars_perturbed_list[[3]] <- c("v1", "k4", "k7")
                                        
 data <- data_fun(50,15,50,15,30)
 obj <- normL2(data,(x*p_nosyndeg))
@@ -389,7 +389,7 @@ plot((x*p_ic)(times = seq(0,1000, length.out = 50), pars))
 # Setting 4: Large complex concentrations
 ```{r Setting 4}
 obs_fun_list[[4]]   <-  g0
-which_pars_perturbed_list[[4]] <- c("x1", "y1","z1")
+which_pars_perturbed_list[[4]] <- c("v1", "k4", "k7")
                                        
 data <- data_fun(35,30,35,30,30)
 obj <- normL2(data,(x*p_nosyndeg))
@@ -416,7 +416,7 @@ fit_job1<- runbg({
   myfits <- mclapply(seq_along(pars_list), function(i) {
     # cat("Setting ", i, " of ", length(pars_list), " \n")
     run_simulations(ic_list = ic_list_list[[i]],
-                    nfits = 9,
+                    nfits = 6,
                     cores = 3,
                     pars = pars_list[[i]],
                     which_pars_perturbed = which_pars_perturbed_list[[i]],
