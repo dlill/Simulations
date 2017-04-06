@@ -9,5 +9,8 @@
 Fits/
 *.pdf
 *.tex
-Outputs*
+Outputs/
 .Rproj.user
+.Findpars/
+*.docx
+/*job

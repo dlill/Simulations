@@ -12,7 +12,7 @@ output:
 library(MRAr)
 library(scales)
 library(xtable)
-path <- getwd()
+path <- paste0(getwd(), "/")
 pathout <- paste0(path, "Output/")
 ```
 
@@ -126,7 +126,7 @@ This function will actually be evaluated each time a new condition is tested.
 ```{r Generate perturbation data Cascade, eval=FALSE}
 perturbation_prediction_0 <-  (xs*p_pert)(times = c(0,Inf), pars = pars_0, deriv = F)
 # debugonce(r_kept_fun)
-r_kept_0 <- r_kept_fun(obs_fun = g0, obs_fun_2 = g1)
+r_kept_0 <- r_kept_fun(obs_fun = g0)
 ```
 
 ### Fitting
@@ -171,7 +171,6 @@ setting_description <- " "
 ## Setting 1: Feedback from z2 to y2_z1_to_comp
 ```{r Setting1  Cascade}
 obs_fun_list <- lapply(1, function(i) g0)
-obs_fun_2_list <- lapply(1, function(i) g1)
 which_pars_perturbed_list <- list(c("x1", "y1","z1"))
                                        
 ic_list_list <- lapply(1, function(i) list(k4=c(1), gainlf = c(0,0.1,1,10,100)))
@@ -216,8 +215,7 @@ fit_job1<- runbg({
                     cores = 3,
                     pars = pars_list[[i]],
                     which_pars_perturbed = which_pars_perturbed_list[[i]],
-                    obs_fun = obs_fun_list[[i]],
-                    obs_fun_2 = obs_fun_2_list[[i]]
+                    obs_fun = obs_fun_list[[i]]
                     )
     
 
@@ -276,7 +274,7 @@ lapply(seq_along(pars_list), function(setting) {
     
     cat(" \n Local response matrices before and after optimization. \n \n")
     cat(" Left is the local response matrix of free species, right is the matrix with complexes. \n")
-    print(xtable(cbind(cond$r_0, rep(0, nrow(cond$r_0)), cond$r_1), digits = 5), comment = F, floating = F)
+    print(xtable(cbind(cond$r_0, rep(0, nrow(cond$r_0)), cond$r_alpha), digits = 5), comment = F, floating = F)
     cat(" ")
     print(xtable(cond$r_kept, digits = 5), comment = F, floating = F)
     cat(" ")

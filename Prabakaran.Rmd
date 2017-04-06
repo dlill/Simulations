@@ -12,7 +12,7 @@ output:
 library(MRAr)
 library(scales)
 library(xtable)
-path <- getwd()
+path <- paste0(getwd(), "/")
 pathout <- paste0(path, "Output/")
 ```
 
@@ -21,8 +21,10 @@ fit_name <- "Prabakaran"
 ```
 
 ```{r Call render without overwriting any previous documents, echo=FALSE, eval=FALSE, message=FALSE}
+
 rmarkdown::render("Prabakaran.Rmd", output_file = paste0(pathout, format(Sys.time(), "%Y%m%d-%H%M")
 , " - " , fit_name, ".pdf"))
+beepr::beep("~/Promotion/Software/rimshot.mp3")
 ```
 
 # Prabakaran-Model
@@ -56,8 +58,8 @@ This is the naive modularization used in the Prabakaran Paper, desregarding, whi
 ```{r Naive observation function}
 modules <- modules0 <- c("m2","e2tot")
 
-obs <- obs0 <- c(  "m2+a_1*Cm2e1",
-            "e2+Ce2p1")
+obs <- obs0 <- c("m2+a_1*Cm2e1",
+                 "e2+Ce2p1")
 g <- g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), mymodel, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
 ```
 
@@ -75,7 +77,7 @@ g1 <- Y(as.eqnvec(structure(obs1, names = modules1)), mymodel, compile = TRUE, m
 modules2 <- c("Cm2e1","e2")
 
 obs2 <- c(  "a_1*m2+Cm2e1",
-                   "e2")
+                   "e2+Ce2p1")
 g2 <- Y(as.eqnvec(structure(obs2, names = modules2)), mymodel, compile = TRUE, modelname = "obsfn2", attach.input = FALSE)
 ```
 
@@ -111,7 +113,7 @@ Now the module can be simulated to generate perturbation data.
 
 ### Parameter trafos for convenient perturbation data.
 Set up the perturbations
-```{r which pars are perturbed, eval=FALSE}
+```{r which pars are perturbed, echo=FALSE}
 # Which pars shall be perturbed?
 which_pars_perturbed_0 <- which_pars_perturbed <- c("m1", "e1")
 
@@ -123,10 +125,9 @@ p_pert <- p_pert_fun(which_pars_perturbed = which_pars_perturbed_0,
 
 ### Perturbation data generation and elements to keep.
 Just to show the code...
-This function will actually be evaluated each time a new condition is tested.
 
 
-```{r Generate perturbation data, eval=FALSE}
+```{r Generate perturbation data, echo=FALSE}
 perturbation_prediction_0 <-  (xs*p_pert)(times = c(0,Inf), pars = pars_0, deriv = F)
 r_kept_0 <- r_kept_fun(obs_fun = g0)
 
@@ -139,7 +140,7 @@ myfits <- mstrust(obj_alpha,
                   center =  pars_opt_0+0.5, 
                   studyname = "Fits", 
                   cores = 3, 
-                  fits = 6, 
+                  fits = 3, 
                   sd = 0.3, 
                   obs_fun = g0)
 myfits %>% as.parframe() %>% plotValues()
@@ -147,6 +148,53 @@ myfits %>% as.parframe() %>% as.parvec()
 # best_fit <- best_fit[best_fit$a_1>0, ] %>% as.parvec()
 ```
 
+## Explore the effect of the alpha when choosing elements to keep
+```{r Effect of alpha on r_kept, results='asis', echo=FALSE}
+r_kept_fun_1 <-function(pars_opt = pars_opt_0,
+                      perturbation_prediction = perturbation_prediction_0,
+                      obs_fun = g0,
+                      p_fun = p_pert,
+                      pars = pars_0, 
+                      alpha = 1) {
+  
+  # set pars_opt to zero
+  pars_opt <- structure(rep(0, length(pars_opt)), names = names(pars_opt))
+  
+  r_0 <- R_fun(pars_opt = pars_opt,
+               perturbation_prediction = perturbation_prediction,
+               obs_fun = obs_fun,
+               p_fun = p_fun,
+               pars = pars) %>% local_response_matrix_eq10()
+  
+  r_alpha <- R_fun(pars_opt = pars_opt+alpha, #yields asymptotically the same results as only complexes without free species.
+               perturbation_prediction = perturbation_prediction,
+               obs_fun = obs_fun,
+               p_fun = p_fun,
+               pars = pars) %>% local_response_matrix_eq10()
+  
+  # Which elements are kept in the optimization process?
+  signs <- (sign(r_0) - sign(r_alpha)) %>% as.logical() %>% matrix(nrow = nrow(r_0))
+  abs_vals <- (abs(r_0) < 1e-3)
+  
+  keep <- (abs_vals | signs)
+  
+  return(cbind(keep, rep(0, nrow(keep)), r_alpha))
+}
+
+cat("Left matrix: Elements to keep, when comparing alpha = 0 and alpha = alpha \n
+     Right matrix: r_alpha \n")
+bla <- lapply(10^(-4:8), function(a) {
+  cat(" alpha = ", a, "\n")
+  print(xtable(r_kept_fun_1(obs_fun = g0, alpha = a)), comment = F, floating = F)
+  cat(" ")
+  }) 
+cat("Only complexes")
+print(xtable(r_kept_fun_1(obs_fun = g2, alpha = 0)), comment = F, floating = F)
+  cat(" ")
+
+```
+
+## Fit and analyze different conditions and perturbations.
 
 ### Find good Parameter values to compare behaviour for different conditions.
 
@@ -165,7 +213,6 @@ plot((g0*x*p_ic)(times = seq(0,100, length.out = 50), pars))
 # print(pars)
 ```
 
-## Fit and analyze different conditions and perturbations.
 
 ### Create lists for different settings.
 ```{r Summary of pars and ic_list}
@@ -185,12 +232,12 @@ Especially, they are:
   3. "Parameter conditions" To conveniently check the settings in different parameter conditions, one can specify parameters that deviate from the original pars in an *ic_list*, which is used for automated condition generation with P().
 ```{r Setting 1}
 which_pars_perturbed_list <- list(c("m1", "e1"),
-                                       c("m1", "p1"),
-                                       c("m1", "p1"),
-                                       c("m1", "k4"),
-                                       c("m1", "k5"),
-                                       c("m1", "k61"),
-                                       c("m1", "k62") )
+                                  c("m1", "p1"),
+                                  c("m1", "p1"),
+                                  c("m1", "k4"),
+                                  c("m1", "k5"),
+                                  c("m1", "k61"),
+                                  c("m1", "k62") )
                                        
 obs_fun_list <- lapply(seq_along(which_pars_perturbed_list), function(i) g0)
 
@@ -220,7 +267,8 @@ fit_job1<- runbg({
                     cores = 3,
                     pars = pars_list[[i]],
                     which_pars_perturbed = which_pars_perturbed_list[[i]],
-                    obs_fun = obs_fun_list[[i]])
+                    obs_fun = obs_fun_list[[i]],
+                    alpha = 1)
     })
   names(myfits) <- paste0("Setting", seq_along(pars_list))
   myfits
@@ -270,7 +318,7 @@ lapply(seq_along(pars_list), function(setting) {
     
     cat(" \n Local response matrices before and after optimization.\n")
     cat(" Left is the local response matrix of free species, right is the matrix with complexes. \n")
-    print(xtable(cbind(cond$r_0, rep(0, nrow(cond$r_0)), cond$r_1), digits = 5), comment = F, floating = F)
+    print(xtable(cbind(cond$r_0, rep(0, nrow(cond$r_0)), cond$r_alpha), digits = 5), comment = F, floating = F)
     cat(" ")
     print(xtable(cond$r_kept, digits = 5), comment = F, floating = F)
     cat(" ")
