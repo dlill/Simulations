@@ -1,5 +1,5 @@
 ---
-title: "RegulatoryCascade-feedback-analysis-pertub-v1k4k7"
+title: "RegulatoryCascade-with-noise"
 author: "Daniel Lill"
 output:
   pdf_document:
@@ -17,7 +17,7 @@ pathout <- paste0(path, "Output/")
 ```
 
 ```{r Names for Fit storage of different initial Conditions}
-fit_name <- "RegulatoryCascade"
+fit_name <- "RegulatoryCascade-with-noise"
 ```
 
 
@@ -111,12 +111,11 @@ Just to show the code...
 Set up the perturbations
 ```{r  which pars are perturbed  Cascade, echo=FALSE}
 # Which pars shall be perturbed?
-which_pars_perturbed_0 <- which_pars_perturbed <- c("x1", "y1", "z1")
+pars_perturbed_0 <- pars_perturbed <- c(x1 = 1.1, y1 = 1.1, z1 = 1.1)
 ```
 
 ```{r define perturbation conditions Cascade, echo=FALSE}
-p_pert <- p_pert_fun(which_pars_perturbed = which_pars_perturbed_0,
-                     perturbation_strength = 1.1,
+p_pert <- p_pert_fun(pars_perturbed = pars_perturbed_0,
                      pars = pars_0)
 ```
 
@@ -293,7 +292,7 @@ myplot <- ggplot(mydf, mapping = aes(x = log10alpha, y = Value, color = r_elemen
 
 ### Create lists for different settings
 ```{r Summary of pars and ic_list Cascade}
-which_pars_perturbed_list <- list()
+pars_perturbed_list <- list()
 ic_list_list <- list()
 pars_list <- list()
 obs_fun_list <- list()
@@ -303,12 +302,12 @@ setting_description <- c("Small complex concentrations",
                          "Large complex concentrations")
 ```
 
-## Setting 1: Small complex concentrationss
+## Setting 1: Small complex concentrations
 ```{r Setting 1}
 obs_fun_list[[1]]   <-  g0
-which_pars_perturbed_list[[1]] <- c("x1", "y1", "z1")
+pars_perturbed_list[[1]] <- c(x1 = 0.5, y1 = 0.5, z1 = 0.5)
 
-data <- data_fun(50,50,2,30)
+data <- data_fun(40,50,3,30)
 obj <- normL2(data,(x*p_nosyndeg))
 myfit <- mstrust(obj, pouter_0, cores = 3, fits = 3, studyname = "FindPars", resultPath = ".Findpars")
 pars_list[[1]] <- pars <- (myfit %>% 
@@ -317,19 +316,20 @@ pars_list[[1]] <- pars <- (myfit %>%
                              p_nosyndeg() %>% 
                              extract2(1))
 
-ic_list_list[[1]] <- ic_list <- list(gainlf = c(0,1,5),
-                                     gainuf = c(0,1,5),
-                                     gainyf = c(0,1,5))
+ic_list_list[[1]] <- ic_list <- list(gainlf = c(1,0,5),
+                                     gainuf = c(1,0,5),
+                                     gainyf = c(1,0,5))
+
 
 p_ic <- p_ic_fun(reduce_ic_list(ic_list)[[1]])
 plot((x*p_ic)(times = seq(0,1000, length.out = 50), pars))
 ```
 
-## Setting 2: Medium small complex concentrations
+## Setting 2: Medium complex concentrations
 ```{r Setting 2}
 obs_fun_list[[2]]   <-  g0
-which_pars_perturbed_list[[2]] <- c("x1", "y1", "z1")
-                                       
+pars_perturbed_list[[2]] <- c(x1 = 0.5, y1 = 0.5, z1 = 0.5)
+
 data <- data_fun(50,50,20,30)
 obj <- normL2(data,(x*p_nosyndeg))
 myfit <- mstrust(obj, pouter_0, cores = 3, fits = 3, studyname = "FindPars", resultPath = ".Findpars")
@@ -339,20 +339,20 @@ pars_list[[2]] <- pars <- (myfit %>%
                              p_nosyndeg() %>% 
                              extract2(1))
 
-ic_list_list[[2]] <- ic_list <- list(gainlf = c(0,1,5),
-                                     gainuf = c(0,1,5),
-                                     gainyf = c(0,1,5))
+ic_list_list[[2]] <- ic_list <- list(gainlf = c(1,0,5),
+                                     gainuf = c(1,0,5),
+                                     gainyf = c(1,0,5))
 
 p_ic <- p_ic_fun(reduce_ic_list(ic_list)[[1]])
 plot((x*p_ic)(times = seq(0,1000, length.out = 50), pars))
 ```
 
-## Setting 3: Medium complex concentrations
+## Setting 3: Large complex concentrations
 ```{r Setting 3}
 obs_fun_list[[3]]   <-  g0
-which_pars_perturbed_list[[3]] <- c("x1", "y1", "z1")
-                                       
-data <- data_fun(50,50,40,30)
+pars_perturbed_list[[3]] <- c(x1 = 0.5, y1 = 0.5, z1 = 0.5)
+
+data <- data_fun(50,40,50,30)
 obj <- normL2(data,(x*p_nosyndeg))
 myfit <- mstrust(obj, pouter_0, cores = 3, fits = 3, studyname = "FindPars", resultPath = ".Findpars")
 pars_list[[3]] <- pars <- (myfit %>% 
@@ -361,22 +361,20 @@ pars_list[[3]] <- pars <- (myfit %>%
                              p_nosyndeg() %>% 
                              extract2(1))
 
-ic_list_list[[3]] <- ic_list <- list(gainlf = c(0,1,5),
-                                     gainuf = c(0,1,5),
-                                     gainyf = c(0,1,5))
-
+ic_list_list[[3]] <- ic_list <- list(gainlf = c(1,0,5),
+                                     gainuf = c(1,0,5),
+                                     gainyf = c(1,0,5))
 
 p_ic <- p_ic_fun(reduce_ic_list(ic_list)[[1]])
 plot((x*p_ic)(times = seq(0,1000, length.out = 50), pars))
 ```
 
-
-# Setting 4: Large complex concentrations
+## Setting 4: Small complex concentrations, overexpression
 ```{r Setting 4}
 obs_fun_list[[4]]   <-  g0
-which_pars_perturbed_list[[4]] <- c("x1", "y1", "z1")
-                                       
-data <- data_fun(50,35,60,30)
+pars_perturbed_list[[4]] <- c(x1 = 1.5, y1 = 1.5, z1 = 1.5)
+
+data <- data_fun(50,50,3,30)
 obj <- normL2(data,(x*p_nosyndeg))
 myfit <- mstrust(obj, pouter_0, cores = 3, fits = 3, studyname = "FindPars", resultPath = ".Findpars")
 pars_list[[4]] <- pars <- (myfit %>% 
@@ -385,16 +383,60 @@ pars_list[[4]] <- pars <- (myfit %>%
                              p_nosyndeg() %>% 
                              extract2(1))
 
-ic_list_list[[4]] <- ic_list <- list(gainlf = c(0,1,5),
-                                     gainuf = c(0,1,5),
-                                     gainyf = c(0,1,5))
+ic_list_list[[4]] <- ic_list <- list(gainlf = c(1,0,5),
+                                     gainuf = c(1,0,5),
+                                     gainyf = c(1,0,5))
 
-p_ic <- p_ic_fun(ic_list)
+p_ic <- p_ic_fun(reduce_ic_list(ic_list)[[1]])
+plot((x*p_ic)(times = seq(0,1000, length.out = 50), pars))
+```
+
+## Setting 5: Small complex concentrations, overexpression
+```{r Setting 5}
+obs_fun_list[[5]]   <-  g0
+pars_perturbed_list[[5]] <- c(x1 = 0.5, y1 = 0.5, z1 = 0.5)
+
+data <- data_fun(50,50,20,30)
+obj <- normL2(data,(x*p_nosyndeg))
+myfit <- mstrust(obj, pouter_0, cores = 3, fits = 3, studyname = "FindPars", resultPath = ".Findpars")
+pars_list[[5]] <- pars <- (myfit %>% 
+                             as.parframe() %>% 
+                             as.parvec() %>% 
+                             p_nosyndeg() %>% 
+                             extract2(1))
+
+ic_list_list[[5]] <- ic_list <- list(gainlf = c(1,0,5),
+                                     gainuf = c(1,0,5),
+                                     gainyf = c(1,0,5))
+
+p_ic <- p_ic_fun(reduce_ic_list(ic_list)[[1]])
+plot((x*p_ic)(times = seq(0,1000, length.out = 50), pars))
+```
+
+## Setting 6: Small complex concentrations, overexpression
+```{r Setting 6}
+obs_fun_list[[6]]   <-  g0
+pars_perturbed_list[[6]] <- c(x1 = 0.5, y1 = 0.5, z1 = 0.5)
+
+data <- data_fun(50,40,50,30)
+obj <- normL2(data,(x*p_nosyndeg))
+myfit <- mstrust(obj, pouter_0, cores = 3, fits = 3, studyname = "FindPars", resultPath = ".Findpars")
+pars_list[[6]] <- pars <- (myfit %>% 
+                             as.parframe() %>% 
+                             as.parvec() %>% 
+                             p_nosyndeg() %>% 
+                             extract2(1))
+
+ic_list_list[[6]] <- ic_list <- list(gainlf = c(1,0,5),
+                                     gainuf = c(1,0,5),
+                                     gainyf = c(1,0,5))
+
+p_ic <- p_ic_fun(reduce_ic_list(ic_list)[[1]])
 plot((x*p_ic)(times = seq(0,1000, length.out = 50), pars))
 ```
 
 
-## Fit the multiple conditions and save the fits to a file.
+# Fit the multiple conditions and save the fits to a file.
 Run this only once before knitting and knit the document with the loaded dataset.
 ```{r Fit multiple conditions Cascade, eval=FALSE}
 machine <- "localhost"
@@ -405,7 +447,7 @@ fit_job1<- runbg({
                     nfits = 6,
                     cores = 3,
                     pars = pars_list[[i]],
-                    which_pars_perturbed = which_pars_perturbed_list[[i]],
+                    pars_perturbed = pars_perturbed_list[[i]],
                     obs_fun = obs_fun_list[[i]]
                     )
     
@@ -434,14 +476,14 @@ fit_job1$purge()
 
 
 
-## Analyze the fits
+### Analyze the fits
 <!-- This is now to be run when pressing "render" -->
-```{r Load the fits}
+```{r Load the fits, eval=FALSE}
 # Load the multiple fits
 load(paste0(pathout,fit_name, ".RData"))
 ```
 
-```{r Analyze Fits to knitr-Document Cascade, results='asis', out.width='45%'}
+```{r Analyze Fits to knitr-Document Cascade, results='asis', out.width='45%', eval=FALSE}
 lapply(seq_along(pars_list), function(setting) {
   
   cat("\\newpage
@@ -460,7 +502,7 @@ lapply(seq_along(pars_list), function(setting) {
 
     cat("\\newpage
       # Condition: ",(cond$condition %>% str_split("_") %>% extract2(1) %>% paste(collapse = ", ") %>% str_replace_all("=", " = ")), "\n" )
-    cat("\\textbf{Perturbed Parameters}: ", cond$which_pars_perturbed, "\n" )
+    cat("\\textbf{Perturbed Parameters}: ", cond$pars_perturbed, "\n" )
     
     # Plot the result of the mstrust()
     print(plotValues(cond$all_fits) )
@@ -486,22 +528,24 @@ lapply(seq_along(pars_list), function(setting) {
   })
 })
 ```
+
+
 
 
 # Noisy simulations
 
 Run this only once before knitting and knit the document with the loaded dataset.
-```{r Fit multiple conditions Cascade, eval=FALSE}
-machine <- "localhost"
+```{r Fit multiple conditions noisy, eval=FALSE}
+machine <- "tesla"
 fit_job1<- runbg({
   myfits <- mclapply(seq_along(pars_list), function(i) {
     # cat("Setting ", i, " of ", length(pars_list), " \n")
     run_simulations_with_noise(ic_list = ic_list_list[[i]],
-                    n_samples = 6,
-                    sdlog = 0.05,
-                    cores = 3,
+                    n_samples = 500,
+                    sdlog = 0.01,
+                    cores = 24,
                     pars = pars_list[[i]],
-                    which_pars_perturbed = which_pars_perturbed_list[[i]],
+                    pars_perturbed = pars_perturbed_list[[i]],
                     obs_fun = obs_fun_list[[i]]
                     )
     
@@ -513,7 +557,7 @@ save.image()
 ```
 
 
-```{r Get the fit Cascade, eval=FALSE, message=FALSE, results='hide'}
+```{r Get the fit noisy, eval=FALSE, message=FALSE, results='hide'}
 mytime <- 0
 while(capture.output(fit_job1$check())[[1]] == "Not ready!") {
   Sys.sleep(5)
@@ -531,20 +575,21 @@ fit_job1$purge()
 
 ## Analyze the fits
 <!-- This is now to be run when pressing "render" -->
-```{r Load the fits}
+```{r Load the fits noisy}
 # Load the multiple fits
 load(paste0(pathout,fit_name, ".RData"))
 ```
 
-```{r Analyze Fits to knitr-Document Cascade, results='asis', out.width='45%'}
-lapply(seq_along(pars_list), function(setting) {
+```{r Analyze Fits to knitr-Document noisy, results='asis', out.width='90%', warning=FALSE, message=FALSE}
+library(tidyr)
+library(dplyr)
+wup <- lapply(seq_along(pars_list), function(setting) {
   
   cat("\\newpage
-# Fit setting: ", setting, ": ", setting_description[setting], "
-\n
-### Standard pars of the following fits \n")
+      # Fit setting ", setting, ": ", setting_description[setting], "
+      \n
+      ### Standard pars of the following fits \n")
   print(xtable(as.matrix(pars_list[[setting]], nrow = 1), digits = 3), comment = F, floating = F)
-    
   
   
   # multiple_fits <- lapply(seq_along(multiple_fits), function(j) {
@@ -552,37 +597,57 @@ lapply(seq_along(pars_list), function(setting) {
   #   return(multiple_fits[[j]])
   # })
   output <- lapply(multiple_fits[[setting]], function(cond) {
-
+    
     cat("\\newpage
-      # Condition: ",(cond$condition %>% str_split("_") %>% extract2(1) %>% paste(collapse = ", ") %>% str_replace_all("=", " = ")), "\n" )
-    cat("\\textbf{Perturbed Parameters}: ", cond$which_pars_perturbed, "\n" )
+
+        \\section{Condition: ",(cond$condition %>% str_split("_") %>% extract2(1) %>% paste(collapse = ", ") %>% str_replace_all("=", " = ")), "} \n" )
+    cat("\\textbf{Perturbed Parameters}: ", cond$pars_perturbed, "\n" )
+    cat("\\textbf{Standard deviation of Log-Normal distribution}: ", cond$sdlog, "\n" )
+
     
-    # Plot the result of the mstrust()
-    r_0_hist <- ggplot()
-    print(plotValues(cond$all_fits) )
+    # Plot the resulting local response matrices as histograms.
+    # The failed simulations have to be removed first. They are recognizable by all elements equalling zero in r_ij
+    failed <- cond$r_0$r11 == 0
+    cat("\n
+        Number of failed fits: ", sum(failed) , "\n")
+    cat("\n
+        Distributions before and after optimization: 
+        \n")
+    r_0 <- cond$r_0[!failed,] %>% tidyr::gather(key = element, value = value, everything())
+    r_best_fit <- cond$r_best_fit[!failed,] %>% tidyr::gather(key = element, value = value, everything())
+    
+    # Join the two data.frames together. Since they have the exact same structure, I can just use cbind.
+    r <- cbind(r_0, r_best_fit$value)
+    names(r) <- c("element", "0", "optimized")
+    r <- tidyr::gather_(r, key_col = "alpha", value_col = "value", gather_cols = c("0", "optimized"))
+    
+    
+    print(ggplot(data = r, mapping = aes(x=alpha, y = value, fill = alpha)) + 
+            geom_boxplot() + 
+            facet_wrap(~element, scales = "free") + 
+            theme_dMod() + 
+       scale_y_continuous(breaks = scales::pretty_breaks(n = 3)) +
+         geom_hline(aes(yintercept = 0))
+      )
+      
+    cat("\n
+        Which elements were kept in the optimization procedure?")
+    
+     print(ggplot(data = cond$r_kept[!failed,] %>% tidyr::gather(key = element, value = value, everything()),
+                 mapping = aes(x=value)) + 
+            geom_histogram(stat = "count") + 
+            facet_wrap(~element, scales = "free_y") + 
+            theme_dMod())
+    
+    # Plot the prediction
     print(plot(cond$prediction))
+
     
-    cat(" \n Local response matrices before and after optimization. \n \n")
-    cat(" Left is the local response matrix of free species, right is the matrix with complexes. \n")
-    print(xtable(cbind(cond$r_0, rep(0, nrow(cond$r_0)), cond$r_alpha), digits = 5), comment = F, floating = F)
-    cat(" ")
-    print(xtable(cond$r_kept, digits = 5), comment = F, floating = F)
-    cat(" ")
-    print(xtable(cond$r_best_fit, digits = 5), comment = F, floating = F)
-    
-    cat("\n Best fit with reasonable parameter: \n")
-    print(cond$best_fit %>% unclass %>%  matrix(.,nrow = 1, dimnames = list(NULL, names(.))) %>% xtable(digits = 3), comment = F, floating = F)
-    
-    cat("\n Steady state: \n")
-    print(xtable(as.matrix(cond$steady_states[[1]])), comment = F, floating = F)
-    
-    cat("\n All fits: \n")
-    print(xtable(cond$all_fits, digits = 4), comment = F, floating = F)
     return()
   })
 })
-```
 
+```
 
 
 

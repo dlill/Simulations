@@ -111,12 +111,11 @@ Just to show the code...
 Set up the perturbations
 ```{r  which pars are perturbed  Cascade, echo=FALSE}
 # Which pars shall be perturbed?
-which_pars_perturbed_0 <- which_pars_perturbed <- c("x1", "y1", "z1")
+pars_perturbed_0 <- pars_perturbed <- c("x1" = 1.1, "y1" = 1.1, "z1" = 1.1)
 ```
 
 ```{r define perturbation conditions Cascade, echo=FALSE}
-p_pert <- p_pert_fun(which_pars_perturbed = which_pars_perturbed_0,
-                     perturbation_strength = 1.1,
+p_pert <- p_pert_fun(pars_perturbed = pars_perturbed,
                      pars = pars_0)
 ```
 
@@ -310,7 +309,7 @@ wup <- print(xtable(r_kept_fun_1(obs_fun = g1, alpha = 0)), comment = F, floatin
 
 ### Create lists for different settings
 ```{r Summary of pars and ic_list Cascade}
-which_pars_perturbed_list <- list()
+pars_perturbed_list <- list()
 ic_list_list <- list()
 pars_list <- list()
 obs_fun_list <- list()
@@ -323,7 +322,7 @@ setting_description <- c("Small complex concentrations",
 ## Setting 1: Small complex concentrationss
 ```{r Setting 1}
 obs_fun_list[[1]]   <-  g0
-which_pars_perturbed_list[[1]] <- c("v1", "k4", "k7")
+pars_perturbed_list[[1]] <- c("v1" = 1.1, "k4" = 1.1, "k7" = 1.1)
 
 data <- data_fun(50,2,50,2,30)
 obj <- normL2(data,(x*p_nosyndeg))
@@ -344,7 +343,7 @@ plot((x*p_ic)(times = seq(0,1000, length.out = 50), pars))
 ## Setting 2: Medium small complex concentrations
 ```{r Setting 2}
 obs_fun_list[[2]]   <-  g0
-which_pars_perturbed_list[[2]] <- c("v1", "k4", "k7")
+pars_perturbed_list[[2]] <- c("v1" = 1.1, "k4" = 1.1, "k7" = 1.1)
                                        
 data <- data_fun(50,5,50,5,30)
 obj <- normL2(data,(x*p_nosyndeg))
@@ -365,7 +364,7 @@ plot((x*p_ic)(times = seq(0,1000, length.out = 50), pars))
 ## Setting 3: Medium complex concentrations
 ```{r Setting 3}
 obs_fun_list[[3]]   <-  g0
-which_pars_perturbed_list[[3]] <- c("v1", "k4", "k7")
+pars_perturbed_list[[3]] <- c("v1" = 1.1, "k4" = 1.1, "k7" = 1.1)
                                        
 data <- data_fun(50,15,50,15,30)
 obj <- normL2(data,(x*p_nosyndeg))
@@ -388,7 +387,7 @@ plot((x*p_ic)(times = seq(0,1000, length.out = 50), pars))
 # Setting 4: Large complex concentrations
 ```{r Setting 4}
 obs_fun_list[[4]]   <-  g0
-which_pars_perturbed_list[[4]] <- c("v1", "k4", "k7")
+pars_perturbed_list[[4]] <- c("v1" = 1.1, "k4" = 1.1, "k7" = 1.1)
                                        
 data <- data_fun(35,30,35,30,30)
 obj <- normL2(data,(x*p_nosyndeg))
@@ -418,7 +417,7 @@ fit_job1<- runbg({
                     nfits = 6,
                     cores = 3,
                     pars = pars_list[[i]],
-                    which_pars_perturbed = which_pars_perturbed_list[[i]],
+                    pars_perturbed = pars_perturbed_list[[i]],
                     obs_fun = obs_fun_list[[i]]
                     )
     
@@ -472,7 +471,7 @@ lapply(seq_along(pars_list), function(setting) {
 
     cat("\\newpage
       # Condition: ",(cond$condition %>% str_split("_") %>% extract2(1) %>% paste(collapse = ", ") %>% str_replace_all("=", " = ")), "\n" )
-    cat("\\textbf{Perturbed Parameters}: ", cond$which_pars_perturbed, "\n" )
+    cat("\\textbf{Perturbed Parameters}: ", cond$pars_perturbed, "\n" )
     
     # Plot the result of the mstrust()
     print(plotValues(cond$all_fits) )

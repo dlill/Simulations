@@ -115,10 +115,9 @@ Now the module can be simulated to generate perturbation data.
 Set up the perturbations
 ```{r which pars are perturbed}
 # Which pars shall be perturbed?
-which_pars_perturbed_0 <- which_pars_perturbed <- c("m1", "e1")
+pars_perturbed_0 <- pars_perturbed <- c(m1 = 1.1, e1 = 1.1)
 
-p_pert <- p_pert_fun(which_pars_perturbed = which_pars_perturbed_0,
-                     perturbation_strength = 1.1,
+p_pert <- p_pert_fun(pars_perturbed = pars_perturbed_0,
                      pars = pars_0)
 ```
 
@@ -192,7 +191,7 @@ plot((g0*x*p_ic)(times = seq(0,100, length.out = 50), pars))
 
 ### Create lists for different settings.
 ```{r Summary of pars and ic_list}
-which_pars_perturbed_list <- list()
+pars_perturbed_list <- list()
 ic_list_list <- list()
 pars_list <- list()
 obs_fun_list <- list()
@@ -207,15 +206,15 @@ Especially, they are:
   2. Which modularization is to be chosen? This is governed by the observation function, which can perform any kind of combination of states. If you are interested in the modularization, go back to section [modulesandobsfuns] to read about the observation function that I used here.
   3. "Parameter conditions" To conveniently check the settings in different parameter conditions, one can specify parameters that deviate from the original pars in an *ic_list*, which is used for automated condition generation with P().
 ```{r Setting 1}
-which_pars_perturbed_list <- list(c("m1", "e1"),
-                                  c("m1", "p1"),
-                                  c("m1", "p1"),
-                                  c("m1", "k4"),
-                                  c("m1", "k5"),
-                                  c("m1", "k61"),
-                                  c("m1", "k62") )
+pars_perturbed_list <- list(c(m1 = 1.1, e1 = 1.1),
+                                  c("m1" = 1.1, "p1" = 1.1),
+                                  c("m1" = 1.1, "p1" = 1.1),
+                                  c("m1" = 1.1, "k4" = 1.1),
+                                  c("m1" = 1.1, "k5" = 1.1),
+                                  c("m1" = 1.1, "k61" = 1.1),
+                                  c("m1" = 1.1, "k62" = 1.1) )
                                        
-obs_fun_list <- lapply(seq_along(which_pars_perturbed_list), function(i) g0)
+obs_fun_list <- lapply(seq_along(pars_perturbed_list), function(i) g0)
 
 ic_list <- list(e1 = c(1000))
 
@@ -226,8 +225,8 @@ pars <- pars_0
 p_ic <- p_ic_fun(ic_list)
 plot((x*p_ic)(times = seq(0,100, length.out = 50), pars))
 
-pars_list <- lapply(seq_along(which_pars_perturbed_list), function(i) pars)
-ic_list_list <- lapply(seq_along(which_pars_perturbed_list), function(i) ic_list)
+pars_list <- lapply(seq_along(pars_perturbed_list), function(i) pars)
+ic_list_list <- lapply(seq_along(pars_perturbed_list), function(i) ic_list)
 ```
 
 
@@ -242,7 +241,7 @@ fit_job1<- runbg({
                     nfits = 12,
                     cores = 3,
                     pars = pars_list[[i]],
-                    which_pars_perturbed = which_pars_perturbed_list[[i]],
+                    pars_perturbed = pars_perturbed_list[[i]],
                     obs_fun = obs_fun_list[[i]],
                     alpha = 1)
     })
@@ -286,7 +285,7 @@ lapply(seq_along(pars_list), function(setting) {
     
     cat("\\newpage
       # Condition: ",(cond$condition %>% str_split("_") %>% extract2(1) %>% paste(collapse = ", ") %>% str_replace_all("=", " = ")), "\n
-      # Perturbed Parameters: ", cond$which_pars_perturbed, "\n")
+      # Perturbed Parameters: ", cond$pars_perturbed, "\n")
     
     # Plot the result of the mstrust()
     print(plotValues(cond$all_fits) )
