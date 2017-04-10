@@ -2,7 +2,6 @@
 title: "Cascade-feedback-analysis-pertub-v1k4k7"
 author: "Daniel Lill"
 output:
-  word_document: default
   pdf_document:
     keep_tex: yes
 ---
