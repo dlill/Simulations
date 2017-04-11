@@ -1,5 +1,5 @@
 ---
-title: "Cascade - Perturbation comparison"
+title: "Cascade - Noisy and xy feedback"
 author: "Daniel Lill"
 output:
   pdf_document:
@@ -309,10 +309,10 @@ wup <- print(xtable(r_kept_fun_1(obs_fun = g1, alpha = 0)), comment = F, floatin
 
 ### Create lists for different settings
 ```{r Summary of pars and ic_list Cascade}
-pars_perturbed_list <- vector("list", 12)
-ic_list_list <- vector("list", 12)
-pars_list <- vector("list", 12)
-obs_fun_list <- vector("list", 12)
+pars_perturbed_list <- vector("list", 6)
+ic_list_list <- vector("list", 6)
+pars_list <- vector("list", 6)
+obs_fun_list <- vector("list", 6)
 setting_description <- outer(
   paste0(c("xyz", "v1k4k7", "k1k31k61"), " perturbed, " ), 
   c("Small complex concentrations",
@@ -324,11 +324,11 @@ setting_description <- outer(
 
 ## Setting 1: Small complex concentrationss
 ```{r Setting 1}
-obs_fun_list <- lapply(1:12, function(i) g0)
+obs_fun_list <- lapply(1:6, function(i) g0)
 
-pars_perturbed_list[[1]] <- pars_perturbed_list[[4]] <-pars_perturbed_list[[7]] <-pars_perturbed_list[[10]] <- c("x1" = 0.8, "y1" = 0.8, "z1" = 0.8)
-pars_perturbed_list[[2]]<-pars_perturbed_list[[5]] <-pars_perturbed_list[[8]] <-pars_perturbed_list[[11]]  <- c("v1" = 0.8, "k4" = 0.8, "k7" = 0.8)
-pars_perturbed_list[[3]]<-pars_perturbed_list[[6]] <-pars_perturbed_list[[9]] <-pars_perturbed_list[[12]]  <- c("k1" = 0.8, "k31" = 0.8, "k61" = 0.8)
+pars_perturbed_list <- lapply(1:6, function(i) c("x1" = 0.5, "y1" = 0.5, "z1" = 0.5))
+
+sdlog_list <- rep(c(0.01,0.1,0.2), 2) %>% as.list()
 
 data <- data_fun(50,2,50,2,30)
 obj <- normL2(data,(x*p_nosyndeg))
@@ -338,7 +338,8 @@ pars_list[[1]] <-pars_list[[2]] <-pars_list[[3]] <- pars <- (myfit %>%
                                                                as.parvec() %>% 
                                                                p_nosyndeg() %>% 
                                                                extract2(1))
-data <- data_fun(50,5,50,5,30)
+
+data <- data_fun(35,30,35,30,30)
 obj <- normL2(data,(x*p_nosyndeg))
 myfit <- mstrust(obj, pouter_0, cores = 3, fits = 3, studyname = "FindPars", resultPath = ".Findpars")
 pars_list[[4]] <-pars_list[[5]] <-pars_list[[6]] <- pars <- (myfit %>% 
@@ -347,32 +348,13 @@ pars_list[[4]] <-pars_list[[5]] <-pars_list[[6]] <- pars <- (myfit %>%
                                                                p_nosyndeg() %>% 
                                                                extract2(1))
 
-data <- data_fun(50,15,50,15,30)
-obj <- normL2(data,(x*p_nosyndeg))
-myfit <- mstrust(obj, pouter_0, cores = 3, fits = 3, studyname = "FindPars", resultPath = ".Findpars")
-pars_list[[7]] <-pars_list[[8]] <-pars_list[[9]] <- pars <- (myfit %>% 
-                                                               as.parframe() %>% 
-                                                               as.parvec() %>% 
-                                                               p_nosyndeg() %>% 
-                                                               extract2(1))
-
-data <- data_fun(35,30,35,30,30)
-obj <- normL2(data,(x*p_nosyndeg))
-myfit <- mstrust(obj, pouter_0, cores = 3, fits = 3, studyname = "FindPars", resultPath = ".Findpars")
-pars_list[[10]] <-pars_list[[11]] <-pars_list[[12]] <- pars <- (myfit %>% 
-                                                               as.parframe() %>% 
-                                                               as.parvec() %>% 
-                                                               p_nosyndeg() %>% 
-                                                               extract2(1))
-
-
-ic_list_list <- lapply(1:12, function(i) list(gainlf = c(1,0,5),
+ic_list_list <- lapply(1:6, function(i) list(gainlf = c(1,0,5),
                                               gainuf = c(1,0,5),
                                               gainyf = c(1,0,5)))
 
-# ic_list <- ic_list_list[[1]]
-# p_ic <- p_ic_fun(reduce_ic_list(ic_list)[[1]])
-# plot((x*p_ic)(times = seq(0,1000, length.out = 50), pars))
+ic_list <- ic_list_list[[1]]
+p_ic <- p_ic_fun(reduce_ic_list(ic_list)[[1]])
+plot((x*p_ic)(times = seq(0,1000, length.out = 50), pars))
 ```
 
 
