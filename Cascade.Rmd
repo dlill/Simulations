@@ -259,46 +259,31 @@ plot((x)(seq(0,1000,length.out = 50), pars))
 ## Explore the effect of the alpha when choosing elements to keep
 This explores the effect of the alpha in the elements to keep - selection.
 
-```{r Effect of alpha on r_kept, results='asis', echo=FALSE}
-r_kept_fun_1 <-function(pars_opt = pars_opt_0,
+```{r Effect of alpha on r_kept, results='asis', echo=FALSE, eval=FALSE}
+r_alpha <-function(pars_opt = pars_opt_0,
                       perturbation_prediction = perturbation_prediction_0,
                       obs_fun = g0,
                       p_fun = p_pert,
-                      pars = pars_0, 
-                      alpha = 1) {
-  
+                      pars = pars_0) {
   # set pars_opt to zero
-  pars_opt <- structure(rep(0, length(pars_opt)), names = names(pars_opt))
-  
-  r_0 <- R_fun(pars_opt = pars_opt,
+  sapply(pars_opt, function(i) {
+    names(i) <- names(pars_opt_0)
+    R_fun(pars_opt = i,
                perturbation_prediction = perturbation_prediction,
                obs_fun = obs_fun,
                p_fun = p_fun,
-               pars = pars) %>% local_response_matrix_eq10()
-  
-  r_alpha <- R_fun(pars_opt = pars_opt+alpha, #yields asymptotically the same results as only complexes without free species.
-               perturbation_prediction = perturbation_prediction,
-               obs_fun = obs_fun,
-               p_fun = p_fun,
-               pars = pars) %>% local_response_matrix_eq10()
-  
-  # Which elements are kept in the optimization process?
-  signs <- (sign(r_0) - sign(r_alpha)) %>% as.logical() %>% matrix(nrow = nrow(r_0))
-  abs_vals <- (abs(r_0) < 1e-3)
-  
-  keep <- (abs_vals | signs)
-  
-  return(cbind(keep, r_alpha))
+               pars = pars) %>% local_response_matrix_eq10() %>% unclass
+    })
 }
 
-wup <- lapply(10^(-4:8), function(a) {
-  cat(" alpha = ", a, "\n")
-  print(xtable(r_kept_fun_1(obs_fun = g0, alpha = a)), comment = F, floating = F)
-  cat(" ")
-  }) 
-wup <- print(xtable(r_kept_fun_1(obs_fun = g1, alpha = 0)), comment = F, floating = F)
-  cat(" ")
+r_names <- paste0("r", outer(as.character(1:3),as.character(1:3), paste0))
+mydf <- cbind(log10alpha = seq(-3,3,length.out = 50), 
+              r_alpha(pars_opt = 10^seq(-3,3,length.out = 50)) %>% t %>% structure(. , dimnames = list(NULL,r_names))
+              ) %>% as.data.frame(stringsAsFactors =  F)
+mydf <- tidyr::gather_(mydf, key = "r_element", value = "Value", gather_cols = r_names)
 
+myplot <- ggplot(mydf, mapping = aes(x = log10alpha, y = Value, color = r_element))+geom_line() + theme_dMod() + scale_color_dMod() + scale_x_continuous(breaks = scales::pretty_breaks()) 
+# ggsave(filename = "Output/Prabakaran.r-values.pdf", plot = myplot)
 
 ```
 
@@ -506,9 +491,10 @@ library(tidyr)
 library(dplyr)
 wup <- lapply(seq_along(pars_list), function(setting) {
   
-  cat("\\newpage
-# Fit setting ", setting, ": ", setting_description[setting], "
-      \n
+  cat("\\newpage")
+cat("\n
+# Fit setting ", setting, ": ", setting_description[setting])
+cat("\n
 ### Standard pars of the following fits \n")
   print(xtable(as.matrix(pars_list[[setting]], nrow = 1), digits = 3), comment = F, floating = F)
   
@@ -563,7 +549,7 @@ cat("\\textbf{Standard deviation of Log-Normal distribution}: ", cond$sdlog, "\n
             theme_dMod())
     
     # Plot the prediction
-    # print(plot(cond$prediction))
+    print(plot(cond$prediction))
 
     
     return()
