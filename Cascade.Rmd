@@ -55,25 +55,31 @@ mymodel %>% as.eqnvec() %>% print(pander = T)
 
 ### Modules, their observables and the observation function
 Observation function which depends also on the optimization parameters. With their help, the complexes can smoothly be switched on in the observation.
-
-This is the naive modularization used in the Prabakaran Paper, desregarding, which species are actually the communicating ones. This is fair enough, because usually the "active" forms are consedered to be the communicating species in a non-parametric network reconstruction.
-```{r Naive observation function Cascade}
+```{r Observation function with Cx2z2 in x-module}
 modules0 <- c("x2","y2", "z2")
 
-obs0 <- c(  "x2+a_1*Cx2y1",
+obs0 <- c(  "x2+a_1*Cx2y1+a_3*Cx2z2",
             "y2+a_2*Cy2z1",
             "z2")
 g <- g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), mymodel, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
 ```
 
-Better modularization (also, set some defaults.)
-```{r good observation function Cascade}
-modules1 <- c("Cx2y1","Cy2z1", "z2")
+```{r Observation function with Cx2z2 in z-module}}
+modules1 <- c("x2","y2", "z2")
 
-obs1 <- c("a_1*x2+Cx2y1",
-         "a_2*y2+Cy2z1",
-         "z2")
-g1 <- Y(as.eqnvec(structure(obs1, names = modules1)), mymodel, compile = TRUE, modelname = "obsfn1", attach.input = FALSE)
+obs1<- c(  "x2+a_1*Cx2y1",
+            "y2+a_2*Cy2z1",
+            "z2+a_3*Cx2z2")
+g <- g1 <- Y(as.eqnvec(structure(obs1, names = modules1)), mymodel, compile = TRUE, modelname = "obsfn1", attach.input = FALSE)
+```
+
+```{r Observation function with Cx2z2 in z-module}}
+modules2 <- c("x2","y2", "z2")
+
+obs2<- c(  "x2+a_1*Cx2y1+a_3*Cx2z2",
+            "y2+a_2*Cy2z1",
+            "z2+a_3*Cx2z2")
+g <- g2 <- Y(as.eqnvec(structure(obs2, names = modules2)), mymodel, compile = TRUE, modelname = "obsfn2", attach.input = FALSE)
 ```
 
 
@@ -111,7 +117,7 @@ Just to show the code...
 Set up the perturbations
 ```{r  which pars are perturbed  Cascade, echo=FALSE}
 # Which pars shall be perturbed?
-pars_perturbed_0 <- pars_perturbed <- c("v1" = 0.8, "k4" = 0.8, "k7" = 0.8)
+pars_perturbed_0 <- pars_perturbed <- c("x1" = 0.8, "y1" = 0.8, "z1" = 0.8)
 ```
 
 ```{r define perturbation conditions Cascade, echo=FALSE}
@@ -135,54 +141,8 @@ best_fit <- myfits %>% as.parframe()
 best_fit <- best_fit[abs(best_fit$a_1) < 1 & abs(best_fit$a_2) < 1, ] %>% as.parvec()
 ```
 
-## Find good Parameter values to compare behaviour for different conditions
-Run this chunk of code with the "plot"-line uncommented to see predictions.
 
-A good procedure to do this, is to look at the parameters of the complex first. 
-1. If kf and kr are much smaller than kcat, nothing will have a big impact. 
-2. When trying to provoke an impact, these pars need to be adjusted first.
-3. Then one can also look at the model equations again and of course the predictions. Try to think, which parameters are actually blocking a desired output.
-4. Also think about the orders of magnitude of in- and outgoing arrows at each node.
-5. Which states are at zero, which are at maximum value (ie 100)?
-
-```{r Find good pars Cascade, eval=FALSE}
-ic_list <- list(k7 = c(0.2),
-                k4 = c(1),
-                k31 = c(0.001),
-                # k1 = 10,
-                v5 = c(200),
-                gainlf = c(1),
-                z1=c(100),
-                k10 =150
-                )
-pars <- pars_0
-pars[names(reduce_ic_list(ic_list)[[2]])] <- reduce_ic_list(ic_list)[[2]]
-ic_list <- reduce_ic_list(ic_list)[[1]]
-p_ic <- p_ic_fun(ic_list)
-plot((x*p_ic)(times = seq(0,1000, length.out = 50), pars))
-# cat("pars: \n")
-# pars
-# cat("pars_0: \n")
-# pars_0
-# mymodel
-(xs)(c(0,Inf), pars, deriv = FALSE)
-```
-
-### Plot of the different feedback strengths
-This value will then be multiplied with the reaction rate k61\*y2\*z1
-```{r}
-# mymodel
-# pars["k10"]
-gain <- function(z2, gainlf, k10) (1 + gainlf*(z2/(k10 + z2)))/(1 + (z2/(k10 + z2)))
-mydf <- data.frame(x=rep(1:150,5))
-df <- within(mydf, {
-  y <- lapply(c(0,0.1,5,10,50), function(i) gain(unique(x), i, k10 = 100)) %>% do.call(c,.) 
-  color <- rep(as.character(c(0,0.1,5,10,50)), each = length(unique(x)))})
-qplot(data= df, x=x,y=y, color = color, geom = "path", xlab = "z2", ylab = "Multiplicative factor") + theme_dMod() + scale_color_dMod() + guides(color=guide_legend(title = "gainlf"))
-
-```
-
-### Find good parameter values by fitting parameters to chosen datapoints.
+## Find good parameter values by fitting parameters to chosen datapoints.
 ```{r Parameter trafo for parameter finding}
 # Parameter trafo to exclude synthesis and degradation and to set the gains to 1.
 
@@ -190,14 +150,14 @@ qplot(data= df, x=x,y=y, color = color, geom = "path", xlab = "z2", ylab = "Mult
   # The logtrafos of the pars to be replaced will be omitted in the next steps
 myp <- structure(paste0("exp(log", names(pars_0),")"), names = names(pars_0))
 
-# 2. Set the parameters of syn&deg to zero
+# 2. Set the parameters of syn&deg and pars_opt to zero
 nosyndeg <- c(outer(c("ksyn", "kdeg"), c("x1","y1","z1"), FUN = paste0), 
               paste0("kdeg", c("x","y", "z"), "2"),
               c("a_1","a_2"))
 nosyndeg <- structure(rep(0, length(nosyndeg)), names = nosyndeg)
 
 # 3. Set the gains to 1 and the kinetic constants k9 and k10 to 100
-gains <- c("gainuf" = 1, "gainlf" = 1, gainyf = 1, k9 = 100, k10 = 100, k11 = 100)
+gains <- c("gainuf" = 1, "gainlf" = 1,  k9 = 100, k10 = 100)
 
 # 4. Incorporate these changes
 myp[names(nosyndeg)] <- nosyndeg
@@ -216,35 +176,41 @@ pouter_0 <- c(structure(log(pars_wosyndeg+1e-8), names= paste0("log", names(pars
 # 7. Test the parameter trafo function
 # p_nosyndeg(pouter_0)
 
+
+
 # Data generation
-newsteadystate <- function(x2,cxy,y2,cyz,z2, xT=100,yT=100,zT=100) {
-  newss <- c(xT-x2-cxy,
+newsteadystate <- function(x2,cxy,y2,cyz,z2,cxz, xT=100,yT=100,zT=100) {
+  newss <- c(
+    xT-x2-cxy-cxz,
     x2,cxy,
     yT-cxy-y2-cyz,
     y2,cyz,
-    zT-cyz-z2, 
-    z2)
+    zT-cyz-z2-cxz, 
+    z2,
+    cxz)
   if(any(newss < 0)) stop("negative values")
   return(newss)
 }
 
-data_fun <- function(x2,cxy,y2,cyz,z2, xT=100,yT=100,zT=100) {
-  data.frame(name = rep(mymodel$states, 3),
-                   time = rep(c(0.001,2000,3000), each = length(mymodel$states)),
-                   value = c(c(100,0,0,100,0,0,100,0),  #initial values
-                             rep(newsteadystate(x2,cxy,y2,cyz,z2, xT,yT,zT),2) #final values
+
+data_fun <- function(x2,cxy,y2,cyz,z2,cxz, xT=100,yT=100,zT=100) {
+  data.frame(name = rep(mymodel$states, 5),
+                   time = rep(c(0.001,1000,2000,3000,4000), each = length(mymodel$states)),
+                   value = c(c(100,0,0,100,0,0,100,0,0),  #initial values
+                             rep(newsteadystate(x2,cxy,y2,cyz,z2,cxz, xT,yT,zT),4) #final values
                    ),
-                   sigma = rep(c(0.01,0.1,0.1), each = length(mymodel$states)),
+                   sigma = rep(c(0.01,0.1,0.001,0.0001,0.00001), each = length(mymodel$states)),
                    condition = "one", 
                    
                    stringsAsFactors = F) %>% as.datalist()
 }
 
+
 ```
 
-Turn it around: define the wanted steady states and fit the model to them in order to find pars.
+Define the wanted steady states and fit the model to them in order to find pars.
 ```{r Fit model to generated data to find pars, eval=FALSE}
-data <- data_fun(50,3,40,2,60)
+data <- data_fun(50,3,40,2,60,5)
 obj <- normL2(data,(x*p_nosyndeg))
 myfit <- mstrust(obj, pouter_0, cores = 3, fits = 9, studyname = "FindPars", resultPath = ".Findpars")
 # pars <- myfit$argument %>% p_nosyndeg() %>% extract2(1) 
@@ -290,10 +256,10 @@ myplot <- ggplot(mydf, mapping = aes(x = log10alpha, y = Value, color = r_elemen
 
 
 
-## Fit and analyze different conditions and perturbations
+# Create lists for different settings
 
-### Create lists for different settings
-```{r Summary of pars and ic_list Cascade}
+### Initialize the setting lists
+```{r Initialize lists}
 pars_perturbed_list <- vector("list", 6)
 ic_list_list <- vector("list", 6)
 pars_list <- vector("list", 6)
@@ -307,15 +273,13 @@ setting_description <- outer(
     paste0)
 ```
 
-## Setting 1: Small complex concentrationss
-```{r Setting 1}
-obs_fun_list <- lapply(1:6, function(i) g0)
+## Many settings
+```{r All settings}
+obs_fun_list <- rep(list(g0,g1,g2),2)
 
 pars_perturbed_list <- lapply(1:6, function(i) c("x1" = 0.5, "y1" = 0.5, "z1" = 0.5))
 
-sdlog_list <- rep(c(0.01,0.1,0.2), 2) %>% as.list()
-
-data <- data_fun(50,2,50,2,30)
+data <- data_fun(50,2,50,2,30,2)
 obj <- normL2(data,(x*p_nosyndeg))
 myfit <- mstrust(obj, pouter_0, cores = 3, fits = 3, studyname = "FindPars", resultPath = ".Findpars")
 pars_list[[1]] <-pars_list[[2]] <-pars_list[[3]] <- pars <- (myfit %>% 
@@ -324,7 +288,7 @@ pars_list[[1]] <-pars_list[[2]] <-pars_list[[3]] <- pars <- (myfit %>%
                                                                p_nosyndeg() %>% 
                                                                extract2(1))
 
-data <- data_fun(35,30,35,30,30)
+data <- data_fun(30,30,30,30,30,30)
 obj <- normL2(data,(x*p_nosyndeg))
 myfit <- mstrust(obj, pouter_0, cores = 3, fits = 3, studyname = "FindPars", resultPath = ".Findpars")
 pars_list[[4]] <-pars_list[[5]] <-pars_list[[6]] <- pars <- (myfit %>% 
@@ -333,18 +297,23 @@ pars_list[[4]] <-pars_list[[5]] <-pars_list[[6]] <- pars <- (myfit %>%
                                                                p_nosyndeg() %>% 
                                                                extract2(1))
 
-ic_list_list <- lapply(1:6, function(i) list(gainlf = c(1,0,5),
-                                              gainuf = c(1,0,5),
-                                              gainyf = c(1,0,5)))
+ic_list_list <- lapply(1:6, function(i) {
+  list(k111 = signif(outer(pars_list[[i]]["k111"], exp(c(0,-2,-1,1,2)), "*"),2),
+       k12 = signif(outer(pars_list[[i]]["k12"], c(0,exp(c(0,-2,-1,1,2))), "*"),2),
+       gainlf = c(1,0,0.3,0.7,0.9))
+})
 
 ic_list <- ic_list_list[[1]]
 p_ic <- p_ic_fun(reduce_ic_list(ic_list)[[1]])
-plot((x*p_ic)(times = seq(0,1000, length.out = 50), pars))
+plot((x)(times = seq(0,2000, length.out = 50), pars_list[[1]])) + xkcd::theme_xkcd()
+plot((x)(times = seq(0,2000, length.out = 50), pars_list[[4]])) + xkcd::theme_xkcd()
+# pars_list[[i]][names(reduce_ic_list(ic_list)[[2]])] <- reduce_ic_list(ic_list)[[2]]
 ```
 
 
 
-# Fit the multiple conditions and save the fits to a file.
+# Simulations without noise
+
 Run this only once before knitting and knit the document with the loaded dataset.
 ```{r Fit multiple conditions Cascade, eval=FALSE}
 machine <- "tesla"
@@ -383,14 +352,14 @@ fit_job1$purge()
 
 
 
-## Analyze the fits
+## Rendering
 <!-- This is now to be run when pressing "render" -->
-```{r Load the fits, eval=FALSE}
+```{r Load the fits}
 # Load the multiple fits
 load(paste0(pathout,fit_name, ".RData"))
 ```
 
-```{r Analyze Fits to knitr-Document Cascade, results='asis', out.width='45%', eval=FALSE}
+```{r Analyze Fits to knitr-Document Cascade, results='asis', out.width='45%'}
 lapply(seq_along(pars_list), function(setting) {
   
   cat("\\newpage
@@ -481,12 +450,12 @@ fit_job1$purge()
 
 ## Analyze the fits
 <!-- This is now to be run when pressing "render" -->
-```{r Load the fits noisy}
+```{r Load the fits noisy, eval=FALSE}
 # Load the multiple fits
 load(paste0(pathout,fit_name, ".RData"))
 ```
 
-```{r Analyze Fits to knitr-Document noisy, results='asis', out.width='45%', warning=FALSE, message=FALSE}
+```{r Analyze Fits to knitr-Document noisy, results='asis', out.width='45%', warning=FALSE, message=FALSE, eval=FALSE}
 library(tidyr)
 library(dplyr)
 wup <- lapply(seq_along(pars_list), function(setting) {
