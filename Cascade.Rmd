@@ -1,5 +1,5 @@
 ---
-title: "Cascade - Noisy and xy feedback"
+title: "Cascade - x2z2 mass action feedback"
 author: "Daniel Lill"
 output:
   pdf_document:
@@ -17,7 +17,7 @@ pathout <- paste0(path, "Output/")
 ```
 
 ```{r Names for Fit storage of different initial Conditions}
-fit_name <- "Cascade-withyx-feedback-noisy"
+fit_name <- "Cascade-x2z2-mass-action"
 ```
 
 
@@ -49,8 +49,8 @@ load(paste0(modelpath, "odemodel",modelname, ".RData"))
 x <- Xs(odemodel = myodemodel)
 # Prediction function for steady states
 xs <- Xs_steady(myodemodel) # When computing steady states, set deriv = F
-# print(mymodel)
-mymodel %>% as.eqnvec() %>% print(pander = T)
+print(mymodel)
+# mymodel %>% as.eqnvec() %>% print(pander = T)
 ```
 
 ### Modules, their observables and the observation function
@@ -58,28 +58,28 @@ Observation function which depends also on the optimization parameters. With the
 ```{r Observation function with Cx2z2 in x-module}
 modules0 <- c("x2","y2", "z2")
 
-obs0 <- c(  "x2+a_1*Cx2y1+a_3*Cx2z2",
-            "y2+a_2*Cy2z1",
-            "z2")
+obs0 <- c("x2+a_1*Cx2y1+a_3*Cx2z2",
+          "y2+a_2*Cy2z1",
+          "z2")
 g <- g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), mymodel, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
 ```
 
 ```{r Observation function with Cx2z2 in z-module}}
 modules1 <- c("x2","y2", "z2")
 
-obs1<- c(  "x2+a_1*Cx2y1",
-            "y2+a_2*Cy2z1",
-            "z2+a_3*Cx2z2")
-g <- g1 <- Y(as.eqnvec(structure(obs1, names = modules1)), mymodel, compile = TRUE, modelname = "obsfn1", attach.input = FALSE)
+obs1<- c("x2+a_1*Cx2y1",
+         "y2+a_2*Cy2z1",
+         "z2+a_3*Cx2z2")
+g1 <- Y(as.eqnvec(structure(obs1, names = modules1)), mymodel, compile = TRUE, modelname = "obsfn1", attach.input = FALSE)
 ```
 
-```{r Observation function with Cx2z2 in z-module}}
+```{r Observation function with Cx2z2 in both modules}}
 modules2 <- c("x2","y2", "z2")
 
-obs2<- c(  "x2+a_1*Cx2y1+a_3*Cx2z2",
-            "y2+a_2*Cy2z1",
-            "z2+a_3*Cx2z2")
-g <- g2 <- Y(as.eqnvec(structure(obs2, names = modules2)), mymodel, compile = TRUE, modelname = "obsfn2", attach.input = FALSE)
+obs2<- c("x2+a_1*Cx2y1+a_3*Cx2z2",
+         "y2+a_2*Cy2z1",
+         "z2+a_3*Cx2z2")
+g2 <- Y(as.eqnvec(structure(obs2, names = modules2)), mymodel, compile = TRUE, modelname = "obsfn2", attach.input = FALSE)
 ```
 
 
@@ -265,10 +265,8 @@ ic_list_list <- vector("list", 6)
 pars_list <- vector("list", 6)
 obs_fun_list <- vector("list", 6)
 setting_description <- outer(
-  paste0(c("xyz", "v1k4k7", "k1k31k61"), " perturbed, " ), 
+  paste0("Cx2z2 added to ", c("x-module", "z-module", "both modules"), ", "), 
   c("Small complex concentrations",
-    "Medium small complex concentrations",
-    "Medium complex concentrations",
     "Large complex concentrations"), 
     paste0)
 ```
@@ -305,8 +303,8 @@ ic_list_list <- lapply(1:6, function(i) {
 
 ic_list <- ic_list_list[[1]]
 p_ic <- p_ic_fun(reduce_ic_list(ic_list)[[1]])
-plot((x)(times = seq(0,2000, length.out = 50), pars_list[[1]])) + xkcd::theme_xkcd()
-plot((x)(times = seq(0,2000, length.out = 50), pars_list[[4]])) + xkcd::theme_xkcd()
+# plot((x)(times = seq(0,2000, length.out = 50), pars_list[[1]])) + xkcd::theme_xkcd()
+# plot((x)(times = seq(0,2000, length.out = 50), pars_list[[4]])) + xkcd::theme_xkcd()
 # pars_list[[i]][names(reduce_ic_list(ic_list)[[2]])] <- reduce_ic_list(ic_list)[[2]]
 ```
 
@@ -316,20 +314,20 @@ plot((x)(times = seq(0,2000, length.out = 50), pars_list[[4]])) + xkcd::theme_xk
 
 Run this only once before knitting and knit the document with the loaded dataset.
 ```{r Fit multiple conditions Cascade, eval=FALSE}
-machine <- "tesla"
+machine <- "localhost"
 fit_job1<- runbg({
   myfits <- mclapply(seq_along(pars_list), function(i) {
     # cat("Setting ", i, " of ", length(pars_list), " \n")
     run_simulations(ic_list = ic_list_list[[i]],
                     nfits = 12,
-                    cores = 12,
+                    cores = 3,
                     pars = pars_list[[i]],
                     pars_perturbed = pars_perturbed_list[[i]],
                     obs_fun = obs_fun_list[[i]]
                     )
     
 
-  }, mc.cores = 2)
+  }, mc.cores = 1)
   names(myfits) <- paste0("Setting", seq_along(pars_list))
   myfits
 }, machine = machine, filename = "fit_job1")
@@ -337,17 +335,17 @@ save.image()
 ```
 
 ```{r Get the fit Cascade, eval=FALSE, message=FALSE, results='hide'}
-mytime <- 0
+# mytime <- 0
 while(!fit_job1$check()) {
-  Sys.sleep(5)
-  mytime <- mytime + 5
+  Sys.sleep(10)
+  # mytime <- mytime + 5
 }
 beepr::beep(2)
 multiple_fits <- fit_job1$get()
 multiple_fits <- multiple_fits[[machine]]
 # multiple_fits
 save(multiple_fits, file = paste0(pathout,fit_name,".RData"))
-fit_job1$purge()
+# fit_job1$purge()
 ```
 
 

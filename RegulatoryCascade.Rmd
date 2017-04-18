@@ -394,7 +394,7 @@ plot((x*p_ic)(times = seq(0,1000, length.out = 50), pars))
 ## Setting 5: Small complex concentrations, overexpression
 ```{r Setting 5}
 obs_fun_list[[5]]   <-  g0
-pars_perturbed_list[[5]] <- c(x1 = 0.5, y1 = 0.5, z1 = 0.5)
+pars_perturbed_list[[5]] <- c(x1 = 1.5, y1 = 1.5, z1 = 1.5)
 
 data <- data_fun(50,50,20,30)
 obj <- normL2(data,(x*p_nosyndeg))
@@ -416,7 +416,7 @@ plot((x*p_ic)(times = seq(0,1000, length.out = 50), pars))
 ## Setting 6: Small complex concentrations, overexpression
 ```{r Setting 6}
 obs_fun_list[[6]]   <-  g0
-pars_perturbed_list[[6]] <- c(x1 = 0.5, y1 = 0.5, z1 = 0.5)
+pars_perturbed_list[[6]] <- c(x1 = 1.5, y1 = 1.5, z1 = 1.5)
 
 data <- data_fun(50,40,50,30)
 obj <- normL2(data,(x*p_nosyndeg))
@@ -432,6 +432,7 @@ ic_list_list[[6]] <- ic_list <- list(gainlf = c(1,0,5),
                                      gainyf = c(1,0,5))
 
 p_ic <- p_ic_fun(reduce_ic_list(ic_list)[[1]])
+
 plot((x*p_ic)(times = seq(0,1000, length.out = 50), pars))
 ```
 
@@ -580,15 +581,15 @@ fit_job1$purge()
 load(paste0(pathout,fit_name, ".RData"))
 ```
 
-```{r Analyze Fits to knitr-Document noisy, results='asis', out.width='90%', warning=FALSE, message=FALSE}
+```{r Analyze Fits to knitr-Document noisy, results='asis', out.width='45%', warning=FALSE, message=FALSE}
 library(tidyr)
 library(dplyr)
 wup <- lapply(seq_along(pars_list), function(setting) {
   
   cat("\\newpage
-      # Fit setting ", setting, ": ", setting_description[setting], "
+# Fit setting ", setting, ": ", setting_description[setting], "
       \n
-      ### Standard pars of the following fits \n")
+### Standard pars of the following fits \n")
   print(xtable(as.matrix(pars_list[[setting]], nrow = 1), digits = 3), comment = F, floating = F)
   
   
@@ -598,21 +599,22 @@ wup <- lapply(seq_along(pars_list), function(setting) {
   # })
   output <- lapply(multiple_fits[[setting]], function(cond) {
     
-    cat("\\newpage
-
-        \\section{Condition: ",(cond$condition %>% str_split("_") %>% extract2(1) %>% paste(collapse = ", ") %>% str_replace_all("=", " = ")), "} \n" )
-    cat("\\textbf{Perturbed Parameters}: ", cond$pars_perturbed, "\n" )
-    cat("\\textbf{Standard deviation of Log-Normal distribution}: ", cond$sdlog, "\n" )
+cat("\\newpage \n
+## Condition: ",(cond$condition %>% str_split("_") %>% extract2(1) %>% paste(collapse = ", ") %>% str_replace_all("=", " = ")), " \n" )
+cat("\\textbf{Perturbed Parameters}: ", cond$pars_perturbed, "\n" )
+cat("\\textbf{Standard deviation of Log-Normal distribution}: ", cond$sdlog, "\n" )
 
     
     # Plot the resulting local response matrices as histograms.
     # The failed simulations have to be removed first. They are recognizable by all elements equalling zero in r_ij
     failed <- cond$r_0$r11 == 0
-    cat("\n
+    cat("\
         Number of failed fits: ", sum(failed) , "\n")
     cat("\n
         Distributions before and after optimization: 
         \n")
+    if(sum(!failed) == 0) return()
+    
     r_0 <- cond$r_0[!failed,] %>% tidyr::gather(key = element, value = value, everything())
     r_best_fit <- cond$r_best_fit[!failed,] %>% tidyr::gather(key = element, value = value, everything())
     
@@ -631,7 +633,8 @@ wup <- lapply(seq_along(pars_list), function(setting) {
       )
       
     cat("\n
-        Which elements were kept in the optimization procedure?")
+        Which elements were kept in the optimization procedure? 
+        \n")
     
      print(ggplot(data = cond$r_kept[!failed,] %>% tidyr::gather(key = element, value = value, everything()),
                  mapping = aes(x=value)) + 
@@ -640,7 +643,7 @@ wup <- lapply(seq_along(pars_list), function(setting) {
             theme_dMod())
     
     # Plot the prediction
-    print(plot(cond$prediction))
+    # print(plot(cond$prediction))
 
     
     return()
