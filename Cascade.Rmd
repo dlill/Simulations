@@ -344,7 +344,7 @@ beepr::beep(2)
 multiple_fits <- fit_job1$get()
 multiple_fits <- multiple_fits[[machine]]
 # multiple_fits
-save(multiple_fits, file = paste0(pathout,fit_name,".RData"))
+save(list = c("multiple_fits", "pars_list"), file = paste0(pathout,fit_name,".RData"))
 # fit_job1$purge()
 ```
 
@@ -402,6 +402,13 @@ lapply(seq_along(pars_list), function(setting) {
   })
 })
 ```
+
+
+## Explore simulations that behaved weirdly
+This part is mainly about the simulations in Cascade-x2z2-mass-action20170418-1434. 
+There, sometimes r_kept is not in accordance with the two matrices above. See page 40 of the pdf for example.
+The problem however is that I don't have the parameters anymore, since some of them seem non-identifiable, so the pars that I get from fitting them to the steady state levels are different everytime I let the document run. 
+This poses a problem, because I earlier didn't need to consider this and didn't save the parameters themselves.
 
 
 
