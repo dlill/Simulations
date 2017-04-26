@@ -1,14 +1,7 @@
-"Description","Rate","x1","x2","y1","y2","Cy2z1","z1","z2"
-"act_x","((v1 *  x1)/(k1 + x1))*(1 + gainuf*(z2/(k9 + z2)))/(1 + (z2/(k9 + z2)))*(1 + gainyf*(y2/(k11 + y2)))/(1 + (y2/(k11 + y2)))",-1,1,,,,,
-"deact_x","((v2 * x2 )/(k2 + x2))",1,-1,,,,,
-"act_y","((k3cat* x2*y1 )/(k3 + y1))*(1 + gainlf*(z2/(k10 + z2)))/(1 + (z2/(k10 + z2)))",,,-1,1,,,
-"deact_y","((v5 * y2)/(k5 + y2))",,,1,-1,,,
-"y2_z_to_comp","((k61 *z1 *y2) - (k62 * Cy2z1))",,,,-1,1,-1,
-"z2_formation","(k7 * Cy2z1)",,,,1,-1,,1
-"z_deact","((v8 * z2)/(k8 + z2))",,,,,,1,-1
-"syn_deg_of_x1","ksynx1-kdegx1*x1",1,,,,,,
-"deg_of_x2","kdegx2*x2",,-1,,,,,
-"syn_deg_of_y1","ksyny1-kdegy1*y1",,,1,,,,
-"deg_of_y2","kdegy2*y2",,,,-1,,,
-"syn_deg_of_z1","ksynz1-kdegz1*z1",,,,,,1,
-"deg_of_z2","kdegz2*z2",,,,,,,-1
+"Description","Rate","x1","x2","y1","y2","z1","z2"
+"act_x","((v1 *  x1)/(k1 + x1))*(1 + gainuf*(z2/(k9 + z2)))/(1 + (z2/(k9 + z2)))*(1 + gainyf*(y2/(k11 + y2)))/(1 + (y2/(k11 + y2)))",-1,1,,,,
+"deact_x","((v2 * x2 )/(k2 + x2))",1,-1,,,,
+"act_y","((k3cat*x2*y1 )/(k3 + y1))*(1 + gainlf*(z2/(k10 + z2)))/(1 + (z2/(k10 + z2)))",,,-1,1,,
+"deact_y","((v5 * y2)/(k5 + y2))",,,1,-1,,
+"act_z","((k6cat*y2*z1 )/(k6 + z1))",,,,,-1,1
+"z_deact","((v8 * z2)/(k8 + z2))",,,,,1,-1
