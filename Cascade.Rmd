@@ -134,69 +134,6 @@ r_kept_0 <- r_kept_fun(obs_fun = g0)
 
 
 
-```{r}
-obj_alpha2 <- function(pars_opt = pars_opt_0,
-                      perturbation_prediction = perturbation_prediction_0,
-                      r_kept = r_kept_0,
-                      obs_fun = g,
-                      p_fun = p_pert,
-                      mypars = pars_0
-                      ) {
-
-
-
-  local_response_matrix_eq10(R_fun(pars_opt = pars_opt,
-                                   perturbation_prediction = perturbation_prediction,
-                                   obs_fun = obs_fun,
-                                   p_fun = p_fun,
-                                   pars = mypars)) %>% 
-    extract(r_kept) %>% 
-    raise_to_power(2) %>% 
-    sum()
-
-}
-
-```
-
-
-
-
-```{r}
-
-optim1 <- rbenchmark::benchmark({mstrust(obj_alpha, center =  pars_opt_0+0.5, studyname = "Fits", cores = 1, fits = 1, sd = 0.3)}, replications = 100)
-
-optim2 <- rbenchmark::benchmark({
-  optim(pars_opt_0+runif(3,0,10),
-        obj_alpha2)}, replications = 100)
-
-optim3 <- rbenchmark::benchmark({
-  optim(pars_opt_0+runif(3,0,10),
-        obj_alpha2, method = "BFGS")}, replications = 100)
-
-
-# optim4 <- rbenchmark::benchmark({
-  # optim(pars_opt_0+runif(3,0,10),
-        # obj_alpha2, method = "SANN")}, replications = 10)
-
-optim4 <- 188
-
-optim5 <- rbenchmark::benchmark({
-  optim(pars_opt_0+runif(3,0,10),
-        obj_alpha2, method = "L-BFGS-B")}, replications = 100)
-
-```
-
-compare results of fits
-```{r}
-
-fits1 <- mstrust(obj_alpha, center =  pars_opt_0, samplefun = "runif", studyname = "Fits", cores = 4, fits = 100, max = 10)
-fits2 <- mclapply(1:100, function(i) optim(pars_opt_0+runif(3,0,10),obj_alpha2),mc.cores = 4)
-fits3 <- mclapply(1:100, function(i) optim(pars_opt_0+runif(3,0,10),obj_alpha2, method = "BFGS"),mc.cores = 4)
-fits5 <- mclapply(1:100, function(i) optim(pars_opt_0+runif(3,0,10),obj_alpha2, method = "L-BFGS-B"),mc.cores = 4)
-
-```
-
-
 
 
 
@@ -233,7 +170,7 @@ myp[names(nosyndeg)] <- nosyndeg
 myp[names(gains)] <- gains
 
 # 5. Create the parameter trafo function
-p_nosyndeg <- P(myp)
+p_nosyndeg <- P(myp, condition = "one")
 
 # 6. Create a vector of pouter. This means: apply the logtrafo to all pars except the fix ones.
   # This is not the most elegant way, since now there is a mixture of log-transformed and not log-transformed parameters, but I want the syn&deg-parameters to be exactly zero
@@ -279,9 +216,9 @@ data_fun <- function(x2,cxy,y2,cyz,z2,cxz, xT=100,yT=100,zT=100) {
 
 Define the wanted steady states and fit the model to them in order to find pars.
 ```{r Fit model to generated data to find pars, eval=FALSE}
-data <- data_fun(50,3,40,2,60,5)
+data <- data_fun(50,10,40,10,60,0)
 obj <- normL2(data,(x*p_nosyndeg))
-myfit <- mstrust(obj, pouter_0, cores = 3, fits = 9, studyname = "FindPars", resultPath = ".Findpars")
+myfit <- mstrust(obj, pouter_0, cores = 3, fits = 3, studyname = "FindPars", resultPath = ".Findpars")
 # pars <- myfit$argument %>% p_nosyndeg() %>% extract2(1) 
 pars <- myfit %>% as.parframe() %>% as.parvec() %>% p_nosyndeg() %>% extract2(1)  
 
@@ -289,6 +226,55 @@ plot((x)(seq(0,1000,length.out = 50), pars))
 
 ```
 
+
+
+
+
+
+
+# run benchmark to compare runtimes
+```{r, eval=FALSE}
+
+optim1 <- rbenchmark::benchmark({mstrust(obj_alpha, center =  pars_opt_0+0.5, studyname = "Fits", cores = 1, fits = 1, sd = 0.3, mypars = pars)}, replications = 10)
+
+optim2 <- rbenchmark::benchmark({
+  optim(pars_opt_0+runif(3,0,10),
+        obj_alpha2, mypars = pars)}, replications = 10)
+
+optim3 <- rbenchmark::benchmark({
+  optim(pars_opt_0+runif(3,0,10),
+        obj_alpha2, method = "BFGS", mypars = pars)}, replications = 10)
+
+
+# optim4 <- rbenchmark::benchmark({
+  # optim(pars_opt_0+runif(3,0,10),
+        # obj_alpha2, method = "SANN")}, replications = 10)
+
+# optim4 <- 188
+
+optim5 <- rbenchmark::benchmark({
+  optim(pars_opt_0+runif(3,0,10),
+        obj_alpha2, method = "L-BFGS-B", mypars = pars)}, replications = 10)
+
+```
+
+compare results of fits
+```{r}
+
+fits1 <- mstrust(obj_alpha, center =  pars_opt_0, samplefun = "runif", studyname = "Fits", cores = 4, fits = 8, max = 10, mypars = pars)
+fits2 <- mclapply(1:8, function(i) optim(pars_opt_0+runif(3,0,10),obj_alpha2, mypars = pars),mc.cores = 4)
+fits3 <- mclapply(1:8, function(i) optim(pars_opt_0+runif(3,0,10),obj_alpha2, mypars = pars, method = "BFGS"),mc.cores = 4)
+fits5 <- mclapply(1:8, function(i) optim(pars_opt_0+runif(3,0,10),obj_alpha2, mypars = pars, method = "L-BFGS-B"),mc.cores = 4)
+
+```
+
+
+```{r}
+fits1 %>% as.parframe()
+fits2 %>% lapply("[[", 2) %>% do.call(c,.) %>% sort()
+fits3 %>% lapply("[[", 3) %>% do.call(c,.) %>% sort()
+fits5 %>% lapply("[[", 3) %>% do.call(c,.) %>% sort()
+```
 
 
 ## Explore the effect of the alpha when choosing elements to keep
