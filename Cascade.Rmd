@@ -132,6 +132,75 @@ r_kept_0 <- r_kept_fun(obs_fun = g0)
 
 ```
 
+
+
+```{r}
+obj_alpha2 <- function(pars_opt = pars_opt_0,
+                      perturbation_prediction = perturbation_prediction_0,
+                      r_kept = r_kept_0,
+                      obs_fun = g,
+                      p_fun = p_pert,
+                      mypars = pars_0
+                      ) {
+
+
+
+  local_response_matrix_eq10(R_fun(pars_opt = pars_opt,
+                                   perturbation_prediction = perturbation_prediction,
+                                   obs_fun = obs_fun,
+                                   p_fun = p_fun,
+                                   pars = mypars)) %>% 
+    extract(r_kept) %>% 
+    raise_to_power(2) %>% 
+    sum()
+
+}
+
+```
+
+
+
+
+```{r}
+
+optim1 <- rbenchmark::benchmark({mstrust(obj_alpha, center =  pars_opt_0+0.5, studyname = "Fits", cores = 1, fits = 1, sd = 0.3)}, replications = 100)
+
+optim2 <- rbenchmark::benchmark({
+  optim(pars_opt_0+runif(3,0,10),
+        obj_alpha2)}, replications = 100)
+
+optim3 <- rbenchmark::benchmark({
+  optim(pars_opt_0+runif(3,0,10),
+        obj_alpha2, method = "BFGS")}, replications = 100)
+
+
+# optim4 <- rbenchmark::benchmark({
+  # optim(pars_opt_0+runif(3,0,10),
+        # obj_alpha2, method = "SANN")}, replications = 10)
+
+optim4 <- 188
+
+optim5 <- rbenchmark::benchmark({
+  optim(pars_opt_0+runif(3,0,10),
+        obj_alpha2, method = "L-BFGS-B")}, replications = 100)
+
+```
+
+compare results of fits
+```{r}
+
+fits1 <- mstrust(obj_alpha, center =  pars_opt_0, samplefun = "runif", studyname = "Fits", cores = 4, fits = 100, max = 10)
+fits2 <- mclapply(1:100, function(i) optim(pars_opt_0+runif(3,0,10),obj_alpha2),mc.cores = 4)
+fits3 <- mclapply(1:100, function(i) optim(pars_opt_0+runif(3,0,10),obj_alpha2, method = "BFGS"),mc.cores = 4)
+fits5 <- mclapply(1:100, function(i) optim(pars_opt_0+runif(3,0,10),obj_alpha2, method = "L-BFGS-B"),mc.cores = 4)
+
+```
+
+
+
+
+
+
 ### Fitting
 Just to show the code...
 ```{r Fit Cascade, eval=FALSE}

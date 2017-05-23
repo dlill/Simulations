@@ -20,7 +20,7 @@ pathout <- paste0(path, "Output/")
 fit_name <- "Prabakaran"
 ```
 
-```{r Call render without overwriting any previous documents, echo=FALSE, eval=FALSE, message=FALSE}
+```{r Call render without overwriting any previous documents, echo=FALSE, eval=FALSE, message=FALSE, include=FALSE}
 
 rmarkdown::render("Prabakaran.Rmd", output_file = paste0(pathout, format(Sys.time(), "%Y%m%d-%H%M")
 , " - " , fit_name, ".pdf"))
@@ -129,6 +129,12 @@ r_kept_0 <- r_kept_fun(obs_fun = g0)
 
 ```
 
+```{r}
+rbenchmark::benchmark({r_alpha_fun(pars_opt = pars_opt_0+runif(length(pars_opt_0),0,10))}, replications = 100)[,-1]
+```
+
+
+
 ### Fitting.
 Just to show the code...
 ```{r Fit, eval=FALSE}
@@ -208,7 +214,6 @@ Especially, they are:
 ```{r Setting 1}
 pars_perturbed_list <- list(c(m1 = 1.1, e1 = 1.1),
                                   c("m1" = 1.1, "p1" = 1.1),
-                                  c("m1" = 1.1, "p1" = 1.1),
                                   c("m1" = 1.1, "k4" = 1.1),
                                   c("m1" = 1.1, "k5" = 1.1),
                                   c("m1" = 1.1, "k61" = 1.1),
@@ -285,7 +290,7 @@ lapply(seq_along(pars_list), function(setting) {
     
     cat("\\newpage
       # Condition: ",(cond$condition %>% str_split("_") %>% extract2(1) %>% paste(collapse = ", ") %>% str_replace_all("=", " = ")), "\n
-      # Perturbed Parameters: ", cond$pars_perturbed, "\n")
+      # Perturbed Parameters: ", names(cond$pars_perturbed), " = ", cond$pars_perturbed, "\n")
     
     # Plot the result of the mstrust()
     print(plotValues(cond$all_fits) )
