@@ -252,52 +252,48 @@ obj_alpha(pars_opt = pars_opt_0 + 36)
 # compare results of fits
 ```{r}
 
-fits1 <- mstrust(obj_alpha, center =  pars_opt_0 + 36, samplefun = "runif", studyname = "Fits", cores = 4, fits = 8, max = 10, mypars = pars)
-fits2 <- mclapply(1:8, function(i) optim(pars_opt_0+rnorm(2,36),obj_alpha_no_derivs, mypars = pars),mc.cores = 4)
-fits3 <- mclapply(1:8, function(i) optim(pars_opt_0+rnorm(2,36),obj_alpha_no_derivs, mypars = pars, method = "BFGS"),mc.cores = 4)
-fits5 <- mclapply(1:8, function(i) optim(pars_opt_0+rnorm(2,36),obj_alpha_no_derivs, mypars = pars, method = "L-BFGS-B"),mc.cores = 4)
+fits1 <- runtime(mstrust(obj_alpha, center =  pars_opt_0 + 36, studyname = "Fits", cores = 3, fits = 12, mypars = pars))
+fits2 <- runtime(mclapply(1:12, function(i) optim(pars_opt_0+rnorm(2,36),obj_alpha_no_derivs, mypars = pars),mc.cores = 3))
+# fits3 <- runtime(mclapply(1:12, function(i) optim(pars_opt_0+rnorm(2,36),obj_alpha_no_derivs, mypars = pars, method = "BFGS"),mc.cores = 3))
+# fits5 <- runtime(mclapply(1:12, function(i) optim(pars_opt_0+rnorm(2,36),obj_alpha_no_derivs, mypars = pars, method = "L-BFGS-B"),mc.cores = 3))
+
+# ```
+# 
+# ```{r}
+fits1 %>% as.parframe()
+v1 <- fits2 %>% sapply("[[", 1) 
+# v2 <- fits3 %>% sapply("[[", 1) 
+# v3 <- fits5 %>% sapply("[[", 1) 
+
+va1 <- fits2 %>% sapply("[[", 2) 
+# va2 <- fits3 %>% sapply("[[", 2) 
+# va3 <- fits5 %>% sapply("[[", 2) 
+
+v1[,order(va1)]
+# v2[,order(va2)]
+# v3[,order(va3)]
+
+sort(va1)
+# sort(va2)
+# sort(va3)
+
+fits1 %>% attr("run")
+fits2 %>% attr("run")
+# fits3 %>% attr("run")
+# fits5 %>% attr("run")
 
 ```
 
-```{r}
-fits1 %>% as.parframe()
-fits2 %>% sapply("[[", 1) 
-fits3 %>% sapply("[[", 1) 
-fits5 %>% sapply("[[", 1) 
 
-fits1 %>% as.parframe()
-fits2 %>% sapply("[[", 2) 
-fits3 %>% sapply("[[", 2) 
-fits5 %>% sapply("[[", 2) 
-```
+
 
 
 ## runtimes
 ```{r, eval=FALSE}
 
-optim1 <- rbenchmark::benchmark({mstrust(obj_alpha, center =  pars_opt_0+36, studyname = "Fits", cores = 1, fits = 1, mypars = pars)}, replications = 10)
+b1 <- rbenchmark::benchmark(obj_alpha(pars_opt = pars_opt_0 + 36 + rnorm(2), mypars = pars))
+b2 <- rbenchmark::benchmark(obj_alpha_no_derivs(pars_opt = pars_opt_0 + 36 + rnorm(2), mypars = pars))
 
-optim2 <- rbenchmark::benchmark({
-  optim(pars_opt_0+rnorm(2,36),
-        obj_alpha_no_derivs, mypars = pars)}, replications = 10)
-
-optim3 <- rbenchmark::benchmark({
-  optim(pars_opt_0+rnorm(2,36),
-        obj_alpha_no_derivs, method = "BFGS", mypars = pars)}, replications = 10)
-
-
-# optim4 <- rbenchmark::benchmark({
-  # optim(pars_opt_0+runif(3,0,10),
-        # obj_alpha2, method = "SANN")}, replications = 10)
-
-# optim4 <- 188
-
-optim5 <- rbenchmark::benchmark({
-  optim(pars_opt_0+rnorm(2,36),
-        obj_alpha_no_derivs, method = "L-BFGS-B", mypars = pars)}, replications = 10)
-
-
-obj_alpha_no_derivs(pars_opt = pars_opt_0 + 31)
 ```
 
 
