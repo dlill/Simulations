@@ -83,7 +83,7 @@ g2 <- Y(as.eqnvec(structure(obs2, names = modules2)), mymodel, compile = TRUE, m
 ```
 
 
-### Parameters
+### Inner parameters
 Load all parameters and format them for further use.
 ```{r Parameters Cascade}
 
@@ -95,16 +95,52 @@ ic_raw <- structure(ic_raw$V2, names = as.character(ic_raw$V1))
 vars_x <- attr(x, "parameters")[attr(x, "parameters") %in% names(ic_raw)]
 ic_raw <- ic_raw[vars_x]
 
-pars_opt_0 <- setdiff((g) %>% attr("parameters"),names(c(pars_raw,ic_raw)))
-pars_opt_0 <- structure(rep(0, length(pars_opt_0)), names = pars_opt_0)
+pars_inner_opt_0 <- setdiff(attr(g, "parameters"),names(c(pars_raw,ic_raw)))
+pars_inner_opt_0 <- structure(rep(0, length(pars_inner_opt_0)), 
+                              names = pars_inner_opt_0)
 
-pars_0 <- pars <- c(ic_raw, pars_raw, pars_opt_0)
+pars_inner_0 <- pars_inner <- c(ic_raw, pars_raw, pars_inner_opt_0)
 
 
 # check if all parameters are assigned a value. Both lines should evaluate to the same number.
 # x_pars <- unique(union((g) %>% attr("parameters"),(xs) %>% attr("parameters")))
 # names(pars) %in% x_pars %>% sum()
 # x_pars %in% names(pars) %>% sum()
+```
+
+
+### General log transformation and setting some pars to zero
+It's better to do a logtransformation for all Fitting purposes and work with the log-Parameters.
+The way to implement is this, is
+log_pars %>% p_log %>% p_other %>% p_other_2 %>% ...
+```{r}
+# Logtrafo of all pars
+logtrafo <- structure(paste0("exp( log", names(pars_inner_0), ")"), 
+                             names = names(pars_inner_0))
+# Kill Synthesis and degradation
+syn_deg <- c(outer(c("ksyn", "kdeg"), c("x1","y1","z1"), FUN = paste0), 
+              paste0("kdeg", c("x","y", "z"), "2"))
+syn_deg <- structure(rep(0, length(syn_deg)), names = syn_deg)
+logtrafo[names(syn_deg)] <- syn_deg
+# Kill xz-feedback
+xz_fb <- c("Cy2z1", "a_3", "k111", "k112", "k12")
+xz_fb <- structure(rep(0, length(xz_fb)), names = xz_fb)
+logtrafo[names(xz_fb)] <- xz_fb
+
+
+
+p_log <- P(trafo = logtrafo,
+           compile = TRUE,
+           modelname = "p_log")
+           
+
+pars_0 <- pars <- structure(log(pars_inner_0+.Machine$double.eps), names = paste0("log", names(pars_inner_0))) 
+
+pars_opt_0 <- pars_opt <- structure(log(pars_inner_opt_0+.Machine$double.eps), names = paste0("log", names(pars_inner_opt_0)))
+
+pars_opt_0 <- pars_opt <- pars_opt_0[c("loga_1", "loga_2")]
+# pars_0
+# p_log(pars_0, deriv = F)
 ```
 
 
@@ -117,73 +153,43 @@ Just to show the code...
 Set up the perturbations
 ```{r  which pars are perturbed  Cascade, echo=FALSE}
 # Which pars shall be perturbed?
-pars_perturbed_0 <- pars_perturbed <- c("x1" = 0.8, "y1" = 0.8, "z1" = 0.8)
+pars_perturbed_0 <- pars_perturbed <- c("logx1" = log(0.8), "logy1" = log(0.8), "logz1" = log(0.8))
 ```
 
+
 ```{r define perturbation conditions Cascade, echo=FALSE}
-p_pert <- p_pert_fun(pars_perturbed = pars_perturbed,
-                     pars = pars_0)
+p_pert <- p_pert_fun(pars_perturbed = pars_perturbed, pars = pars_0)
+# (p_log*p_pert)(pars)
 ```
 
 ### Perturbation data generation and elements to keep
 ```{r Generate perturbation data, echo=FALSE}
-perturbation_prediction_0 <-  (xs*p_pert)(times = c(0,Inf), pars = pars_0, deriv = F)
+perturbation_prediction_0 <-  (xs*p_log*p_pert)(times = c(0,Inf), pars = pars_0, deriv = F)
 r_kept_0 <- r_kept_fun(obs_fun = g0)
 
 ```
 
+----------------------------------------------------------------------------------------------------------------------------------
+CONTINUE IMPLEMENTING THE P_LOG further down.
+----------------------------------------------------------------------------------------------------------------------------------
 
-
-
+```{r}
+obj_alpha(pars_opt = pars_opt_0+39)
+```
 
 
 
 ### Fitting
 Just to show the code...
 ```{r Fit Cascade, eval=FALSE}
-myfits <- mstrust(obj_alpha, center =  pars_opt_0+0.5, studyname = "Fits", cores = 3, fits = 3, sd = 0.3)
+myfits <- mstrust(obj_alpha, center =  pars_opt_0+36, studyname = "Fits", cores = 3, fits = 3, sd = 1)
 myfits %>% as.parframe() %>% plotValues()
-best_fit <- myfits %>% as.parframe()
-best_fit <- best_fit[abs(best_fit$a_1) < 1 & abs(best_fit$a_2) < 1, ] %>% as.parvec()
+best_fit <- myfits %>% as.parframe() %>% as.parvec()
 ```
 
 
 ## Find good parameter values by fitting parameters to chosen datapoints.
-```{r Parameter trafo for parameter finding}
-# Parameter trafo to exclude synthesis and degradation and to set the gains to 1.
-
-# 1. Do a logtrafo of all parameters. 
-  # The logtrafos of the pars to be replaced will be omitted in the next steps
-myp <- structure(paste0("exp(log", names(pars_0),")"), names = names(pars_0))
-
-# 2. Set the parameters of syn&deg and pars_opt to zero
-nosyndeg <- c(outer(c("ksyn", "kdeg"), c("x1","y1","z1"), FUN = paste0), 
-              paste0("kdeg", c("x","y", "z"), "2"),
-              c("a_1","a_2"))
-nosyndeg <- structure(rep(0, length(nosyndeg)), names = nosyndeg)
-
-# 3. Set the gains to 1 and the kinetic constants k9 and k10 to 100
-gains <- c("gainuf" = 1, "gainlf" = 1,  k9 = 100, k10 = 100)
-
-# 4. Incorporate these changes
-myp[names(nosyndeg)] <- nosyndeg
-myp[names(gains)] <- gains
-
-# 5. Create the parameter trafo function
-p_nosyndeg <- P(myp, condition = "one")
-
-# 6. Create a vector of pouter. This means: apply the logtrafo to all pars except the fix ones.
-  # This is not the most elegant way, since now there is a mixture of log-transformed and not log-transformed parameters, but I want the syn&deg-parameters to be exactly zero
-  # Also, I add +1e-8 to the original parameters to avoid infinities when pars are originally zero.
-pars_wosyndeg <- pars_0[ ! names(pars_0) %in% c(names(nosyndeg), names(gains)) ]
-pouter_0 <- c(structure(log(pars_wosyndeg+1e-8), names= paste0("log", names(pars_wosyndeg))),
-              nosyndeg,
-              gains)
-# 7. Test the parameter trafo function
-# p_nosyndeg(pouter_0)
-
-
-
+```{r Data generation for steady state fitting}
 # Data generation
 newsteadystate <- function(x2,cxy,y2,cyz,z2,cxz, xT=100,yT=100,zT=100) {
   newss <- c(
@@ -198,17 +204,17 @@ newsteadystate <- function(x2,cxy,y2,cyz,z2,cxz, xT=100,yT=100,zT=100) {
   return(newss)
 }
 
-
 data_fun <- function(x2,cxy,y2,cyz,z2,cxz, xT=100,yT=100,zT=100) {
   data.frame(name = rep(mymodel$states, 5),
-                   time = rep(c(0.001,1000,2000,3000,4000), each = length(mymodel$states)),
-                   value = c(c(100,0,0,100,0,0,100,0,0),  #initial values
-                             rep(newsteadystate(x2,cxy,y2,cyz,z2,cxz, xT,yT,zT),4) #final values
-                   ),
-                   sigma = rep(c(0.01,0.1,0.001,0.0001,0.00001), each = length(mymodel$states)),
-                   condition = "one", 
-                   
-                   stringsAsFactors = F) %>% as.datalist()
+             time = rep(c(0.001,1000,2000,3000,4000), 
+                        each = length(mymodel$states)),
+             value = c(c(100,0,0,100,0,0,100,0,0),  #initial values
+                       rep(newsteadystate(x2,cxy,y2,cyz,z2,cxz, xT,yT,zT),4) #final values
+             ),
+             sigma = rep(c(0.01,0.1,0.001,0.0001,0.00001), 
+                         each = length(mymodel$states)),
+             condition = "C1",
+             stringsAsFactors = F) %>% as.datalist()
 }
 
 
@@ -217,33 +223,67 @@ data_fun <- function(x2,cxy,y2,cyz,z2,cxz, xT=100,yT=100,zT=100) {
 Define the wanted steady states and fit the model to them in order to find pars.
 ```{r Fit model to generated data to find pars, eval=FALSE}
 data <- data_fun(50,10,40,10,60,0)
-obj <- normL2(data,(x*p_nosyndeg))
-myfit <- mstrust(obj, pouter_0, cores = 3, fits = 3, studyname = "FindPars", resultPath = ".Findpars")
-# pars <- myfit$argument %>% p_nosyndeg() %>% extract2(1) 
-pars <- myfit %>% as.parframe() %>% as.parvec() %>% p_nosyndeg() %>% extract2(1)  
 
-plot((x)(seq(0,1000,length.out = 50), pars))
+p_log_fitting <- P(trafo = logtrafo,
+                   condition = "C1",
+                   compile = TRUE,
+                   modelname = "p_log")
+
+obj <- normL2(data,(x*p_log_fitting))
+set.seed(1)
+myfit <- mstrust(obj, pars_0, cores = 3, fits = 3, studyname = "FindPars", resultPath = ".Findpars")
+# pars <- myfit$argument %>% p_nosyndeg() %>% extract2(1) 
+pars <- myfit %>% as.parframe() %>% as.parvec()   
+
+plot((x * p_log)(seq(0,1000,length.out = 50), pars))
 
 ```
 
+# Benchmarking
+```{r}
+perturbation_prediction_0 <-  (xs*p_log*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
+r_kept_0 <- r_kept_fun(pars)
 
 
 
+obj_alpha_no_derivs(pars_opt = pars_opt_0 +36)
+obj_alpha(pars_opt = pars_opt_0 + 36)
+```
+# compare results of fits
+```{r}
+
+fits1 <- mstrust(obj_alpha, center =  pars_opt_0 + 36, samplefun = "runif", studyname = "Fits", cores = 4, fits = 8, max = 10, mypars = pars)
+fits2 <- mclapply(1:8, function(i) optim(pars_opt_0+rnorm(2,36),obj_alpha_no_derivs, mypars = pars),mc.cores = 4)
+fits3 <- mclapply(1:8, function(i) optim(pars_opt_0+rnorm(2,36),obj_alpha_no_derivs, mypars = pars, method = "BFGS"),mc.cores = 4)
+fits5 <- mclapply(1:8, function(i) optim(pars_opt_0+rnorm(2,36),obj_alpha_no_derivs, mypars = pars, method = "L-BFGS-B"),mc.cores = 4)
+
+```
+
+```{r}
+fits1 %>% as.parframe()
+fits2 %>% sapply("[[", 1) 
+fits3 %>% sapply("[[", 1) 
+fits5 %>% sapply("[[", 1) 
+
+fits1 %>% as.parframe()
+fits2 %>% sapply("[[", 2) 
+fits3 %>% sapply("[[", 2) 
+fits5 %>% sapply("[[", 2) 
+```
 
 
-
-# run benchmark to compare runtimes
+## runtimes
 ```{r, eval=FALSE}
 
-optim1 <- rbenchmark::benchmark({mstrust(obj_alpha, center =  pars_opt_0+0.5, studyname = "Fits", cores = 1, fits = 1, sd = 0.3, mypars = pars)}, replications = 10)
+optim1 <- rbenchmark::benchmark({mstrust(obj_alpha, center =  pars_opt_0+36, studyname = "Fits", cores = 1, fits = 1, mypars = pars)}, replications = 10)
 
 optim2 <- rbenchmark::benchmark({
-  optim(pars_opt_0+runif(3,0,10),
-        obj_alpha2, mypars = pars)}, replications = 10)
+  optim(pars_opt_0+rnorm(2,36),
+        obj_alpha_no_derivs, mypars = pars)}, replications = 10)
 
 optim3 <- rbenchmark::benchmark({
-  optim(pars_opt_0+runif(3,0,10),
-        obj_alpha2, method = "BFGS", mypars = pars)}, replications = 10)
+  optim(pars_opt_0+rnorm(2,36),
+        obj_alpha_no_derivs, method = "BFGS", mypars = pars)}, replications = 10)
 
 
 # optim4 <- rbenchmark::benchmark({
@@ -253,28 +293,17 @@ optim3 <- rbenchmark::benchmark({
 # optim4 <- 188
 
 optim5 <- rbenchmark::benchmark({
-  optim(pars_opt_0+runif(3,0,10),
-        obj_alpha2, method = "L-BFGS-B", mypars = pars)}, replications = 10)
+  optim(pars_opt_0+rnorm(2,36),
+        obj_alpha_no_derivs, method = "L-BFGS-B", mypars = pars)}, replications = 10)
 
-```
 
-compare results of fits
-```{r}
-
-fits1 <- mstrust(obj_alpha, center =  pars_opt_0, samplefun = "runif", studyname = "Fits", cores = 4, fits = 8, max = 10, mypars = pars)
-fits2 <- mclapply(1:8, function(i) optim(pars_opt_0+runif(3,0,10),obj_alpha2, mypars = pars),mc.cores = 4)
-fits3 <- mclapply(1:8, function(i) optim(pars_opt_0+runif(3,0,10),obj_alpha2, mypars = pars, method = "BFGS"),mc.cores = 4)
-fits5 <- mclapply(1:8, function(i) optim(pars_opt_0+runif(3,0,10),obj_alpha2, mypars = pars, method = "L-BFGS-B"),mc.cores = 4)
-
+obj_alpha_no_derivs(pars_opt = pars_opt_0 + 31)
 ```
 
 
-```{r}
-fits1 %>% as.parframe()
-fits2 %>% lapply("[[", 2) %>% do.call(c,.) %>% sort()
-fits3 %>% lapply("[[", 3) %>% do.call(c,.) %>% sort()
-fits5 %>% lapply("[[", 3) %>% do.call(c,.) %>% sort()
-```
+
+
+
 
 
 ## Explore the effect of the alpha when choosing elements to keep
