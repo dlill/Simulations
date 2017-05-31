@@ -311,7 +311,7 @@ R_fun(perturbation_prediction = perturbation_prediction, pars = pars) %>% local_
 
 ```
 
-
+Calculate the dose-response plot
 ```{r}
 r_opt_dose_response <- function(which_par,
                                 dosages,
@@ -449,13 +449,27 @@ r_opt_dose_response <- function(which_par,
 }
 ```
 
+
+
 ```{r}
+pars <- find_pars(steady_states = c(30,2,30,2,30,0))
+plot((x * p_log_fitting)(seq(0,1000,length.out = 50), pars, deriv = F))
+```
+
+```{r}
+
+
 dr <- r_opt_dose_response("loggainuf", seq(-2,2,by = 0.1), pars = pars, alpha_scan_range = seq(-6,5, by = 0.2))
 ```
 
 ```{r}
+alpha_scan_range = seq(-6,5, by = 0.2)
+```
+
+
+```{r}
 dr %>% 
-  filter(alpha %in% c(-5,-1,1,3)) %>%
+  filter(alpha < -5.8 |  (alpha >1.6 & alpha <2.3)) %>%
   gather(key = "matrix", value  = "value", r_alpha, r_kept, r_opt) %>% 
   ggplot(mapping = aes(x = dose, y = value, color = r_element)) +
   geom_line() +
@@ -470,7 +484,7 @@ dr %>%
 
 ```{r}
 dr %>% 
-  filter(dose %in% seq(-2,2,0.4)[4:8]) %>%
+  filter(dose > (-1), dose < 1) %>%
   gather(key = "matrix", value  = "value", r_alpha, r_kept, r_opt) %>% 
   ggplot(mapping = aes(x = alpha, y = value, color = r_element)) +
   geom_line() +
