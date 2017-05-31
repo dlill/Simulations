@@ -311,7 +311,7 @@ R_fun(perturbation_prediction = perturbation_prediction, pars = pars) %>% local_
 
 ```
 
-Function to Calculate the dose-response plot
+Function to Calculate the dose-response local response matrices
 ```{r}
 r_opt_dose_response <- function(which_par,
                                 dosages,
@@ -359,77 +359,57 @@ r_opt_dose_response <- function(which_par,
       # print(myr)
       return(r_kept_fun2(r_0,myr))
     }) %>%
-      add(seq(0,0.05,length.out = 9)) %>%  # könnte man evtl auch mit "jitter" lösen
       t %>%
       structure(. , dimnames = list(NULL, r_names_0)) %>%
       cbind(alpha = alpha_scan_range, .) %>%
       as.data.frame(stringsAsFactors =  F) %>%
-      tidyr::gather_(key = "r_element", value = "r_kept", gather_cols = r_names_0)
+      tidyr::gather_(key = "r_element", value = "r_kept", gather_cols = r_names_0) %>% 
+      group_by(r_element) %>% 
+      summarise(r_kept = any(r_kept > 0.5)) %>% 
+      mutate(r_kept = add(r_kept, seq(0,0.05,length.out = 9)) )
+    
+      r_kept <- r_kept_df  %>%  # könnte man evtl auch mit "jitter" lösen
+        extract2(2) %>% 
+        is_greater_than(0.5) %>% 
+        matrix(ncol = 3) %>%
+        t()
     
     
-    # determine the alpha values at which a sign flip occured.
-    flipped <- r_kept_df %>%
-      tidyr::spread(r_element, r_kept) %>%
-      select(-alpha) %>%
-      apply(2, diff) %>%
-      rbind(0,.) %>%
-      apply(1, function(i) as.logical(i) %>% any)
+    
     
     # when no sign flip occurs between two alphas, one can be sure that the alpha_opt, that is found will be found again.
     # No fitting is necessary in this case. Initialize an object (booh) to intermediately store the r_opt to be able to access it within the loop over the alphas
-    r_opt_prev <- r_0
-    best_fits <- list()
-    fits <- list()
     
-    r_opt_df <- sapply(seq_along(alpha_scan_range), function(i) {
-      
-      if(flipped[i]) { # if a sign flip occured in any of the matrix elements, optimize
-        
-        r_kept <- r_kept_df %>%
-          dplyr::filter(alpha == alpha_scan_range[i] ) %>%
-          extract2("r_kept") %>%
-          is_greater_than(0.5) %>%
-          matrix(nrow = length(modules0))
-        
-        obj <<- obj_alpha
-        
-        myfits <- mstrust(obj,
-                          center =  pars_opt_0-pars_opt_0 - 2, # center around log(pars_opt_0) = 0
-                          studyname = "pars_controlled",
-                          resultPath = ".pars_controlled/",
-                          cores = 3,
-                          fits = 9,
-                          sd = 1,
-                          perturbation_prediction = perturbation_prediction,
-                          r_kept = r_kept,
-                          obs_fun = obs_fun,
-                          p_fun = p_fun,
-                          mypars = pars,
-                          iterlim = 50)
-        
-        mybest_fit <- myfits %>% as.parframe %>% as.parvec
-        
-        # "prev" = previous wrt alpha, see further up, where r_opt_prev is constructed
-        r_opt <- r_alpha_fun(pars_opt = mybest_fit,
-                             perturbation_prediction = perturbation_prediction,
-                             obs_fun = obs_fun,
-                             p_fun = p_fun,
-                             pars = pars)
-        
-        # save r_opt and bestfit outside of this environment
-        r_opt_prev <<- r_opt
-        fits[[i]] <<- myfits %>% as.parframe
-        best_fits[[i]] <<- mybest_fit
-        
-      } else {
-        r_opt <- r_opt_prev
-        # print(i)
-      }
-      return(r_opt)
-    }) %>%
+    
+    
+    obj <<- obj_alpha
+    
+    myfits <- mstrust(obj,
+                      center =  pars_opt_0-pars_opt_0 - 2, # center around log(pars_opt_0) = -2
+                      studyname = "pars_controlled",
+                      resultPath = ".pars_controlled/",
+                      cores = 3,
+                      fits = 9,
+                      sd = 1,
+                      perturbation_prediction = perturbation_prediction,
+                      r_kept = r_kept,
+                      obs_fun = obs_fun,
+                      p_fun = p_fun,
+                      mypars = pars,
+                      iterlim = 50)
+    
+    mybest_fit <- myfits %>% as.parframe %>% as.parvec
+    
+    # "prev" = previous wrt alpha, see further up, where r_opt_prev is constructed
+    r_opt_df <- r_alpha_fun(pars_opt = mybest_fit,
+                         perturbation_prediction = perturbation_prediction,
+                         obs_fun = obs_fun,
+                         p_fun = p_fun,
+                         pars = pars) %>% 
+      matrix(ncol = 1) %>% 
       t %>%
       structure(. , dimnames = list(NULL, r_names_0)) %>%
-      cbind(alpha = alpha_scan_range, .) %>%
+      # cbind(alpha = alpha_scan_range, .) %>%
       as.data.frame(stringsAsFactors =  F) %>%
       tidyr::gather_(key = "r_element", value = "r_opt", gather_cols = r_names_0)
     
@@ -449,6 +429,9 @@ r_opt_dose_response <- function(which_par,
 }
 ```
 
+```{r}
+
+```
 
 
 ```{r}
@@ -456,17 +439,17 @@ steady_states <- c(10,5,10,5,10,0)
 pars <- find_pars(steady_states = steady_states)
 plot((x * p_log_fitting)(seq(0,1000,length.out = 50), pars, deriv = F))
 which_par <- "loggainlf"
-dr <- r_opt_dose_response(which_par = which_par, seq(-2,2,by = 0.1), pars = pars, alpha_scan_range = c(-6, seq(-3,4, by = 0.5)))
+dr <- r_opt_dose_response(which_par = which_par, seq(-2,2,by = 0.1), pars = pars, alpha_scan_range = seq(-15,15, by = 0.1))
 
-saveRDS(dr, file = paste0("Output/drplots/", which_par, paste(steady_states, collapse = "."), ".rds"))
-saveRDS(pars, file = paste0("Output/drplots/", which_par, paste(steady_states, collapse = "."), "_pars.rds"))
+saveRDS(dr, file = paste0("Output/drplots_all_alphas_at_once/", which_par, paste(steady_states, collapse = "."), ".rds"))
+saveRDS(pars, file = paste0("Output/drplots_all_alphas_at_once/", which_par, paste(steady_states, collapse = "."), "_pars.rds"))
 ```
 
 
 ```{r}
 steady_states <- c(30,20,30,20,30,0)
 which_par <- "loggainlf"
-dr <- readRDS(paste0("Output/drplots/", which_par, paste(steady_states, collapse = "."), ".rds"))
+dr <- readRDS(paste0("Output/drplots_all_alphas_at_once/", which_par, paste(steady_states, collapse = "."), ".rds"))
 ```
 
 
@@ -476,7 +459,7 @@ dr <- readRDS(paste0("Output/drplots/", which_par, paste(steady_states, collapse
 "bla"
 dr %>% 
   filter(! (r_element %in% paste0("r", c(11,22,33)))) %>% 
-  filter(alpha < -5.8 |  near(alpha,0) | near(alpha,1)  ) %>%
+  filter( near(alpha,-9) | near(alpha,0) | near(alpha, 9)) %>%
   # filter(dose < 4) %>%
   gather(key = "matrix", value  = "value", r_alpha, r_kept, r_opt) %>% 
   ggplot(mapping = aes(x = dose, y = value, color = r_element)) +
@@ -489,8 +472,8 @@ dr %>%
   # geom_vline(xintercept = 0.1, linetype = 4) + 
   facet_grid(matrix~alpha, scales = "free")
   # plotly::ggplotly()
-ggsave(paste0("Output/drplots/", which_par, paste(steady_states, collapse = "."),"facet~alpha", ".pdf"), device = "pdf")
-ggsave(paste0("Output/drplots/", which_par, paste(steady_states, collapse = "."),"facet~alpha", ".png"), device = "png")
+ggsave(paste0("Output/drplots_all_alphas_at_once/", which_par, paste(steady_states, collapse = "."),"facet~alpha", ".pdf"), device = "pdf")
+ggsave(paste0("Output/drplots_all_alphas_at_once/", which_par, paste(steady_states, collapse = "."),"facet~alpha", ".png"), device = "png")
 ```
 
 ```{r}
@@ -498,7 +481,7 @@ seq(-3,6,by = 0.5)
 
 dr %>%   
   filter(! (r_element %in% paste0("r", c(11,22,33)))) %>% 
-  filter(alpha < 2) %>% 
+  filter(alpha < 10) %>% 
   filter(near(dose,-2) |near(dose,0) | near(dose, 0.6) | near(dose, 1)) %>%
   gather(key = "matrix", value  = "value", r_alpha, r_kept, r_opt) %>% 
   ggplot(mapping = aes(x = alpha, y = value, color = r_element)) +
@@ -510,8 +493,8 @@ dr %>%
   geom_abline(slope = 0,intercept = 0, linetype = 3)+
   facet_grid(matrix~dose, scales = "free")
   # plotly::ggplotly()
-ggsave(paste0("Output/drplots/", which_par, paste(steady_states, collapse = "."),"facet~dose", ".pdf"), device = "pdf")
-ggsave(paste0("Output/drplots/", which_par, paste(steady_states, collapse = "."),"facet~dose", ".png"), device = "png")
+ggsave(paste0("Output/drplots_all_alphas_at_once/", which_par, paste(steady_states, collapse = "."),"facet~dose", ".pdf"), device = "pdf")
+ggsave(paste0("Output/drplots_all_alphas_at_once/", which_par, paste(steady_states, collapse = "."),"facet~dose", ".png"), device = "png")
 ```
 
 
