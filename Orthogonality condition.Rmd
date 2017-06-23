@@ -213,7 +213,7 @@ mydoseresponse %>%
   mutate(log10_ratio_complex_m2 = log10(Cm2e1/m2P)) %>% 
   # mutate(deriv = log10(deriv)) %>%
   mutate(x = m2P, y = e2P, dfxdetot = deriv) %>% 
-  gather(key = key,value =value , dfxdetot, r21,r12, x,y,m2,Cm2e1, log10_ratio_complex_m2) %>% 
+  gather(key = key,value =value , dfxdetot, r21,r12, Cm2e1, log10_ratio_complex_m2) %>% 
   ggplot(aes(x = log10(par_dose), y = value)) +
   geom_line() +
   facet_wrap(~key, scales = "free")
@@ -221,7 +221,7 @@ mydoseresponse %>%
 
 ```{r}
 mydoseresponse %>% 
-  mutate(log_ratio_complex_m2 = log(Cm2e1/m2P)) %>% 
+  mutate(log10_ratio_complex_m2 = log10(Cm2e1/m2P)) %>% 
   # mutate(deriv = log10(deriv)) %>%
   # gather(key = key,value =value , deriv, r11,r21,r12,r22) %>% 
   ggplot(aes(x = deriv, y = r12)) +
