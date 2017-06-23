@@ -17,12 +17,12 @@ pathout <- paste0(path, "Output/")
 ```
 
 ```{r Names for Fit storage of different initial Conditions}
-fit_name <- "Prabakaran"
+fit_name <- "Orthogonality_condition"
 ```
 
 ```{r Call render without overwriting any previous documents, echo=FALSE, eval=FALSE, message=FALSE, include=FALSE}
 
-rmarkdown::render("Prabakaran.Rmd", output_file = paste0(pathout, format(Sys.time(), "%Y%m%d-%H%M")
+rmarkdown::render("Orthogonality condition.Rmd", output_file = paste0(pathout, format(Sys.time(), "%Y%m%d-%H%M")
 , " - " , fit_name, ".pdf"))
 beepr::beep("~/Promotion/Software/rimshot.mp3")
 ```
@@ -141,12 +141,17 @@ myfun(m2P = unname(myss[,"m2P"]),
       etot = unname(pars["e1"]))
 ```
 
+
+# Dose Response function.
+Scan through a parameter (In this case k4) and get the derivative, the steady state concentrations and the local response matrix as a data.frame.
+
 ```{r}
 
-mydoseresponse <- lapply(seq(-1,1, by = .1), function(i) {
+mydoseresponse <- lapply(seq(-2,2, by = .01), function(i) {
   pars <- pars_0
   pars["a_1"] <- 1
-  pars["k4"] <- pars["k4"]*10^i
+  pars["k31"] <- pars["k31"]*10^i
+  pars["k4"] <- pars["k4"]*10^(-i)
   
   myss <- (g*xs)(c(0,Inf), pars, deriv = F)[[1]]
   complexes <- (xs)(c(0,Inf), pars, deriv = F)[[1]]
@@ -174,27 +179,41 @@ mydoseresponse <- lapply(seq(-1,1, by = .1), function(i) {
                     t(r)))
 }) %>% do.call(rbind,.)
 
-mydoseresponse
+# mydoseresponse
 ```
 
-## Plotting
+# Plotting of the dose responses
+
+## Parameter values
 ```{r}
-# library(tidyverse)
-# theme_set(theme_dMod())
+pars_0[c("k31", "k32", "k4")]
+```
+
+
+## Plot against the ratio of cme/m2
+As expected, r12 is smaller the smaller the ratio.
+But on the other hand, the derivative dfxdetot is not.
+```{r}
+library(tidyverse)
+theme_set(theme_dMod())
 mydoseresponse %>% 
-  mutate(log_ratio_complex_m2 = log(Cm2e1/m2)) %>% 
-  gather(key = key,value =value , deriv, r11,r21,r12,r22) %>% 
-  ggplot(aes(x = log_ratio_complex_m2, y = value)) +
+  mutate(log10_ratio_complex_m2 = log10(Cm2e1/m2)) %>% 
+  filter(log10_ratio_complex_m2 < 0, log10_ratio_complex_m2 >-2) %>% 
+  mutate(x = m2P, y = e2P, dfxdetot = deriv) %>% 
+  gather(key = key,value =value , dfxdetot, r21,r12,Cm2e1) %>%  
+  ggplot(aes(x = log10_ratio_complex_m2, y = log10(value))) +
   geom_line() +
   facet_wrap(~key, scales = "free")
+
 ```
 
+## Plot against fold changes of the parameter scanned through
 ```{r}
 mydoseresponse %>% 
-  mutate(log_ratio_complex_m2 = log(Cm2e1/m2P)) %>% 
+  mutate(log10_ratio_complex_m2 = log10(Cm2e1/m2P)) %>% 
   # mutate(deriv = log10(deriv)) %>%
-  mutate(x = m2P, y = e2P) %>% 
-  gather(key = key,value =value , deriv, r11,r21,r12,r22, x,y,m2,Cm2e1, log_ratio_complex_m2) %>% 
+  mutate(x = m2P, y = e2P, dfxdetot = deriv) %>% 
+  gather(key = key,value =value , dfxdetot, r21,r12, x,y,m2,Cm2e1, log10_ratio_complex_m2) %>% 
   ggplot(aes(x = log10(par_dose), y = value)) +
   geom_line() +
   facet_wrap(~key, scales = "free")
@@ -205,7 +224,7 @@ mydoseresponse %>%
   mutate(log_ratio_complex_m2 = log(Cm2e1/m2P)) %>% 
   # mutate(deriv = log10(deriv)) %>%
   # gather(key = key,value =value , deriv, r11,r21,r12,r22) %>% 
-  ggplot(aes(x = log10(r12), y = deriv)) +
+  ggplot(aes(x = deriv, y = r12)) +
   geom_path() 
   # facet_wrap(~key, scales = "free")
 ```
