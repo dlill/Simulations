@@ -215,9 +215,9 @@ Especially, they are:
 pars_perturbed_list <- list(c(m1 = 1.1, e1 = 1.1),
                                   c("m1" = 1.1, "p1" = 1.1),
                                   c("m1" = 1.1, "k4" = 1.1),
-                                  c("m1" = 1.1, "k5" = 1.1),
-                                  c("m1" = 1.1, "k61" = 1.1),
-                                  c("m1" = 1.1, "k62" = 1.1) )
+                                  c("m1" = 1.1, "k5on" = 1.1),
+                                  c("m1" = 1.1, "k5off" = 1.1),
+                                  c("m1" = 1.1, "k6" = 1.1) )
                                        
 obs_fun_list <- lapply(seq_along(pars_perturbed_list), function(i) g0)
 

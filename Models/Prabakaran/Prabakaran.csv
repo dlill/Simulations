@@ -1,9 +1,9 @@
 "Description","Rate","m1","m2","Cm2e1","e1","e2","Ce2p1","p1"
 "act_m","k1*m1",-1,1,,,,,
 "deact_m","k2*m2",1,-1,,,,,
-"m2_e1_to_comp","(k31 * e1 *m2)",,-1,1,-1,,,
-"comp_to_m2_e1","(k32 *Cm2e1)",,1,-1,1,,,
+"m2_e1_to_comp","(k3on * e1 *m2)",,-1,1,-1,,,
+"comp_to_m2_e1","(k3off *Cm2e1)",,1,-1,1,,,
 "e2_formation","(k4 * Cm2e1)",,1,-1,,1,,
-"e2_p1_to_comp","((k61 *p1 *e2))",,,,,-1,1,-1
-"compt_to_e2_p1","(k62 * Ce2p1)",,,,,1,-1,1
-"e2_deact","k5*Ce2p1",,,,1,,-1,1
+"e2_p1_to_comp","((k5on *p1 *e2))",,,,,-1,1,-1
+"compt_to_e2_p1","(k5off * Ce2p1)",,,,,1,-1,1
+"e2_deact","k6*Ce2p1",,,,1,,-1,1

@@ -40,7 +40,7 @@ mymodel     <- as.eqnlist(read.csv(paste0(modelpath, modelname, ".csv")))
 # mymodel
 
 
-# modelname   <- "Prabakaranwithxy"
+modelname   <- "Prabakaranwithxy"
 # myodemodel <- odemodel(mymodel, modelname = modelname, deriv = T)
 # save(myodemodel, file = paste0(modelpath, "odemodel",modelname, ".RData"))
 load(paste0(modelpath, "odemodel",modelname, ".RData"))
@@ -50,7 +50,7 @@ load(paste0(modelpath, "odemodel",modelname, ".RData"))
 x <- Xs(odemodel = myodemodel)
 # Prediction function for steady states
 xs <- Xs_steady(myodemodel)
-print(mymodel)
+print(mymodel, pander = T)
 ```
 
 ### Modules, their observables and the observation function. {#modulesandobsfuns}
@@ -227,5 +227,34 @@ mydoseresponse %>%
   ggplot(aes(x = deriv, y = r12)) +
   geom_path() 
   # facet_wrap(~key, scales = "free")
+```
+
+```{r}
+steady <- xs(c(0,Inf), pars_0)
+
+jacobian_names <- outer(paste0(names(steady[[1]][1,-1]), "."), names(steady[[1]][1,-1]), paste0) %>% as.character()
+
+jacobian_equations <- myodemodel$func %>% 
+  attr("eq") %>% 
+  jacobianSymb(variables = myodemodel$func %>% attr("var"))
+
+JI <- as.numeric(jacobian_equations)
+JI[is.na(JI)] <- 1
+JI <- JI %>% matrix(ncol = sqrt(length(JI))) %>% set_colnames(myodemodel$func %>% attr("var")) %>% set_rownames(myodemodel$func %>% attr("var"))
+"bla"
+JI
+JIR <- (JI & t(JI)) %>% as.numeric() %>% matrix(ncol = sqrt(length(JI))) %>% set_colnames(myodemodel$func %>% attr("var"))
+JIR
+```
+
+```{r}
+library("ggnet")
+net <- network::network.adjacency(JIR)
+ggnet2(net)
+
+net = rgraph(10, mode = "graph", tprob = 0.5)
+net = network(net, directed = FALSE)
+ggnet2(net)
+
 ```
 
