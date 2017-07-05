@@ -1,0 +1,296 @@
+---
+title: "Modularization algorithm"
+author: "Daniel Lill"
+date: "20 June 2017"
+output:
+  pdf_document:
+    keep_tex: yes
+---
+
+# Load libraries and define some useful paths
+
+```{r Libraries, results='hide', echo=FALSE, message=FALSE}
+rm(list = ls())
+library(plotly)
+library(tidyverse)
+library(MRAr)
+library(scales)
+library(xtable)
+path <- paste0(getwd(), "/")
+pathout <- paste0(path, "Output/")
+```
+
+```{r Names for Fit storage of different initial conditions}
+fit_name <- "Modularization algorithm"
+```
+
+
+```{r Call render without overwriting any previous documents, echo=FALSE, eval=FALSE, message=FALSE}
+mytime <- format(Sys.time(), "%Y%m%d-%H%M")
+
+rmarkdown::render("Cascade.Rmd", output_file = paste0(pathout, fit_name, mytime, ".pdf"))
+beepr::beep("~/Promotion/Software/rimshot.mp3")
+```
+
+# Model setup
+
+### Prediction function
+odemodel writes a C-function, which is executed in x and xs.
+x is a regular prediction function while xs only finds and returns the steady states.
+If the odemodel has been calculated already, it can be loaded with "load".
+```{r Prediction function Cascade, results='asis'}
+modelpath <- paste0(path, "Models/Cascade/")
+modelname   <- "Cascade"
+mymodel     <- as.eqnlist(read.csv(paste0(modelpath, modelname, ".csv")))
+
+# myodemodel <- odemodel(mymodel, modelname = paste0(modelname), deriv = T)
+# save(myodemodel, file = paste0(modelpath, "odemodel",modelname, ".RData"))
+load(paste0(modelpath, "odemodel",modelname, ".RData"))
+
+# Prediction function
+x <- Xs(odemodel = myodemodel)
+# Prediction function for steady states
+xs <- Xs_steady(myodemodel) # When computing steady states, set deriv = F
+print(mymodel)
+# mymodel %>% as.eqnvec() %>% print(pander = T)
+```
+
+### Modules, their observables and the observation function
+Observation function which depends also on the optimization parameters. With their help, the complexes can smoothly be switched on in the observation.
+```{r Observation function with Cx2z2 in x-module}
+modules0 <- c("x2","y2", "z2")
+
+obs0 <- c("x2+a_1*Cx2y1+a_3*Cx2z2",
+          "y2+a_2*Cy2z1",
+          "z2")
+ g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), mymodel, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
+```
+
+```{r Observation function with Cx2z2 in z-module}}
+modules1 <- c("x2","y2", "z2")
+
+obs1 <- c("x2+a_1*Cx2y1",
+         "y2+a_2*Cy2z1",
+         "z2+a_3*Cx2z2")
+g <- g1 <- Y(as.eqnvec(structure(obs1, names = modules1)), mymodel, compile = TRUE, modelname = "obsfn1", attach.input = FALSE)
+```
+
+```{r Observation function with Cx2z2 in both modules}}
+modules2 <- c("x2","y2", "z2")
+
+obs2<- c("x2+a_1*Cx2y1+a_3*Cx2z2",
+         "y2+a_2*Cy2z1",
+         "z2+a_3*Cx2z2")
+g2 <- Y(as.eqnvec(structure(obs2, names = modules2)), mymodel, compile = TRUE, modelname = "obsfn2", attach.input = FALSE)
+```
+
+
+### Inner parameters
+Load all parameters and format them for further use.
+```{r Parameters Cascade}
+
+pars_raw <- read.csv(paste0(modelpath, "pars.csv"), header = FALSE)  # dynamical parameters
+pars_raw <- structure(pars_raw$V2, names = as.character(pars_raw$V1))
+ic_raw <- read.csv(paste0(modelpath, "IC.csv"), header = F)          # initial conditions
+ic_raw <- structure(ic_raw$V2, names = as.character(ic_raw$V1))
+# sort ics like they appear in x, so it can be used in stode()
+vars_x <- attr(x, "parameters")[attr(x, "parameters") %in% names(ic_raw)]
+ic_raw <- ic_raw[vars_x]
+
+pars_inner_opt_0 <- setdiff(attr(g, "parameters"),names(c(pars_raw,ic_raw)))
+pars_inner_opt_0 <- structure(rep(0, length(pars_inner_opt_0)), 
+                              names = pars_inner_opt_0)
+
+pars_inner_0 <- pars_inner <- c(ic_raw, pars_raw, pars_inner_opt_0)
+
+
+# check if all parameters are assigned a value. Both lines should evaluate to the same number.
+# x_pars <- unique(union((g) %>% attr("parameters"),(xs) %>% attr("parameters")))
+# names(pars) %in% x_pars %>% sum()
+# x_pars %in% names(pars) %>% sum()
+```
+
+
+### General log transformation and setting some pars to zero
+It's better to do a logtransformation for all Fitting purposes and work with the log-Parameters.
+The way to implement is this, is
+log_pars %>% p_log %>% p_other %>% p_other_2 %>% ...
+```{r}
+# Logtrafo of all pars
+logtrafo <- structure(paste0("exp( log", names(pars_inner_0), ")"), 
+                             names = names(pars_inner_0))
+# Kill Synthesis and degradation
+syn_deg <- c(outer(c("ksyn", "kdeg"), c("x1","y1","z1"), FUN = paste0), 
+              paste0("kdeg", c("x","y", "z"), "2"))
+syn_deg <- structure(rep(0, length(syn_deg)), names = syn_deg)
+logtrafo[names(syn_deg)] <- syn_deg
+
+# Kill xz-feedback
+xz_fb <- c("Cy2z1", "a_3", "k111", "k112", "k12")
+xz_fb <- structure(rep(0, length(xz_fb)), names = xz_fb)
+logtrafo[names(xz_fb)] <- xz_fb
+
+# initial values
+logtrafo[c("x2", "Cx2y1", "y2", "Cy2z1", "z2", "Cx2z2")] <- 0
+
+
+
+p_log <- P(trafo = logtrafo,
+           compile = TRUE,
+           modelname = "p_log")
+           
+
+pars_0 <- pars <- structure(log(pars_inner_0+.Machine$double.eps), names = paste0("log", names(pars_inner_0))) 
+
+pars_opt_0 <- pars_opt <- structure(log(pars_inner_opt_0+.Machine$double.eps), names = paste0("log", names(pars_inner_opt_0)))
+
+pars_opt_0 <- pars_opt <- pars_opt_0[c("loga_1", "loga_2")] - pars_opt_0[c("loga_1", "loga_2")] - 9
+# pars_0
+# p_log(pars_0, deriv = F)
+```
+
+
+
+
+# Goal
+The goal is to implement and to test Saez-Rodriguez algorithm for modularization of the model
+
+Why?
+
+Actually, I don't know yet, it's just interesting, I guess?
+
+## Functions and Objects I need
+* Jacobian
+* Stoichiometric Matrix
+* (Elasticities)
+* g^c to replace the Stoichiometric matrix
+* g^p to replace the Jacobian
+* make_indicator_matrix(matrix) binary matrix which indicates if a matrix element is zero or not
+* compute_Q
+* optimize Q with the leading eigenvector method
+
+
+# Jacobian
+```{r}
+steady <- (xs)(c(0, Inf), pars_inner_0, deriv = F)
+
+time_end <- steady[[1]][1]
+
+pars_inner <- pars_inner_0
+# logsteady <- log(steady[[1]][1,-1]) %>% structure(names = paste0("log", names(steady[[1]][1,-1])))
+# pars[names(logsteady)] <- logsteady
+pars_inner[names(steady[[1]][1,-1])] <- steady[[1]][1,-1]
+
+
+jacobian_names <- outer(paste0(names(steady[[1]][1,-1]), "."), names(steady[[1]][1,-1]), paste0) %>% as.character()
+
+jacobian_equations <- myodemodel$func %>% 
+  attr("eq") %>% 
+  jacobianSymb(variables = myodemodel$func %>% attr("var"))
+
+JI <- as.numeric(jacobian_equations)
+JI[is.na(JI)] <- 1
+JI <- JI %>% matrix(ncol = sqrt(length(JI))) %>% set_colnames(myodemodel$func %>% attr("var")) %>% set_rownames(myodemodel$func %>% attr("var"))
+"bla"
+JI
+JIR <- (JI & t(JI)) %>% as.numeric() %>% matrix(ncol = sqrt(length(JI))) %>% set_colnames(myodemodel$func %>% attr("var"))
+JIR
+```
+
+
+# Compute Q
+```{r}
+
+
+#' Aij adjacency matrix
+#' s vector s
+compute_Q <- function(s, Aij) {
+  
+  kj <- ki <- apply(Aij, 1, sum)
+  B <- Aij - outer(ki,kj)/(2*sum(Aij))
+    
+  Q <- 1/(4*sum(Aij)) * t(s) %*% B %*% s
+
+  return(Q)
+}
+
+compute_B <- function(Aij) {
+  
+  kj <- ki <- apply(Aij, 1, sum)
+  B <- Aij - outer(ki,kj)/(2*sum(Aij))
+    
+  return(B)
+}
+```
+
+```{r}
+# 0th iteration
+Aij <- JIR
+compute_Q(rep(1,nrow(Aij)), Aij)
+
+# 1st iteration
+Aij <- JIR
+
+leading_s <- compute_B(Aij) %>% 
+  svd %>% 
+  extract2("v") %>% 
+  extract(,1) %>% 
+  is_greater_than(0)
+
+leading_s
+compute_Q(leading_s %>% apply_expression({x[!x]<- -1; x}), Aij)
+
+# 2nd iteration
+Aij <- Aij[leading_s, leading_s]
+compute_Q(rep(1,nrow(Aij)), Aij)
+
+leading_s <- compute_B(Aij) %>% 
+  svd %>% 
+  extract2("v") %>% 
+  extract(,1) %>% 
+  is_greater_than(0)
+
+leading_s
+compute_Q(leading_s %>% apply_expression({x[!x]<- -1; x}), Aij)
+
+# 3rd iteration
+Aij <- Aij[leading_s, leading_s]
+compute_Q(rep(1,nrow(Aij)), Aij)
+
+leading_s <- compute_B(Aij) %>% 
+  svd %>% 
+  extract2("v") %>% 
+  extract(,1) %>% 
+  is_greater_than(0)
+
+leading_s
+compute_Q(leading_s %>% apply_expression({x[!x]<- -1; x}), Aij)
+
+```
+
+The structural version of this algorithm fucks up, because the model has a weird structure.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
