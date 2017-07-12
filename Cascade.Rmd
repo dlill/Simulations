@@ -360,7 +360,7 @@ which_par <- "loggainlf"
 dr <- r_opt_dose_response(which_par = "loggainlf", 
                           dosages = c(-3,-1,0,1,10), 
                           pars = pars,
-                          alpha_scan_range = c(-16,0,16, seq(-3,4,by = 2)))
+                          alpha_scan_range = sort(c(-16,0,16, seq(-3,7,by = 2))))
 
 saveRDS(dr, file = paste0("Output/drplots_all_alphas_at_once/", 
                           "r_kept varying ", 
@@ -417,6 +417,44 @@ dr %>%
 # ggsave(paste0("Output/drplots_all_alphas_at_once/", "r_kept varying ", which_par, paste(steady_states, collapse = "."),"facet~dose", " zoomed .pdf"), device = "pdf")
 # ggsave(paste0("Output/drplots_all_alphas_at_once/", "r_kept varying ", which_par, paste(steady_states, collapse = "."),"facet~dose", " zoomed.png"), device = "png")
 ```
+
+# Plot the matrices a = 0, a = 1, a = inf, a = a_opt
+```{r}
+modulnames <- c("X*", "Y*", "Z*")
+
+dr %>%   
+  filter(alpha == 0) %>%
+  filter(dose ==0) %>% 
+  select(r_opt) %>% 
+  extract2(1) %>% 
+  matrix(ncol = 3) %>% 
+  round(digits = 2) %>% 
+  signif(2) %>% 
+  set_colnames(modulnames) %>% 
+  set_rownames(modulnames) %>% 
+  xtable %>% 
+  print()
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
