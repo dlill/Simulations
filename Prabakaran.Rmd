@@ -9,6 +9,7 @@ output:
 # Load libraries and define some useful paths
 
 ```{r Libraries, results='hide', echo=FALSE, message=FALSE}
+rm(list = ls())
 library(MRAr)
 library(scales)
 library(xtable)
@@ -56,10 +57,10 @@ Observation function which depends also on the optimization parameters. With the
 
 This is the naive modularization used in the Prabakaran Paper, desregarding, which species are actually the communicating ones. This is fair enough, because usually the "active" forms are consedered to be the communicating species in a non-parametric network reconstruction.
 ```{r Naive observation function}
-modules <- modules0 <- c("m2","e2tot")
+modules <- modules0 <- c("X","Y")
 
 obs <- obs0 <- c("m2+a_1*Cm2e1",
-                 "e2+Ce2p1")
+                 "e2+Ce2p1+a_2*Cm2e1")
 g <- g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), mymodel, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
 ```
 
@@ -94,17 +95,47 @@ ic_raw <- structure(ic_raw$V2, names = as.character(ic_raw$V1))
 vars_x <- attr(x, "parameters")[attr(x, "parameters") %in% names(ic_raw)]
 ic_raw <- ic_raw[vars_x]
 
-pars_opt_0 <- setdiff((g) %>% attr("parameters"),names(c(pars_raw,ic_raw)))
-pars_opt_0 <- structure(rep(0, length(pars_opt_0)), names = pars_opt_0)
+pars_inner_opt_0 <- setdiff(attr(g, "parameters"),names(c(pars_raw,ic_raw)))
+pars_inner_opt_0 <- structure(rep(0, length(pars_inner_opt_0)), 
+                              names = pars_inner_opt_0)
 
-pars_0 <- pars <- c(ic_raw, pars_raw, pars_opt_0)
+pars_inner_0 <- pars_inner <- c(ic_raw, pars_raw, pars_inner_opt_0)
 
 
-# check if all parameters are assigned a value. Both lines should evaluate to the same number.
-x_pars <- unique(union((g) %>% attr("parameters"),(xs) %>% attr("parameters")))
-names(pars) %in% x_pars %>% sum()
-x_pars %in% names(pars) %>% sum()
+# # check if all parameters are assigned a value. Both lines should evaluate to the same number.
+# x_pars <- unique(union((g) %>% attr("parameters"),(xs) %>% attr("parameters")))
+# names(pars) %in% x_pars %>% sum()
+# x_pars %in% names(pars) %>% sum()
 
+```
+
+### General log transformation and setting some pars to zero
+It's better to do a logtransformation for all Fitting purposes and work with the log-Parameters.
+The way to implement is this, is
+log_pars %>% p_log %>% p_other %>% p_other_2 %>% ...
+```{r}
+# Logtrafo of all pars
+logtrafo <- structure(paste0("exp( log", names(pars_inner_0), ")"), 
+                             names = names(pars_inner_0))
+
+# initial values
+logtrafo[c("m2", "Cm2e1", "e2", "Ce2p1")] <- 0
+
+
+
+p_log <- P(trafo = logtrafo,
+           compile = TRUE,
+           modelname = "p_log")
+           
+
+pars_opt_0 <- pars_opt <- structure(rep(-16, length(pars_inner_opt_0)), names = paste0("log", names(pars_inner_opt_0)))
+
+pars_0 <- pars <- structure(log(pars_inner_0+.Machine$double.eps), names = paste0("log", names(pars_inner_0))) 
+pars_0[names(pars_opt_0)] <- -16
+
+
+# pars_0
+# p_log(pars_0, deriv = F)
 ```
 
 
@@ -115,7 +146,7 @@ Now the module can be simulated to generate perturbation data.
 Set up the perturbations
 ```{r which pars are perturbed}
 # Which pars shall be perturbed?
-pars_perturbed_0 <- pars_perturbed <- c(m1 = 1.1, e1 = 1.1)
+pars_perturbed_0 <- pars_perturbed <- c(logm1 = 1.1, loge1 = 1.1)
 
 p_pert <- p_pert_fun(pars_perturbed = pars_perturbed_0,
                      pars = pars_0)
@@ -124,36 +155,34 @@ p_pert <- p_pert_fun(pars_perturbed = pars_perturbed_0,
 ### Perturbation data generation and elements to keep.
 Just to show the code...
 ```{r Generate perturbation data}
-perturbation_prediction_0 <-  (xs*p_pert)(times = c(0,Inf), pars = pars_0, deriv = F)
-r_kept_0 <- r_kept_fun(obs_fun = g0, p_fun = p_pert)
+perturbation_prediction_0 <-  (xs*p_log*p_pert)(times = c(0,Inf), pars = pars_0, deriv = F)
+r_kept_0 <- r_kept_fun(pars_opt = pars_opt_0, obs_fun = g, p_fun = (p_log*p_pert), alpha = 16)
 
 ```
-
-```{r}
-rbenchmark::benchmark({r_alpha_fun(pars_opt = pars_opt_0+runif(length(pars_opt_0),0,10))}, replications = 100)[,-1]
-```
-
 
 
 ### Fitting.
 Just to show the code...
 ```{r Fit, eval=FALSE}
-bla <- sapply(seq(-3,3, by = 0.5), function(k1) {
+logk1 <- 0
+bla <- sapply(seq(-5,1, by = 1), function(logk1) {
   pars <- pars_0
-  pars["k1"] <- pars["k1"]*exp(k1)
-perturbation_prediction <-  (xs*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
+  pars["logk1"] <- logk1 %>% set_names("logk1")
+perturbation_prediction <-  (xs*p_log*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
 
-myfits <- mstrust(obj_alpha, 
-                  center =  pars_opt_0+0.5, 
+
+
+myfits <- mstrust(obj_alpha,
+                  center =  pars_opt_0[1]-pars_opt_0[1], 
                   studyname = "Fits", 
                   cores = 3, 
                   fits = 3, 
-                  sd = 0.3, 
-                  obs_fun = g0,
-                  p_fun = p_pert,
-                  perturbation_prediction = perturbation_prediction)
+                  sd = 3, 
+                  perturbation_prediction = perturbation_prediction,
+                  fixed = pars_opt_0[2]
+                  )
 # myfits %>% as.parframe() %>% plotValues()
-c(myfits %>% as.parframe() %>% as.parvec(), pars["k1"]/(pars["k2"]+pars["k1"]))
+c(myfits %>% as.parframe() %>% as.parvec(), log(exp(pars["logk1"])/(exp(pars["logk2"])+exp(pars["logk1"]))))
 })
 bla
 # pars["k1"] <- 
@@ -177,7 +206,7 @@ bla
 r_alpha <-function(pars_opt = pars_opt_0,
                       perturbation_prediction = perturbation_prediction_0,
                       obs_fun = g0,
-                      p_fun = p_pert,
+                      p_fun = (p_log*p_pert),
                       pars = pars_0) {
   # set pars_opt to zero
   sapply(pars_opt, function(i) {
