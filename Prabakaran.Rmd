@@ -125,7 +125,7 @@ p_pert <- p_pert_fun(pars_perturbed = pars_perturbed_0,
 Just to show the code...
 ```{r Generate perturbation data}
 perturbation_prediction_0 <-  (xs*p_pert)(times = c(0,Inf), pars = pars_0, deriv = F)
-r_kept_0 <- r_kept_fun(obs_fun = g0)
+r_kept_0 <- r_kept_fun(obs_fun = g0, p_fun = p_pert)
 
 ```
 
@@ -138,15 +138,37 @@ rbenchmark::benchmark({r_alpha_fun(pars_opt = pars_opt_0+runif(length(pars_opt_0
 ### Fitting.
 Just to show the code...
 ```{r Fit, eval=FALSE}
+bla <- sapply(seq(-3,3, by = 0.5), function(k1) {
+  pars <- pars_0
+  pars["k1"] <- pars["k1"]*exp(k1)
+perturbation_prediction <-  (xs*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
+
 myfits <- mstrust(obj_alpha, 
                   center =  pars_opt_0+0.5, 
                   studyname = "Fits", 
                   cores = 3, 
                   fits = 3, 
                   sd = 0.3, 
-                  obs_fun = g0)
-myfits %>% as.parframe() %>% plotValues()
-myfits %>% as.parframe() %>% as.parvec()
+                  obs_fun = g0,
+                  p_fun = p_pert,
+                  perturbation_prediction = perturbation_prediction)
+# myfits %>% as.parframe() %>% plotValues()
+c(myfits %>% as.parframe() %>% as.parvec(), pars["k1"]/(pars["k2"]+pars["k1"]))
+})
+bla
+# pars["k1"] <- 
+# perturbation_prediction_0 <-  (xs*p_pert)(times = c(0,Inf), pars = pars_0, deriv = F)
+# 
+# myfits <- mstrust(obj_alpha, 
+#                   center =  pars_opt_0+0.5, 
+#                   studyname = "Fits", 
+#                   cores = 3, 
+#                   fits = 3, 
+#                   sd = 0.3, 
+#                   obs_fun = g0,
+#                   p_fun = p_pert)
+# # myfits %>% as.parframe() %>% plotValues()
+# myfits %>% as.parframe() %>% as.parvec()
 # best_fit <- best_fit[best_fit$a_1>0, ] %>% as.parvec()
 ```
 
