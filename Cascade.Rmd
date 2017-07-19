@@ -156,40 +156,73 @@ Now the module can be simulated to generate perturbation data.
 ### Parameter trafos for convenient perturbation data
 Just to show the code...
 Set up the perturbations
+```{r}
+exp(pars) %>% signif(2)
+```
+
+
 ```{r  which pars are perturbed  Cascade, echo=FALSE}
+pars <- c(100,0,0,100,0,0,100,0,0,
+          14.766,0.241,1058.451,5.295,
+          0.003,
+          0.012,0.022,
+          1150.484,
+          50,
+          0.00065,
+          0.005,0.023,
+          550.208,13.304,100,100,
+          10,1,
+          0,0,0,0,0,0,00,0,0,0,0,0,
+          rep(0, length(pars_opt_0))) # large complex
+
+# pars <- c(100,0,0,100,0,0,100,0,0,
+#           66.4,0.454,616,2.44,0.001,0.02,0.395,
+#           510,22.12,0.0002,0.035,0.092,
+#           901,9.6,100,100,1,1,
+#           0,0,0,0,0,0,00,0,0,0,0,0,
+#           rep(0, length(pars_opt_0)))
+
+
+pars <- log(pars+.Machine$double.eps) %>% set_names(names(pars_0))# large complex concentrations
+# p_log(pars)
 # Which pars shall be perturbed?
 pars_perturbed_0 <- pars_perturbed <- c("logx1" = log(0.8), "logy1" = log(0.8), "logz1" = log(0.8))
 
 p_pert <- p_pert_fun(pars_perturbed = pars_perturbed, pars = pars)
 # (p_log*p_pert)(pars)
 
-perturbation_prediction_0 <-  (xs*p_log*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
-r_kept_0 <- r_kept_fun(obs_fun = g0)
+perturbation_prediction <-  (xs*p_log*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
 
-r_0 <- r_alpha_fun(pars_opt = structure(rep(-36, length(pars_opt_0[c(1,2)])), names=names(pars_opt_0[c(1,2)])),
-                   pars=pars)
+perturbation_prediction
+
+r_kept_0 <- r_kept_fun(pars_opt = pars_opt_0,
+                       perturbation_prediction = perturbation_prediction, 
+                       obs_fun = g,
+                       p_fun = (p_log * p_pert), 
+                       pars = pars)
+r_kept_0
+
+r_0 <-   R_fun(pars_opt = pars_opt[c(1,2)],
+               perturbation_prediction = perturbation_prediction,
+               obs_fun = g,
+               p_fun = (p_log*p_pert),
+               pars = pars) %>% local_response_matrix_eq10()
 r_0
 
-(p_log*p_pert)(pars)
-
-pars==pars_0
-
-```
-
-
-
-```{r}
-obj_alpha(pars = pars_opt_0-pars_opt_0)
-```
+r_1<-   R_fun(pars_opt = pars_opt[c(1,2)]-(log(0+.Machine$double.eps)),
+               perturbation_prediction = perturbation_prediction,
+               obs_fun = g,
+               p_fun = (p_log*p_pert),
+               pars = pars) %>% local_response_matrix_eq10()
+r_1
 
 
 
-### Fitting
-Just to show the code...
-```{r Fit Cascade, eval=FALSE}
-myfits <- mstrust(obj_alpha, center =  pars_opt_0-pars_opt_0, studyname = "Fits", cores = 3, fits = 3, sd = 1)
-# myfits %>% as.parframe() %>% plotValues()
+myfits <- mstrust(obj_alpha, center =  (pars_opt_0-pars_opt_0)[c(1,2)], studyname = "Fits", cores = 3, fits = 9, sd = 3, mypars = pars, perturbation_prediction = perturbation_prediction)
+myfits %>% as.parframe() 
 best_fit <- myfits %>% as.parframe() %>% as.parvec()
+
+r_alpha_fun(pars_opt = unclass(best_fit), pars = pars, perturbation_prediction = perturbation_prediction) %>% round(2)
 ```
 
 
