@@ -271,24 +271,24 @@ par_opt_settings <- list(par_opt_names[c(1,2)],
                          par_opt_names[c(4,6)],
                          par_opt_names[c(3,5,4,6)]
                          )
-dr_list <- lapply(seq_along(par_opt_settings), function(i) {
-  # list(
-  r_opt_dose_response(which_par = "loggainuf",
-                      dosages = sort(unique(c(-9:5, seq(-3,3,by = 0.5)))),
-                      pars = pars,
-                      alpha_scan_range = seq(-3,3,by = 0.05),
-                      pars_opt = pars_opt_0[par_opt_settings[[i]]])
-  # )
-})
-
-dr_list2 <- lapply(seq_along(par_opt_settings), function(i) {
-  r_opt_dose_response(which_par = "loggainlf",
-                      dosages = sort(unique(c(-9:5, seq(-3,3,by = 0.5)))),
-                      pars = pars,
-                      alpha_scan_range = seq(-3,3,by = 0.05),
-                      pars_opt = pars_opt_0[par_opt_settings[[i]]])
-})
-save(dr_list, dr_list2, file = "Output/dr_lists.RData")
+# dr_list <- lapply(seq_along(par_opt_settings), function(i) {
+#   # list(
+#   r_opt_dose_response(which_par = "loggainuf",
+#                       dosages = sort(unique(c(-9:5, seq(-3,3,by = 0.5)))),
+#                       pars = pars,
+#                       alpha_scan_range = seq(-3,3,by = 0.05),
+#                       pars_opt = pars_opt_0[par_opt_settings[[i]]])
+#   # )
+# })
+# 
+# dr_list2 <- lapply(seq_along(par_opt_settings), function(i) {
+#   r_opt_dose_response(which_par = "loggainlf",
+#                       dosages = sort(unique(c(-9:5, seq(-3,3,by = 0.5)))),
+#                       pars = pars,
+#                       alpha_scan_range = seq(-3,3,by = 0.05),
+#                       pars_opt = pars_opt_0[par_opt_settings[[i]]])
+# })
+# save(dr_list, dr_list2, file = "Output/dr_lists.RData")
 load("Output/dr_lists.RData")
 
 mydr <- c(dr_list,dr_list2) %>% combine_dr_list()
@@ -300,7 +300,7 @@ myplot <- c(dr_list,dr_list2) %>%
   combine_dr_list() %>%
   filter(! (r_element %in% paste0("r", c(11,22,33)))) %>% 
   # filter(which_par == "loggainlf") %>% 
-  filter(near(dose,log(1))| near(dose,log(exp(1))) ) %>%
+  filter(near(dose,0)| near(dose,log(exp(1))) ) %>%
   # filter(near(dose,1)) %>%
   filter(par_opt_setting == 1) %>% 
   # filter(alpha < 10) %>% 
@@ -325,7 +325,7 @@ mydr %>%
   filter(! (r_element %in% paste0("r", c(11,22,33)))) %>% 
   filter(which_par == "loggainuf") %>% 
   # filter(near(dose,log(10))| near(dose,log(30)) | near(dose,log(50))) %>%
-  filter(near(dose,log(10))) %>%
+  filter(near(dose,2)) %>%
   # filter(par_opt_setting == 1) %>% 
   ggplot(mapping = aes(x = alpha, y = par_opt_value, color = par_opt)) +
   geom_line() +
@@ -398,7 +398,7 @@ myprof %>%
 
 
 # General plotting functions
-Plot as dose-response with alpha as facets
+Plot as alpha-response with doses as facets
 ```{r}
 "bla"
 myplot <- c(dr_list,dr_list2) %>% 
@@ -422,27 +422,35 @@ plotly::ggplotly(myplot)
 # ggsave(paste0("Output/drplots_all_alphas_at_once/", "r_kept varying ", which_par, paste(steady_states, collapse = "."),"facet~alpha", ".png"), device = "png")
 ```
 
-Plot as alpha-response with doses as facets
+Plot as dos-response with alpha as facets
 ```{r}
 myplot <- c(dr_list,dr_list2) %>% 
   combine_dr_list() %>%
   filter(! (r_element %in% paste0("r", c(11,22,33)))) %>% 
-  # filter(which_par == "loggainlf") %>% 
-  # filter(near(dose,log(1))| near(dose,log(exp(1))) ) %>%
-  # filter(near(dose,1)) %>%
+  filter(dose > -3, dose < 2.5) %>%
   filter(par_opt_setting == 1) %>% 
-  filter(alpha %in% 1) %>% 
-  # filter(alpha < 10) %>% 
-  ggplot(mapping = aes(x = dose, y = value, color = r_element)) +
+  filter(alpha %in% 0) %>% 
+  filter(matrix != "r_kept") %>%
+  apply_expression({
+    x$matrix[x$matrix == "r_alpha"] <- "r(a_i = 1)"
+    x
+  }) %>% 
+  ggplot(mapping = aes(x = dose, y = value, color = r_element, linetype = r_element)) +
   geom_line() +
   theme_dMod() +
   scale_color_dMod() +
   # scale_x_continuous(breaks = -9:12) +
-  scale_y_continuous(limits = c(-2,2))+
+  # scale_y_continuous(limits = c(-2,2))+
   geom_abline(slope = 0,intercept = 0, linetype = 3) +
-  facet_grid(matrix~alpha, scales = "free")
+  facet_grid(matrix~., scales = "free")+
+  xlab("log(gu)")
 plotly::ggplotly(myplot)
-# ggsave(paste0("Output/drplots_all_alphas_at_once/", "r_kept varying ", which_par, paste(steady_states, collapse = "."),"facet~dose", " zoomed .pdf"), device = "pdf")
+ggsave(plot = myplot, 
+       filename = paste0("~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/plots/", "gu large sequestration",".png"), 
+       width = 10,
+       height = 10,
+       units = "cm",
+       device = "png")
 # ggsave(paste0("Output/drplots_all_alphas_at_once/", "r_kept varying ", which_par, paste(steady_states, collapse = "."),"facet~dose", " zoomed.png"), device = "png")
 ```
 
