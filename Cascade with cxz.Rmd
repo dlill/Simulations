@@ -1,0 +1,539 @@
+---
+title: "Cascade - x2z2 mass action feedback"
+author: "Daniel Lill"
+output:
+  pdf_document:
+    keep_tex: yes
+---
+
+# Load libraries and define some useful paths
+
+```{r Libraries, results='hide', echo=FALSE, message=FALSE}
+rm(list = ls())
+library(MRAr)
+library(scales)
+library(xtable)
+path <- paste0(getwd(), "/")
+pathout <- paste0(path, "Output/")
+```
+
+```{r Names for Fit storage of different initial conditions}
+fit_name <- "Cascade most general obsfun"
+```
+
+
+```{r Call render without overwriting any previous documents, echo=FALSE, eval=FALSE, message=FALSE}
+mytime <- format(Sys.time(), "%Y%m%d-%H%M")
+
+rmarkdown::render("Cascade.Rmd", output_file = paste0(pathout, fit_name, mytime, ".pdf"))
+beepr::beep("~/Promotion/Software/rimshot.mp3")
+```
+# Cascade
+
+## Setup Model 
+This is the setup of the ODE model.
+
+### Prediction function
+odemodel writes a C-function, which is executed in x and xs.
+x is a regular prediction function while xs only finds and returns the steady states.
+If the odemodel has been calculated already, it can be loaded with "load".
+```{r Prediction function Cascade, results='asis'}
+modelpath <- paste0(path, "Models/Cascade/")
+modelname   <- "Cascade"
+mymodel     <- as.eqnlist(read.csv(paste0(modelpath, modelname, ".csv")))
+
+# myodemodel <- odemodel(mymodel, modelname = paste0(modelname), deriv = T)
+# save(myodemodel, file = paste0(modelpath, "odemodel",modelname, ".RData"))
+load(paste0(modelpath, "odemodel",modelname, ".RData"))
+
+# Prediction function
+x <- Xs(odemodel = myodemodel)
+# Prediction function for steady states
+xs <- Xs_steady(myodemodel) # When computing steady states, set deriv = F
+print(mymodel)
+# mymodel %>% as.eqnvec() %>% print(pander = T)
+# myodemodel[[1]] %>% attr("eq")
+```
+
+
+
+
+
+
+### Modules, their observables and the observation function
+Observation function which depends also on the optimization parameters. With their help, the complexes can smoothly be switched on in the observation.
+
+
+```{r Observation function with Cx2z2 in x-module}
+# modules <- modules0 <- c("x2","y2", "z2")
+# 
+# obs <- obs0 <- c("x2+a_1*Cx2y1",
+#           "y2+a_2*Cy2z1",
+#           "z2+a_3*Cx2z2")
+# g <- g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), mymodel, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
+```
+
+
+```{r Most general observation function}
+modules <- modules0 <- c("X","Y", "Z")
+
+mypars_opt <- paste0("a_", outer(paste0("to", c("x","y","z"), "_C"), c("xy","yz","zx"), paste0)) %>% matrix(ncol=3)
+mypars_opt[c(3,4,8)] <- "0"
+
+mycomplexes <- matrix(c("Cx2y1", "Cy2z1", "Cx2z2"), ncol = 1)
+
+samepars_opt <- paste0("a_", outer(rep("C",3), c("xy","yz","zx"), paste0)) %>% matrix(ncol=3)
+samepars_opt[c(3,4,8)] <- "0"
+
+obs <- obs0 <- paste(c("x2", "y2", "z2"), "+", prodSymb(mypars_opt, mycomplexes), "+", prodSymb(samepars_opt, mycomplexes))
+
+
+g <- g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), mymodel, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
+```
+
+
+### Inner parameters
+Load all parameters and format them for further use.
+```{r Parameters Cascade}
+
+pars_raw <- read.csv(paste0(modelpath, "pars.csv"), header = FALSE)  # dynamical parameters
+pars_raw <- structure(pars_raw$V2, names = as.character(pars_raw$V1))
+ic_raw <- read.csv(paste0(modelpath, "IC.csv"), header = F)          # initial conditions
+ic_raw <- structure(ic_raw$V2, names = as.character(ic_raw$V1))
+# sort ics like they appear in x, so it can be used in stode()
+vars_x <- attr(x, "parameters")[attr(x, "parameters") %in% names(ic_raw)]
+ic_raw <- ic_raw[vars_x]
+
+pars_inner_opt_0 <- setdiff(attr(g, "parameters"),names(c(pars_raw,ic_raw)))
+pars_inner_opt_0 <- structure(rep(0, length(pars_inner_opt_0)), 
+                              names = pars_inner_opt_0)
+
+pars_inner_0 <- pars_inner <- c(ic_raw, pars_raw, pars_inner_opt_0)
+
+
+# check if all parameters are assigned a value. Both lines should evaluate to the same number.
+# x_pars <- unique(union((g) %>% attr("parameters"),(xs) %>% attr("parameters")))
+# names(pars) %in% x_pars %>% sum()
+# x_pars %in% names(pars) %>% sum()
+```
+
+
+### General log transformation and setting some pars to zero
+It's better to do a logtransformation for all Fitting purposes and work with the log-Parameters.
+The way to implement is this, is
+log_pars %>% p_log %>% p_other %>% p_other_2 %>% ...
+```{r}
+# Logtrafo of all pars
+logtrafo <- structure(paste0("exp( log", names(pars_inner_0), ")"), 
+                             names = names(pars_inner_0))
+# Kill Synthesis and degradation
+syn_deg <- c(outer(c("ksyn", "kdeg"), c("x1","y1","z1"), FUN = paste0), 
+              paste0("kdeg", c("x","y", "z"), "2"))
+syn_deg <- structure(rep(0, length(syn_deg)), names = syn_deg)
+logtrafo[names(syn_deg)] <- syn_deg
+
+# Kill xz-feedback
+# xz_fb <- c("Cy2z1", "k111", "k112", "k12")
+# xz_fb <- structure(rep(0, length(xz_fb)), names = xz_fb)
+# logtrafo[names(xz_fb)] <- xz_fb
+
+# initial values
+logtrafo[c("x2", "Cx2y1", "y2", "Cy2z1", "z2", "Cx2z2")] <- 0
+
+
+
+p_log <- P(trafo = logtrafo,
+           # compile = TRUE,
+           modelname = "p_log")
+           
+
+pars_0 <- pars <- structure(log(pars_inner_0+.Machine$double.eps), names = paste0("log", names(pars_inner_0))) 
+
+pars_opt_0 <- pars_opt <- structure(log(pars_inner_opt_0+.Machine$double.eps), names = paste0("log", names(pars_inner_opt_0)))
+
+# pars_0
+# p_log(pars_0, deriv = F)
+```
+
+
+## Show the code
+### Perturb modules
+Now the module can be simulated to generate perturbation data.
+
+### Parameter trafos for convenient perturbation data
+Just to show the code...
+Set up the perturbations
+```{r}
+# Which pars shall be perturbed?
+pars_perturbed_0 <- pars_perturbed <- c("logx1" = log(0.8), "logy1" = log(0.8), "logz1" = log(0.8))
+
+p_pert <- p_pert_fun(pars_perturbed = pars_perturbed, pars = pars)
+```
+
+
+```{r  which pars are perturbed  Cascade, echo=FALSE}
+# pars <- c(100,0,0,100,0,0,100,0,0,
+#           14.766,0.241,1058.451,5.295,
+#           0.003,
+#           0.012,0.022,
+#           1150.484,
+#           50,
+#           0.00065,
+#           0.005,0.023,
+#           550.208,13.304,50,50,
+#           1,1,
+#           0,0,0,0,0,0,00,0,0,0,0,0,
+#           rep(0, length(pars_opt_0))) # large complex
+print("")
+pars <- c(100,0,0,100,0,0,100,0,0,
+          100,1.5,100,1,     0.002,0.4,0.05,
+          100,5,            0.005,0.4,0.05,
+          100,1,
+          100,100,1,1,
+          0,0,0,0,0,0,0,0,0,
+          0.002,0.4,0.05,
+          rep(0, length(pars_opt_0))) %>% set_names(names(pars_inner_0))
+
+
+pars <- c(100,0,0,100,0,0,100,0,0,
+          100,1.5,100,1,     0.002,0.4,0.05,
+          100,5,            0.005,0.4,0.05,
+          100,1,
+          100,100,1,1,
+          0,0,0,0,0,0,0,0,0,
+          0.002,0.4,0.05,
+          rep(0, length(pars_opt_0))) %>% set_names(names(pars_inner_0))
+pars
+
+pars_0 <- pars <- log(pars+.Machine$double.eps) %>% set_names(names(pars_0))# large complex concentrations
+# p_log(pars)
+
+# (p_log*p_pert)(pars)
+
+perturbation_prediction_0 <- perturbation_prediction <-  (xs*p_log*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
+
+# mytime <- 2000
+# (x*p_log*p_pert)(times = seq(0,2000, length.out = 50), pars = pars) %>% 
+#   getDerivs() %>% 
+#   extract2(1) %>%
+#   apply_expression({x[,c(str_detect(colnames(x), "(Cx2y1\\.)|time"))]}) %>% prdlist() %>% set_names("blas") %>% 
+#   plotPrediction()
+
+
+
+perturbation_prediction %>% lapply(round,2)
+
+r_kept_0 <- r_kept_fun(pars_opt = pars_opt_0,
+                       perturbation_prediction = perturbation_prediction, 
+                       obs_fun = g,
+                       p_fun = (p_log * p_pert), 
+                       pars = pars,
+                       alpha = -log(0+.Machine$double.eps))
+r_kept_0
+
+r_0 <-   R_fun(pars_opt = pars_opt[c("loga_tox_Cxy", "loga_toy_Cyz")],
+               perturbation_prediction = perturbation_prediction,
+               obs_fun = g,
+               p_fun = (p_log*p_pert),
+               pars = pars) %>% local_response_matrix_eq10()
+r_0%>% round(2)
+
+r_1 <-   R_fun(pars_opt = pars_opt[c("loga_tox_Cxy", "loga_toy_Cyz")]-(log(0+.Machine$double.eps)),
+               perturbation_prediction = perturbation_prediction,
+               obs_fun = g,
+               p_fun = (p_log*p_pert),
+               pars = pars) %>% local_response_matrix_eq10()
+r_1 %>% round(2)
+
+par_opt_names <- c("loga_tox_Cxy", "loga_toy_Cyz", "loga_toz_Czx")
+# matrix(c(F,F,F,T,F,F,F,T,F), ncol = 3)
+myfits <- mstrust(obj_alpha, center =  structure(rep(0, length(pars_opt_0[par_opt_names])), names = names(pars_opt_0[par_opt_names])), studyname = "Fits", cores = 3, fits = 3, sd = 1, mypars = pars, perturbation_prediction = perturbation_prediction_0, r_kept = r_kept_0)
+# myfits %>% as.parframe() 
+best_fit <- myfits %>% as.parframe() %>% as.parvec()
+
+r_alpha_fun(pars_opt = unclass(best_fit), pars = pars, perturbation_prediction = perturbation_prediction) %>% round(2)
+```
+
+
+
+
+# Prepare pars for SI
+
+```{r}
+SI_pars <- c(100,0,0,100,0,0,100,0,0,
+          14,0.24,1000,5,0.006,0.012,0.022,
+          1150,22,0.001,0.005,0.023,
+          550,13.3,100,100,1,1,0,0,0,0,0,0,00,0,0,0,0,0,rep(0, length(pars_opt_0))) # large complex concentrations
+
+SI_pars2 <- c(100,0,0,100,0,0,100,0,0,
+          66,0.45,620,2.4,0.001,0.02,0.4,
+          500,22,0.0002,0.035,0.092,
+          900,10,100,100,1,1,0,0,0,0,0,0,00,0,0,0,0,0,rep(0, length(pars_opt_0))) # lower
+names(SI_pars2) <- names(SI_pars) <- names(pars_inner)
+
+# plot((x)(seq(0,1000,length.out = 50), SI_pars2, deriv = F))
+
+
+printSI_pars <- c(SI_pars[-c(2:3,5:6,8:9,28:36,40:48)],
+               SI_pars2[-c(2:3,5:6,8:9,28:36,40:48)])
+printnames <- names(SI_pars[-c(2:3,5:6,8:9,28:36,40:48)])
+
+# printSI_pars %>% 
+#   matrix(ncol=2) %>% 
+#   set_rownames(printnames) %>% 
+#   xtable %>% print() 
+
+# P
+```
+
+
+# Dose response plots
+```{r}
+par_opt_names <- pars_opt_0 %>% names %>% sort
+
+par_opt_settings <- list(par_opt_names[c(1,2,3)],
+                         par_opt_names[c(4,7,9)],
+                         par_opt_names[c(5,6,8)],
+                         par_opt_names[c(5:9)]
+                         )
+dr_list <- lapply(seq_along(par_opt_settings), function(i) {
+  # list(
+  r_opt_dose_response(which_par = "logk111",
+                      dosages = sort(unique(seq(-8,-3,by = 0.1))),
+                      pars = pars,
+                      alpha_scan_range = c(-9,seq(-3,3,by = 0.1)),
+                      pars_opt = pars_opt_0[par_opt_settings[[i]]])
+  # )
+})
+
+dr_list2 <- lapply(seq_along(par_opt_settings), function(i) {
+r_opt_dose_response(which_par = "logk112",
+                      dosages = sort(unique(seq(-3,0,by = 0.05))),
+                      pars = pars,
+                      alpha_scan_range = c(-9,seq(-3,3,by = 0.1)),
+                      pars_opt = pars_opt_0[par_opt_settings[[i]]])
+})
+
+dr_list3 <- lapply(seq_along(par_opt_settings), function(i) {
+r_opt_dose_response(which_par = "logk12",
+                      dosages = sort(unique(seq(-5,-1,by = 0.05))),
+                      pars = pars,
+                      alpha_scan_range = c(-9,seq(-3,3,by = 0.1)),
+                      pars_opt = pars_opt_0[par_opt_settings[[i]]])
+})
+
+save(dr_list, dr_list2, dr_list3, file = "Output/20170725 dr_lists cxz.RData")
+load("Output/20170725 dr_lists cxz.RData")
+
+mydr <- c(dr_list,dr_list2) %>% combine_dr_list()
+```
+
+# Plot as alpha-response with doses as facets
+```{r}
+myplot <- c(dr_list,dr_list2) %>% 
+  combine_dr_list() %>%
+  filter(! (r_element %in% paste0("r", c(11,22,33)))) %>% 
+  # filter(which_par == "loggainlf") %>% 
+  filter(near(dose,0)| near(dose,log(exp(1))) ) %>%
+  # filter(near(dose,1)) %>%
+  filter(par_opt_setting == 1) %>% 
+  # filter(alpha < 10) %>% 
+  ggplot(mapping = aes(x = alpha, y = value, color = r_element)) +
+  geom_line() +
+  xkcd::theme_xkcd() +
+  scale_color_dMod() +
+  # scale_x_continuous(breaks = -9:12) +
+  scale_y_continuous(limits = c(-2,2))+
+  geom_abline(slope = 0,intercept = 0, linetype = 3) +
+  facet_grid(matrix~dose, scales = "free")
+plotly::ggplotly(myplot)
+
+# ggsave(paste0("Output/drplots_all_alphas_at_once/", "r_kept varying ", which_par, paste(steady_states, collapse = "."),"facet~dose", " zoomed .pdf"), device = "pdf")
+# ggsave(paste0("Output/drplots_all_alphas_at_once/", "r_kept varying ", which_par, paste(steady_states, collapse = "."),"facet~dose", " zoomed.png"), device = "png")
+```
+
+# Plot the pars_opt as a function of alpha faceted with respect to alpha-combinations (different obsfuns)
+```{r}
+mydr %>%   
+  # combine_dr_list %>%
+  filter(! (r_element %in% paste0("r", c(11,22,33)))) %>% 
+  filter(which_par == "loggainuf") %>% 
+  # filter(near(dose,log(10))| near(dose,log(30)) | near(dose,log(50))) %>%
+  filter(near(dose,2)) %>%
+  # filter(par_opt_setting == 1) %>% 
+  ggplot(mapping = aes(x = alpha, y = par_opt_value, color = par_opt)) +
+  geom_line() +
+  xkcd::theme_xkcd() +
+  scale_color_dMod() +
+  # scale_x_continuous(breaks = -9:12) +
+  # scale_y_continuous(limits = c(-2,5))+
+  geom_hline(yintercept = 0, linetype = 3) +
+  facet_grid(~par_opt_setting, scales = "free")
+plotly::ggplotly()
+
+
+```
+
+# Profiles
+```{r, eval=FALSE}
+mywhich_matrix <- "r_alpha"
+myalpha <- 1
+mypar_opt_setting <- 3
+mywhich_par <- "loggainuf"
+mydose <- 0
+
+get_matrix_from_dr <- function(dr, mywhich_matrix, myalpha, mywhich_par, mydose, mypar_opt_setting) {
+  mydr %>% 
+    filter(near(alpha, myalpha)) %>% 
+    filter(par_opt_setting==mypar_opt_setting) %>% 
+    filter(which_par==mywhich_par, dose == mydose) %>% 
+    filter(matrix == mywhich_matrix) %>% 
+    select(value, r_element) %>%
+    unique() %>%
+    select(value) %>% 
+    unlist %>% 
+    matrix(ncol=3)
+}
+myr_opt <- get_matrix_from_dr(mydr, "r_opt", 1, "loggainuf", 0, 3)
+myr_kept <- get_matrix_from_dr(mydr, "r_kept", 1, "loggainuf", 0, 3) %>% is_greater_than(.5)
+myr_opt[myr_kept] %>% raise_to_power(2) %>% sum
+
+
+
+best_fit <- mydr %>% 
+  filter(alpha == myalpha, par_opt_setting == mypar_opt_setting) %>% 
+  filter(dose == mydose) %>% 
+  select(par_opt, par_opt_value) %>% 
+  unique() %>% 
+  spread(par_opt, par_opt_value) %>% 
+  unlist()
+
+perturbation_prediction_0 <-  (xs*p_log*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
+r_kept_0 <- r_kept_fun(pars_opt = pars_opt_0[par_opt_settings[[3]]], alpha = 37)
+r_alpha_fun(pars_opt = best_fit, pars = pars, obs_fun = g, p_fun = (p_log * p_pert))
+
+obj_alpha(best_fit, mypars = pars)
+
+myprof <- profile(obj_alpha, best_fit, names(best_fit), limits = c(-2,2), mypars = pars, r_kept = r_kept_0)
+plotProfile(myprof, maxvalue = 0.1)
+plotPaths(myprof, whichPar = "loga_toy_Cxy")
+
+
+# myprof %>% 
+#   filter(whichPar == "loga_toy_Cxy")
+
+
+myprof %>% 
+  filter(whichPar == "loga_toy_Cxy", near(loga_toy_Cxy, -1.5549544, tol = 1e-6)) %>% 
+  select(-(1:5)) %>% 
+  unlist() %>% 
+  r_alpha_fun(pars= pars)
+```
+
+
+# General plotting functions
+Plot as dos-response with alpha as facets
+```{r}
+load("Output/2017-07-24 dr_lists large complex concentrations.RData")
+myplot <- c(dr_list,dr_list2) %>% 
+  combine_dr_list() %>%
+  filter(! (r_element %in% paste0("r", c(11,22,33)))) %>% 
+  filter(dose >= -2, dose <= 2.5) %>%
+  filter(par_opt_setting == 1) %>% 
+  filter(alpha %in% 0) %>% 
+  filter(matrix != "r_kept") %>%
+  apply_expression({
+    x$matrix[x$matrix == "r_alpha"] <- "r(a_i = 1)"
+    x$matrix[x$matrix == "r_opt"] <- "r(a = a_opt)"
+    x$matrix <- x$matrix %>% factor(levels = c("r(a_i = 1)", "r(a = a_opt)"))
+    x
+  }) %>% 
+  mutate(Element = r_element) %>% 
+  ggplot(mapping = aes(x = dose, y = value, color = Element, linetype = Element)) +
+  geom_line() +
+  theme_dMod() +
+  scale_color_dMod() +
+  geom_abline(slope = 0,intercept = 0, linetype = 3) +
+  facet_grid(matrix~., scales = "free")+
+  xlab("log(gl)")
+plotly::ggplotly(myplot)
+ggsave(plot = myplot,
+       filename = paste0("~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/plots/", "gu large sequestration",".png"),
+       width = 10,
+       height = 10,
+       units = "cm",
+       device = "png")
+# ggsave(paste0("Output/drplots_all_alphas_at_once/", "r_kept varying ", which_par, paste(steady_states, collapse = "."),"facet~dose", " zoomed.png"), device = "png")
+```
+
+# Print the matrices a = 0, a = 1, a = inf, a = a_opt
+```{r}
+modulnames <- c("X*", "Y*", "Z*")
+verbatim <- function(chr) chr 
+
+#a_0
+r0 <- mydr %>% 
+  filter(par_opt_setting ==3) %>% 
+  filter(alpha == -3) %>%
+  filter(dose ==1) %>% 
+  filter(matrix == "r_alpha") %>%
+  select(r_element, value) %>% unique() %>% extract2(2) %>% 
+  matrix(ncol = 3) %>% round(digits = 2) %>% signif(2) %>% 
+  data.frame(c("", "$\\vec{a} = \\vec{a}_0$",""),modulnames,.) %>% 
+  set_colnames(c("", "", modulnames)) %>% 
+  set_rownames(NULL)
+#a_1
+r1 <- mydr %>% 
+  filter(par_opt_setting ==3) %>% 
+  filter(alpha == 1) %>%
+  filter(dose ==1) %>% 
+  filter(matrix == "r_alpha") %>%
+  select(r_element, value) %>% unique() %>% extract2(2) %>% 
+  matrix(ncol = 3) %>% round(digits = 2) %>% signif(2) %>% 
+  data.frame(c("\\hline \n", "$\\vec{a} = \\vec{a}_1$",""),modulnames,.) %>% 
+  set_colnames(c("", "", modulnames)) %>% 
+  set_rownames(NULL) 
+# a_opt
+ropt <- mydr %>% 
+  filter(par_opt_setting ==3) %>% 
+  filter(alpha == 0) %>%
+  filter(dose ==1) %>% 
+  filter(matrix == "r_opt") %>%
+  select(r_element, value) %>% unique() %>% extract2(2) %>% 
+  matrix(ncol = 3) %>% round(digits = 2) %>% signif(2) %>% 
+  data.frame(c("\\hline \n", "$\\vec{a} = \\vec{a}_{opt}$",""),modulnames,.) %>% 
+  set_colnames(c("", "", modulnames)) %>% 
+  set_rownames(NULL) 
+
+rbind(r0,r1,ropt) %>% 
+  xtable(align=c("r|c|c|rrr|")) %>% 
+  print(sanitize.text.function = verbatim,
+        include.rownames = F)
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
