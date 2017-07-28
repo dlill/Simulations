@@ -168,10 +168,10 @@ Set up the perturbations
 pars_perturbed_0 <- pars_perturbed <- c("logx1" = log(0.8), "logy1" = log(0.8), "logz1" = log(0.8))
 
 p_pert <- p_pert_fun(pars_perturbed = pars_perturbed, pars = pars)
-```
-
-
-```{r  which pars are perturbed  Cascade, echo=FALSE}
+# ```
+# 
+# 
+# ```{r  which pars are perturbed  Cascade, echo=FALSE}
 # pars <- c(100,0,0,100,0,0,100,0,0,
 #           14.766,0.241,1058.451,5.295,
 #           0.003,
@@ -212,7 +212,7 @@ perturbation_prediction_0 <- perturbation_prediction <-  (xs*p_log*p_pert)(times
 
 
 
-perturbation_prediction %>% lapply(round,2)
+# perturbation_prediction %>% lapply(round,2)
 
 r_kept_0 <- r_kept_fun(pars_opt = pars_opt_0,
                        perturbation_prediction = perturbation_prediction, 
@@ -343,7 +343,7 @@ plotly::ggplotly(myplot)
 ```
 
 # Plot the pars_opt as a function of alpha faceted with respect to alpha-combinations (different obsfuns)
-```{r}
+```{r, eval=FALSE}
 mydr %>%   
   # combine_dr_list %>%
   filter(! (r_element %in% paste0("r", c(11,22,33)))) %>% 
@@ -424,13 +424,13 @@ myprof %>%
 # General plotting functions
 Plot as dos-response with alpha as facets
 ```{r}
-# load("Output/20170725 dr_lists cxz.RData")
+load("Output/20170725 dr_lists cxz.RData")
 myplot <- c(dr_list,dr_list2, dr_list3) %>% 
   combine_dr_list() %>%
   filter(! (r_element %in% paste0("r", c(11,22,33)))) %>% 
   filter(dose >= -16, dose <= 2.5) %>%
-  filter(par_opt_setting == 1) %>% 
-  filter(alpha %in% 0) %>% 
+  filter(par_opt_setting == 9) %>% 
+  # filter(alpha %in% 0) %>% 
   # filter(matrix != "r_kept") %>%
   apply_expression({
     x$matrix[x$matrix == "r_alpha"] <- "r(a_i = 1)"
@@ -439,21 +439,20 @@ myplot <- c(dr_list,dr_list2, dr_list3) %>%
     x
   }) %>% 
   mutate(Element = r_element) %>% 
-  ggplot(mapping = aes(x = dose, y = value, color = Element, linetype = Element)) +
+  ggplot(mapping = aes(x = dose, y = value, color = Element, linetype = Element, frame = alpha)) +
   geom_line() +
   theme_dMod() +
   scale_color_dMod() +
   geom_abline(slope = 0,intercept = 0, linetype = 3) +
   facet_grid(matrix~., scales = "free")+
-  xlab("log(gl)")
+  xlab("log(k12)")
 plotly::ggplotly(myplot)
 # ggsave(plot = myplot,
-#        filename = paste0("~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/plots/", "gu large sequestration",".png"),
+#        filename = paste0("~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/plots/", "k12",".png"),
 #        width = 10,
 #        height = 10,
 #        units = "cm",
 #        device = "png")
-# ggsave(paste0("Output/drplots_all_alphas_at_once/", "r_kept varying ", which_par, paste(steady_states, collapse = "."),"facet~dose", " zoomed.png"), device = "png")
 ```
 
 # Print the matrices a = 0, a = 1, a = inf, a = a_opt
