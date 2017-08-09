@@ -282,156 +282,61 @@ printnames <- names(SI_pars[-c(2:3,5:6,8:9,28:36,40:48)])
 ```{r}
 par_opt_names <- pars_opt_0 %>% names %>% sort
 
-par_opt_settings <- list(par_opt_names[c(1,2,3)],
-                         par_opt_names[c(4,7,9)],
-                         par_opt_names[c(5,6,8)],
-                         par_opt_names[c(5:9)]
+par_opt_settings <- list(par_opt_names[c(1,2,3)]
+                         # ,
+                         # par_opt_names[c(4,7,9)]
+                         # ,
+                         # par_opt_names[c(5,6,8)]
+                         # ,
+                         # par_opt_names[c(5:9)]
                          )
-# dr_list <- lapply(seq_along(par_opt_settings), function(i) {
-#   # list(
-#   r_opt_dose_response(which_par = "logk111",
-#                       dosages = sort(c(-750,unique(seq(-16,0,by = 0.5)))),
-#                       pars = pars,
-#                       alpha_scan_range = c(-9,seq(-3,3,by = 0.1)),
-#                       pars_opt = pars_opt_0[par_opt_settings[[i]]])
-#   # )
-# })
-# 
-# dr_list2 <- lapply(seq_along(par_opt_settings), function(i) {
-# r_opt_dose_response(which_par = "logk112",
-#                       dosages = sort(unique(seq(-5,1,by = 0.2))),
-#                       pars = pars,
-#                       alpha_scan_range = c(-9,seq(-3,3,by = 0.1)),
-#                       pars_opt = pars_opt_0[par_opt_settings[[i]]])
-# })
-# 
-# dr_list3 <- lapply(seq_along(par_opt_settings), function(i) {
-# r_opt_dose_response(which_par = "logk12",
-#                       dosages = sort(unique(seq(-5,0,by = 0.2))),
-#                       pars = pars,
-#                       alpha_scan_range = c(-9,seq(-3,3,by = 0.1)),
-#                       pars_opt = pars_opt_0[par_opt_settings[[i]]])
-# })
-# 
-# save(dr_list, dr_list2, dr_list3, file = "Output/20170725 dr_lists cxz.RData")
-load("Output/20170725 dr_lists cxz.RData")
+dr_list <- lapply(seq_along(par_opt_settings), function(i) {
+
+  scan_grid(which_par = "logk111",
+            dosages = sort(c(unique(seq(-16,0,by = 0.5)))),
+            pars = pars,
+            alpha_scan_range = c(-9,seq(-3,2,by = 0.1)),
+            pars_opt = pars_opt_0[par_opt_settings[[i]]],
+            grid_points_raw = c(-9,-3,0,2))
+
+})
+save(dr_list, file = "Output/wup.RData")
+dr_list2 <- lapply(seq_along(par_opt_settings), function(i) {
+  scan_grid(which_par = "logk112",
+            dosages = sort(unique(seq(-5,1,by = 0.2))),
+            pars = pars,
+            alpha_scan_range = c(-9,seq(-3,3,by = 0.1)),
+            pars_opt = pars_opt_0[par_opt_settings[[i]]],
+            grid_points_raw = c(-9,-3,0,3))
+})
+save(dr_list, file = "Output/wupwup")
+dr_list3 <- lapply(seq_along(par_opt_settings), function(i) {
+  scan_grid(which_par = "logk12",
+            dosages = sort(unique(seq(-5,0,by = 0.2))),
+            pars = pars,
+            alpha_scan_range = c(-9,seq(-3,3,by = 0.1)),
+            pars_opt = pars_opt_0[par_opt_settings[[i]]],
+            grid_points_raw = c(-9,-3,0,3))
+})
+
+save(dr_list, dr_list2, dr_list3, file = "Output/20170808 dr_lists cxz single scans.RData")
+# load("Output/20170725 dr_lists cxz.RData")
 
 ```
 
-# Plot as alpha-response with doses as facets
-```{r}
-myplot <- c(dr_list,dr_list2) %>% 
-  combine_dr_list() %>%
-  filter(! (r_element %in% paste0("r", c(11,22,33)))) %>% 
-  # filter(which_par == "loggainlf") %>% 
-  filter(near(dose,0)| near(dose,log(exp(1))) ) %>%
-  # filter(near(dose,1)) %>%
-  filter(par_opt_setting == 1) %>% 
-  # filter(alpha < 10) %>% 
-  ggplot(mapping = aes(x = alpha, y = value, color = r_element)) +
-  geom_line() +
-  xkcd::theme_xkcd() +
-  scale_color_dMod() +
-  # scale_x_continuous(breaks = -9:12) +
-  scale_y_continuous(limits = c(-2,2))+
-  geom_abline(slope = 0,intercept = 0, linetype = 3) +
-  facet_grid(matrix~dose, scales = "free")
-plotly::ggplotly(myplot)
-
-# ggsave(paste0("Output/drplots_all_alphas_at_once/", "r_kept varying ", which_par, paste(steady_states, collapse = "."),"facet~dose", " zoomed .pdf"), device = "pdf")
-# ggsave(paste0("Output/drplots_all_alphas_at_once/", "r_kept varying ", which_par, paste(steady_states, collapse = "."),"facet~dose", " zoomed.png"), device = "png")
-```
-
-# Plot the pars_opt as a function of alpha faceted with respect to alpha-combinations (different obsfuns)
-```{r, eval=FALSE}
-mydr %>%   
-  # combine_dr_list %>%
-  filter(! (r_element %in% paste0("r", c(11,22,33)))) %>% 
-  filter(which_par == "loggainuf") %>% 
-  # filter(near(dose,log(10))| near(dose,log(30)) | near(dose,log(50))) %>%
-  filter(near(dose,2)) %>%
-  # filter(par_opt_setting == 1) %>% 
-  ggplot(mapping = aes(x = alpha, y = par_opt_value, color = par_opt)) +
-  geom_line() +
-  xkcd::theme_xkcd() +
-  scale_color_dMod() +
-  # scale_x_continuous(breaks = -9:12) +
-  # scale_y_continuous(limits = c(-2,5))+
-  geom_hline(yintercept = 0, linetype = 3) +
-  facet_grid(~par_opt_setting, scales = "free")
-plotly::ggplotly()
-
-
-```
-
-# Profiles
-```{r, eval=FALSE}
-mywhich_matrix <- "r_alpha"
-myalpha <- 1
-mypar_opt_setting <- 3
-mywhich_par <- "loggainuf"
-mydose <- 0
-
-get_matrix_from_dr <- function(dr, mywhich_matrix, myalpha, mywhich_par, mydose, mypar_opt_setting) {
-  mydr %>% 
-    filter(near(alpha, myalpha)) %>% 
-    filter(par_opt_setting==mypar_opt_setting) %>% 
-    filter(which_par==mywhich_par, dose == mydose) %>% 
-    filter(matrix == mywhich_matrix) %>% 
-    select(value, r_element) %>%
-    unique() %>%
-    select(value) %>% 
-    unlist %>% 
-    matrix(ncol=3)
-}
-myr_opt <- get_matrix_from_dr(mydr, "r_opt", 1, "loggainuf", 0, 3)
-myr_kept <- get_matrix_from_dr(mydr, "r_kept", 1, "loggainuf", 0, 3) %>% is_greater_than(.5)
-myr_opt[myr_kept] %>% raise_to_power(2) %>% sum
-
-
-
-best_fit <- mydr %>% 
-  filter(alpha == myalpha, par_opt_setting == mypar_opt_setting) %>% 
-  filter(dose == mydose) %>% 
-  select(par_opt, par_opt_value) %>% 
-  unique() %>% 
-  spread(par_opt, par_opt_value) %>% 
-  unlist()
-
-perturbation_prediction_0 <-  (xs*p_log*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
-r_kept_0 <- r_kept_fun(pars_opt = pars_opt_0[par_opt_settings[[3]]], alpha = 37)
-r_alpha_fun(pars_opt = best_fit, pars = pars, obs_fun = g, p_fun = (p_log * p_pert))
-
-obj_alpha(best_fit, mypars = pars)
-
-myprof <- profile(obj_alpha, best_fit, names(best_fit), limits = c(-2,2), mypars = pars, r_kept = r_kept_0)
-plotProfile(myprof, maxvalue = 0.1)
-plotPaths(myprof, whichPar = "loga_toy_Cxy")
-
-
-# myprof %>% 
-#   filter(whichPar == "loga_toy_Cxy")
-
-
-myprof %>% 
-  filter(whichPar == "loga_toy_Cxy", near(loga_toy_Cxy, -1.5549544, tol = 1e-6)) %>% 
-  select(-(1:5)) %>% 
-  unlist() %>% 
-  r_alpha_fun(pars= pars)
-```
 
 
 # General plotting functions
 Plot as dos-response with alpha as facets
 ```{r}
-load("Output/20170725 dr_lists cxz.RData")
+# load("Output/20170725 dr_lists cxz.RData")
 myplot <- c(dr_list,dr_list2, dr_list3) %>% 
   combine_dr_list() %>%
   filter(! (r_element %in% paste0("r", c(11,22,33)))) %>% 
   filter(dose >= -16, dose <= 2.5) %>%
-  filter(par_opt_setting == 9) %>% 
+  filter(par_opt_setting == 1) %>%
   # filter(alpha %in% 0) %>% 
-  # filter(matrix != "r_kept") %>%
+  filter(matrix != "r_kept") %>%
   apply_expression({
     x$matrix[x$matrix == "r_alpha"] <- "r(a_i = 1)"
     x$matrix[x$matrix == "r_opt"] <- "r(a = a_opt)"
