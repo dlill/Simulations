@@ -60,27 +60,11 @@ This is the naive modularization used in the Prabakaran Paper, desregarding, whi
 modules <- modules0 <- c("X","Y")
 
 obs <- obs0 <- c("m2+a*Cm2e1+a_1*Cm2e1",
-                 "e1+a*Cm2e1+a_2*Cm2e1")
+                 "e2+a*Cm2e1+a_2*Cm2e1")
 g <- g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), mymodel, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
 ```
 
-Better modularization (also, set some defaults.)
-```{r good observation function}
-modules1 <- c("Cm2e1","e1")
 
-obs1 <- c(  "a_1*m2+Cm2e1",
-                   "e1")
-g1 <- Y(as.eqnvec(structure(obs1, names = modules1)), mymodel, compile = TRUE, modelname = "obsfn1", attach.input = FALSE)
-```
-
-
-```{r Observation function with better modularization in m-module, but not in e-module.}
-modules2 <- c("Cm2e1","e2")
-
-obs2 <- c(  "a_1*m2+Cm2e1",
-                   "e2+Ce2p1")
-g2 <- Y(as.eqnvec(structure(obs2, names = modules2)), mymodel, compile = TRUE, modelname = "obsfn2", attach.input = FALSE)
-```
 
 
 ### Parameters.
@@ -146,12 +130,14 @@ Now the module can be simulated to generate perturbation data.
 Set up the perturbations
 ```{r which pars are perturbed}
 # Which pars shall be perturbed?
-pars_perturbed_0 <- pars_perturbed <- c(logm1 = 1.1, logp1 = 1.1)
+pars_perturbed_0 <- pars_perturbed <- c(logm1 = 0.1, loge1 = 0.1)
 
 p_pert <- p_pert_fun(pars_perturbed = pars_perturbed_0,
                      pars = pars_0)
 
-perturbation_prediction <- perturbation_prediction_0 <-  (xs*p_log*p_pert)(times = c(0,Inf), pars = pars_0, deriv = F)
+
+perturbation_prediction <- perturbation_prediction_0 <-  (xs*p_log*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
+perturbation_prediction
 r_kept_0 <- r_kept_fun(pars_opt = pars_opt_0, obs_fun = g, p_fun = (p_log*p_pert))
 
 
@@ -169,21 +155,23 @@ myfits <- mstrust(obj_alpha,
                   studyname = "Fits",
                   cores = 3,
                   fits = 3,
-                  sd = 3)
+                  sd = 3, mypars = pars)
 # myfits %>% as.parframe() %>% plotValues()
 
 (best_fit <- myfits %>% as.parframe() %>% as.parvec())
-r_alpha_fun(best_fit) %>% round(3)
+r_alpha_fun(best_fit, pars = pars) %>% round(3)
+
+
 ```
 
 # Dose response plot
 
 ```{r, warning=FALSE}
 par_opt_settings <- list("loga", "loga_1", "loga_2", c("loga_1", "loga_2")) %>% set_names(1:4)
-
+par_opt_settings <- par_opt_settings[1:2]
 dr_list <- lapply(par_opt_settings, function(i) {
   r_opt_dose_response(which_par = "logk1", 
-                      dosages = pars_0["logk1"]+seq(-1,1,by = 1),
+                      dosages = pars_0["logk1"]+0,#seq(-1,1,by = 1),
                       pars_opt = pars_opt_0[i],
                       alpha_scan_range = sort(unique(seq(-10,10,by = .1)))
   )
@@ -197,8 +185,8 @@ dr_list <- lapply(par_opt_settings, function(i) {
 myplot <- dr_list %>%   
   # extract2(1) %>%
   combine_dr_list() %>% 
-  filter(par_opt_setting ==1) %>%
-  filter(near(dose,log(0.1))) %>%
+  # filter(par_opt_setting == 2) %>%
+  # filter(near(dose,log(0.1))) %>%
   filter(! (r_element %in% paste0("r", c(11,22,33)))) %>% 
   # filter(alpha >-5, alpha <3) %>% 
   filter(matrix == "r_alpha") %>%
@@ -211,13 +199,19 @@ myplot <- dr_list %>%
   mutate(Element = r_element) %>% 
   mutate(points = value) %>% 
   apply_expression({
-    nears <- seq(-10,10,by=0.1)[apply(sapply(c(-9,-0.7,3.2), function(i) near(seq(-10,10,by=0.1),i)),1,any)]
+    nears <- seq(-10,10,by=0.1)[apply(sapply(c(-8.5,-0.7,9), function(i) near(seq(-10,10,by=0.1),i)),1,any)]
     x[!(x$alpha %in% nears),"points"] <- NA
-    x[x$alpha < (-6),"value"] <- NA
+    x[(x$alpha < (-6))|(x$alpha > (7)),"value"] <- NA
     filter(x, alpha >= (-9))
   }) %>% 
+  apply_expression({
+    x$par_opt_setting[x$par_opt_setting == 1] <- "X* and Y*"
+    x$par_opt_setting[x$par_opt_setting == 2] <- "X*"
+    x$par_opt_setting <- x$par_opt_setting %>% factor(levels = c("X* and Y*","X*"))
+    x
+  }) %>%
   
-  ggplot(mapping = aes(x = alpha, y = value, color = Element, linetype = Element)) +
+  ggplot(mapping = aes(x = alpha, y = value, color = Element, linetype = Element, alpha = par_opt_setting)) +
   # ggplot(mapping = aes(x = alpha, y = value, color = Element, linetype = Element, frame = dose)) +
   geom_line() +
   theme_dMod() +
@@ -227,13 +221,15 @@ myplot <- dr_list %>%
   geom_point(aes(y = points), size = 3)+
   # facet_grid(.~par_opt_setting, scales = "free")+
   # facet_grid(matrix~par_opt_setting, scales = "free")+
+  scale_alpha_discrete(name = "[ppMEK-ERK] \nadded to", range = c(0.3,1)) +
+  scale_x_continuous(breaks = c(-5,0,5))+
   xlab("log(a)")
 # plotly::ggplotly(myplot)
   myplot
 ggsave(plot = myplot,
-       filename = paste0("~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/plots/Prabakaran ", "par_opt_setting 1",".png"),
-       width = 20,
-       height = 10,
+       filename = paste0("~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/plots/Prabakaran as phosphatase ", "small width algorithm pos12",".png"),
+       width = 10,
+       height = 8,
        units = "cm",
        device = "png")
 #   
