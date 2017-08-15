@@ -165,13 +165,19 @@ Just to show the code...
 Set up the perturbations
 ```{r}
 # Which pars shall be perturbed?
-pars_perturbed_0 <- pars_perturbed <- c("logx1" = log(0.8), "logy1" = log(0.8), "logz1" = log(0.8))
+pars_perturbed_0 <- pars_perturbed <- c("logx1" = log(0.9), "logy1" = log(0.9), "logz1" = log(0.9))
+# pars_perturbed_0 <- pars_perturbed <- c("logx1" = log(0.8), "logy1" = log(0.8), "logz1" = log(0.8))
 
+
+
+pars_perturbed
 p_pert <- p_pert_fun(pars_perturbed = pars_perturbed, pars = pars)
-```
 
+# ```
+# 
+# 
+# ```{r  which pars are perturbed  Cascade, echo=FALSE}
 
-```{r  which pars are perturbed  Cascade, echo=FALSE}
 # pars <- c(100,0,0,100,0,0,100,0,0,
 #           14.766,0.241,1058.451,5.295,
 #           0.003,
@@ -183,8 +189,8 @@ p_pert <- p_pert_fun(pars_perturbed = pars_perturbed, pars = pars)
 #           550.208,13.304,50,50,
 #           1,1,
 #           0,0,0,0,0,0,00,0,0,0,0,0,
-#           rep(0, length(pars_opt_0))) # large complex
-print("")
+#           rep(0, length(pars_opt_0))) # large complexes, made dr_lists with that
+# print("")
 pars <- c(100,0,0,100,0,0,100,0,0,
           100,1.5,100,1,     0.002,0.4,0.05,
           100,5,            0.005,0.4,0.05,
@@ -192,7 +198,16 @@ pars <- c(100,0,0,100,0,0,100,0,0,
           100,100,1,1,
           0,0,0,0,0,0,00,0,0,0,0,0,
           rep(0, length(pars_opt_0))) %>% set_names(names(pars_inner_0))
-pars
+
+# large complex concentrations which have nicer pars. Tested different perturbations with those parameters
+# pars <- c(100,0,0,100,0,0,100,0,0,
+#           100,1.5,100,1,     0.01,0.4,0.05,
+#           100,5,            0.05,0.4,0.008,
+#           100,1,
+#           100,100,1,1,
+#           0,0,0,0,0,0,00,0,0,0,0,0,
+#           rep(0, length(pars_opt_0))) %>% set_names(names(pars_inner_0)) 
+# pars
 
 pars_0 <- pars <- log(pars+.Machine$double.eps) %>% set_names(names(pars_0))# large complex concentrations
 # p_log(pars)
@@ -210,9 +225,9 @@ perturbation_prediction_0 <- perturbation_prediction <-  (xs*p_log*p_pert)(times
 
 
 
-perturbation_prediction %>% lapply(round,2)
+perturbation_prediction %>% lapply(round,1)
 
-r_kept_0 <- r_kept_fun(pars_opt = pars_opt_0,
+r_kept_0 <- r_kept_fun(pars_opt = pars_opt[c("loga_Cxy", "loga_Cyz")],
                        perturbation_prediction = perturbation_prediction, 
                        obs_fun = g,
                        p_fun = (p_log * p_pert), 
@@ -220,14 +235,16 @@ r_kept_0 <- r_kept_fun(pars_opt = pars_opt_0,
                        alpha = -log(0+.Machine$double.eps))
 r_kept_0
 
-r_0 <-   R_fun(pars_opt = pars_opt[c("loga_tox_Cxy", "loga_toy_Cyz")],
+# r_kept_0 <- c(F,F,T,T,F,F,F,T,F) %>% matrix(ncol = 3)
+
+r_0 <-   R_fun(pars_opt = pars_opt[c("loga_Cxy", "loga_Cyz")],
                perturbation_prediction = perturbation_prediction,
                obs_fun = g,
                p_fun = (p_log*p_pert),
                pars = pars) %>% local_response_matrix_eq10()
 r_0%>% round(2)
 
-r_1 <-   R_fun(pars_opt = pars_opt[c("loga_tox_Cxy", "loga_toy_Cyz")]-(log(0+.Machine$double.eps)),
+r_1 <-   R_fun(pars_opt = structure(c(0,0), names = c("loga_Cxy", "loga_Cyz")),
                perturbation_prediction = perturbation_prediction,
                obs_fun = g,
                p_fun = (p_log*p_pert),
@@ -236,7 +253,7 @@ r_1 %>% round(2)
 
 
 # matrix(c(F,F,F,T,F,F,F,T,F), ncol = 3)
-myfits <- mstrust(obj_alpha, center =  structure(rep(0, length(pars_opt_0)), names = names(pars_opt_0)), studyname = "Fits", cores = 3, fits = 3, sd = 1, mypars = pars, perturbation_prediction = perturbation_prediction_0, r_kept = r_kept_0)
+myfits <- mstrust(obj_alpha, center =  structure(rep(0, 2), names = c("loga_Cxy", "loga_Cyz")), studyname = "Fits", cores = 3, fits = 3, sd = 1, mypars = pars, perturbation_prediction = perturbation_prediction_0, r_kept = r_kept_0)
 # myfits %>% as.parframe() 
 best_fit <- myfits %>% as.parframe() %>% as.parvec()
 
