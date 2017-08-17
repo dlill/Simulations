@@ -279,7 +279,7 @@ printnames <- names(SI_pars[-c(2:3,5:6,8:9,28:36,40:48)])
 
 
 # Dose response plots
-```{r}
+```{r, eval=FALSE}
 par_opt_names <- pars_opt_0 %>% names %>% sort
 
 par_opt_settings <- list(par_opt_names[c(1,2,3)]
@@ -300,7 +300,7 @@ dr_list <- lapply(seq_along(par_opt_settings), function(i) {
             grid_points_raw = c(-9,-3,0,2))
 
 })
-save(dr_list, file = "Output/wup.RData")
+saveRDS(dr_list, file = "Output/dr_list single scan.rds")
 dr_list2 <- lapply(seq_along(par_opt_settings), function(i) {
   scan_grid(which_par = "logk112",
             dosages = sort(unique(seq(-5,1,by = 0.2))),
@@ -328,23 +328,23 @@ save(dr_list, dr_list2, dr_list3, file = "Output/20170808 dr_lists cxz single sc
 
 # General plotting functions
 Plot as dos-response with alpha as facets
-```{r}
+```{r Plot generation}
 # load("Output/20170725 dr_lists cxz.RData")
-myplot <- c(dr_list,dr_list2, dr_list3) %>% 
-  combine_dr_list() %>%
+myplot <- c(dr_list) %>% 
+  combine_dr_list() %>% 
   filter(! (r_element %in% paste0("r", c(11,22,33)))) %>% 
-  filter(dose >= -16, dose <= 2.5) %>%
+  filter(dose >= -8, dose <= 2.5) %>% select(which_par) %>% unique()
   filter(par_opt_setting == 1) %>%
-  # filter(alpha %in% 0) %>% 
+  filter(alpha %in% 1) %>%
   filter(matrix != "r_kept") %>%
   apply_expression({
     x$matrix[x$matrix == "r_alpha"] <- "r(a_i = 1)"
     x$matrix[x$matrix == "r_opt"] <- "r(a = a_opt)"
-    x$matrix <- x$matrix %>% factor(levels = c("r(a_i = 1)", "r(a = a_opt)"))
+    x$matrix <- x$matrix %>% factor(levels = c("r(a_i = 1)", "r(a = a_opt)", "r_kept"))
     x
   }) %>% 
   mutate(Element = r_element) %>% 
-  ggplot(mapping = aes(x = dose, y = value, color = Element, linetype = Element, frame = alpha)) +
+  ggplot(mapping = aes(x = dose, y = value, color = Element, linetype = Element)) +
   geom_line() +
   theme_dMod() +
   scale_color_dMod() +
@@ -352,6 +352,7 @@ myplot <- c(dr_list,dr_list2, dr_list3) %>%
   facet_grid(matrix~., scales = "free")+
   xlab("log(k12)")
 plotly::ggplotly(myplot)
+# myplot
 # ggsave(plot = myplot,
 #        filename = paste0("~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/plots/", "k12",".png"),
 #        width = 10,
