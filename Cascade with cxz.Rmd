@@ -329,13 +329,13 @@ save(dr_list, dr_list2, dr_list3, file = "Output/20170808 dr_lists cxz single sc
 # General plotting functions
 Plot as dos-response with alpha as facets
 ```{r Plot generation}
-# load("Output/20170725 dr_lists cxz.RData")
-myplot <- c(dr_list) %>% 
+load("Output/20170725 dr_lists cxz.RData")
+myplot <- c(dr_list, dr_list2, dr_list3) %>% 
   combine_dr_list() %>% 
   filter(! (r_element %in% paste0("r", c(11,22,33)))) %>% 
-  filter(dose >= -8, dose <= 2.5) %>% select(which_par) %>% unique()
-  filter(par_opt_setting == 1) %>%
-  filter(alpha %in% 1) %>%
+  filter(dose >= -8, dose <= 2.5) %>% 
+  filter(par_opt_setting == 9) %>%
+  filter(alpha %in% 0) %>%
   filter(matrix != "r_kept") %>%
   apply_expression({
     x$matrix[x$matrix == "r_alpha"] <- "r(a_i = 1)"
