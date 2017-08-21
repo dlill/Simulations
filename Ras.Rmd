@@ -334,7 +334,7 @@ r_1 %>% round(2)
 # r_kept <- matrix(F, nrow = 5, ncol = 5)
 # r_kept[c(6,9)] <- T
 
-myfits <- mstrust(obj_alpha, center =  rep(0, length(pars_opt)) %>% set_names(names(pars_opt)), studyname = "Fits", cores = 3, fits = 20, sd = 1, mypars = pars, perturbation_prediction = perturbation_prediction_0, r_kept = r_kept_0)
+myfits <- mstrust(obj_alpha, center =  rep(0, length(pars_opt)) %>% set_names(names(pars_opt)), studyname = "Fits", cores = 3, fits = 6, sd = 1, mypars = pars, perturbation_prediction = perturbation_prediction_0, r_kept = r_kept_0)
 # myfits %>% as.parframe() 
 best_fit <- myfits %>% as.parframe() %>% as.parvec()
 myfits %>% as.parframe()
