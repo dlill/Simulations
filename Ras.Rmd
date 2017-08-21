@@ -89,18 +89,18 @@ complexes <- c("RalGEF_Ras",
 pars_opt_names <- paste0("a", c(1:4, 1:4), rep(c("l", "r"), each = 4))
 adding_complexes <- paste0(" + ", pars_opt_names, " * ", complexes)
 
-obs <- obs0 <- c(paste0(c("RasGTP", adding_complexes[c(2:2,6:6)]), collapse = ""), 
-                 paste0(c("aRalGEF", adding_complexes[2:4]), collapse = ""), 
+obs <- obs0 <- c(paste0(c("RasGTP", adding_complexes[c(2:3,6:7)]), collapse = ""), 
+                 paste0(c("aRalGEF", adding_complexes[c(2,4)]), collapse = ""), 
                  "RalGTP", 
-                 paste0(c("aRaf", adding_complexes[6:8]), collapse = ""), 
+                 paste0(c("aRaf", adding_complexes[c(6,8)]), collapse = ""), 
                  "ppMEK")
-# obs <- obs0 <- paste(obs, 
-#                      c(" + a2l * RalGEF_Ras + a2r * Raf_Ras", 
-#                        " + a2l * RalGEF_Ras",
-#                        "",
-#                        " + a2r * Raf_Ras",
-#                        ""
-#                        ))
+obs <- obs0 <- paste(obs,
+                     c("",
+                       " + a3l_to_RalGEF * aRalGEF_Ras_RalGDP",
+                       "",
+                       " + a3r_toRaf * aRaf_Ras_MEK",
+                       ""
+                       ))
 
 g <- g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), mymodel, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
 ```
@@ -265,44 +265,7 @@ R_fun() %>%
 
 ```
 
-```{r}
-plot_r_graph <- function(r, modules = modules_0, inhibitors = inhibitors_0) {
-  vertices <- data.frame(id = paste0("m",1:length(modules)), module = modules, condition = c(inhibitors))
-  
-  
-  make_edges <- function(r) {
-    mygrid <- expand.grid(paste0("m",1:nrow(r)), 
-                          paste0("m",1:ncol(r)), 
-                          stringsAsFactors = FALSE) %>% 
-      structure(names = c("to", "from")) %>% 
-      extract(c(2,1))
-    weights <- abs(r) %>% matrix(ncol = 1)
-    type <- sign(r) %>% as.character %>% factor(levels = c("1", "-1"), labels = c("activates", "inhibits"))
-    
-    return(data.frame(mygrid, value = weights, type = type))
-  }
-  
-  
-  edges <- make_edges(r)
-  r_graph <- igraph::graph.data.frame(d = edges, vertices = vertices, directed = T) %>% 
-    igraph::simplify(remove.loops = TRUE, remove.multiple = FALSE)
-  
-  igraph::V(r_graph)$label <- igraph::V(r_graph)$module
-  # V(r_graph)$size <- 0
-  igraph::V(r_graph)$shape <- "none"
-  
-  type <- igraph::E(r_graph)$type %>% as.factor
-  igraph::E(r_graph)$color <- c("black", "red")[type]
-  igraph::E(r_graph)$curved <- 0.1
-  igraph::E(r_graph)$width <- igraph::E(r_graph)$value/max(igraph::E(r_graph)$value)*5
-  igraph::E(r_graph)$arrow.size <- .3
-  
-  r_layout <- igraph::layout.circle(r_graph)
-  
-  plot(r_graph, layout = r_layout)
-}
 
-```
 
 
 ```{r compare r0 r1 ropt}
@@ -341,7 +304,33 @@ myfits %>% as.parframe()
 r_alpha_fun(pars_opt = unclass(best_fit), pars = pars, perturbation_prediction = perturbation_prediction) %>% round(2)
 ```
 ```{r}
-sum(r_kept_0)
+best_fit
+```
+
+
+```{r}
+pars_opt <- best_fit
+mypars_opt <- best_fit
+
+myplot <- sapply(seq(-5,3,by = 0.1), function(i) {
+  mypars_opt[6] <<- i
+  R_fun(pars_opt = mypars_opt,
+               perturbation_prediction = perturbation_prediction,
+               obs_fun = g,
+               p_fun = (p_log*p_pert),
+               pars = pars) %>% local_response_matrix_eq10()
+  }) %>% cbind(matrix(r_wup, ncol = 1)) %>% t %>% as.data.frame() %>% set_names(letters[1:25][matrix(1:25, ncol=5) %>% t %>% as.numeric()]) %>% cbind(alpha= c(seq(-5,3,by = 0.1), 4)) %>% 
+  gather(key = "key", "value", 1:25) %>% mutate(zero = 0) %>% 
+  ggplot(aes(x= zero, y = value, frame = alpha, color = key)) +
+  geom_point()+
+  theme_dMod()+
+  facet_wrap(~key)+
+    geom_abline(slope = 0,intercept = 0, linetype = 3) #+
+
+plotly::ggplotly(myplot)
+
+# r_wup%>% round(2)
+# r_1 %>% round(2)
 ```
 
 
@@ -587,7 +576,57 @@ myfits %>% as.parframe()
 r_alpha_fun(pars_opt = unclass(best_fit), pars = pars, perturbation_prediction = perturbation_prediction) %>% round(2)
 ```
 
+# ############################################
 
+
+```{r}
+scan_grid <- function(which_par,
+                      dosages,
+                      alpha_scan_range = seq(-9,9,by = 2),
+                      pars_opt = pars_opt_0,
+                      obs_fun = g,
+                      p_fun = (p_log * p_pert),
+                      pars = pars_0,
+                      grid_points_fine = alpha_scan_range,
+                      grid_points_raw = c(-9, 0, 2)) {
+
+  grid_raw <- lapply(1:(length(pars_opt)-1), function(x) return(grid_points_raw)) %>%
+    do.call(expand.grid,.)
+
+
+  permutations <- sapply(1:length(pars_opt), function(i) {
+    rep(1:length(pars_opt),2)[i:(i+length(pars_opt)-1)]
+  })
+
+
+  apply(permutations, 1, function(i) {
+    which_par_opt <- names(pars_opt)[i==1]
+    not_which_par_opt <- names(pars_opt)[i!=1]
+
+    one_dim <- apply(grid_raw, 1, function(j) {
+      pars_opt[not_which_par_opt] <- j
+      mydose <- r_opt_dose_response_separate_scanning(which_par = which_par,
+                                                      dosages = dosages,
+                                                      alpha_scan_range = alpha_scan_range,
+                                                      which_par_opt = which_par_opt,
+                                                      pars_opt = pars_opt,
+                                                      obs_fun = obs_fun,
+                                                      p_fun = p_fun,
+                                                      pars = pars)
+
+      pars_opt_df <- data.frame(mydose[["alpha"]], data.frame(t(pars_opt[not_which_par_opt]))) %>%
+        set_names(c(which_par_opt, not_which_par_opt))
+
+      mydose %>%
+        select(-alpha) %>% cbind(pars_opt_df)
+    }) %>% do.call(rbind,.)
+
+  }) %>% do.call(rbind,.)
+
+}
+
+
+```
 
 
 
