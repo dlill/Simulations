@@ -89,18 +89,18 @@ complexes <- c("RalGEF_Ras",
 pars_opt_names <- paste0("a", c(1:4, 1:4), rep(c("l", "r"), each = 4))
 adding_complexes <- paste0(" + ", pars_opt_names, " * ", complexes)
 
-obs <- obs0 <- c(paste0(c("RasGTP", adding_complexes[c(2:3,6:7)]), collapse = ""), 
+obs <- obs0 <- c(paste0(c("RasGTP", adding_complexes[c(2:2,6:6)]), collapse = ""), 
                  paste0(c("aRalGEF", adding_complexes[2:4]), collapse = ""), 
                  "RalGTP", 
                  paste0(c("aRaf", adding_complexes[6:8]), collapse = ""), 
                  "ppMEK")
-obs <- obs0 <- paste(obs, 
-                     c(" + a2l * RalGEF_Ras + a2r * Raf_Ras", 
-                       " + a2l * RalGEF_Ras",
-                       "",
-                       " + a2r * Raf_Ras",
-                       ""
-                       ))
+# obs <- obs0 <- paste(obs, 
+#                      c(" + a2l * RalGEF_Ras + a2r * Raf_Ras", 
+#                        " + a2l * RalGEF_Ras",
+#                        "",
+#                        " + a2r * Raf_Ras",
+#                        ""
+#                        ))
 
 g <- g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), mymodel, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
 ```
@@ -334,10 +334,10 @@ r_1 %>% round(2)
 # r_kept <- matrix(F, nrow = 5, ncol = 5)
 # r_kept[c(6,9)] <- T
 
-myfits <- mstrust(obj_alpha, center =  rep(0, length(pars_opt)) %>% set_names(names(pars_opt)), studyname = "Fits", cores = 3, fits = 6, sd = 1, mypars = pars, perturbation_prediction = perturbation_prediction_0, r_kept = r_kept_0)
+myfits <- mstrust(obj_alpha, center =  rep(0, length(pars_opt)) %>% set_names(names(pars_opt)), studyname = "Fits", cores = 3, fits = 20, sd = 1, mypars = pars, perturbation_prediction = perturbation_prediction_0, r_kept = r_kept_0)
 # myfits %>% as.parframe() 
 best_fit <- myfits %>% as.parframe() %>% as.parvec()
-
+myfits %>% as.parframe()
 r_alpha_fun(pars_opt = unclass(best_fit), pars = pars, perturbation_prediction = perturbation_prediction) %>% round(2)
 ```
 ```{r}
@@ -360,7 +360,7 @@ dr_list <- lapply(par_opt_settings, function(i) {
                       pars = pars
   )
 })
-saveRDS(dr_list, file = "Output/dr_list Ras total added with same par_opt.rds")
+saveRDS(dr_list, file = "Output/dr_list Ras each complex has its own par_opt.rds")
 
 # dr_list <- lapply(seq_along(par_opt_settings), function(i) {
 # 
