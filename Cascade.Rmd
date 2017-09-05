@@ -1,5 +1,5 @@
 ---
-title: "Cascade - x2z2 mass action feedback"
+title: "Enzymatic Cascade"
 author: "Daniel Lill"
 output:
   pdf_document:
@@ -170,13 +170,10 @@ pars_perturbed_0 <- pars_perturbed <- c("logx1" = log(0.9), "logy1" = log(0.9), 
 
 
 
-pars_perturbed
+# pars_perturbed
 p_pert <- p_pert_fun(pars_perturbed = pars_perturbed, pars = pars)
 
-```
 
-
-```{r  which pars are perturbed  Cascade}
 
 # pars <- c(100,0,0,100,0,0,100,0,0,
 #           14.766,0.241,1058.451,5.295,
@@ -262,6 +259,18 @@ exp(best_fit)
 r_alpha_fun(pars_opt = unclass(best_fit), pars = pars, perturbation_prediction = perturbation_prediction) %>% round(2)
 ```
 
+```{r}
+mypars <- c(100,0,0,100,0,0,100,0,0,
+          100,1.5,100,1,     0.01,0.4,0.05,
+          100,5,            0.05,0.4,0.008,
+          100,1,
+          100,100,1,1,
+          0,0,0,0,0,0,00,0,0,0,0,0,
+          rep(0, length(pars_opt_0))) %>% set_names(names(pars_inner_0))
+mypars
+(mypars["k31"]+mypars["k4"])/mypars["k32"]
+
+```
 
 
 # Dose response plots
