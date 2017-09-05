@@ -1,0 +1,438 @@
+---
+title: "Hub motif within a cascade"
+author: "Daniel Lill"
+---
+
+# Load libraries and define some useful paths
+
+```{r Libraries, results='hide', echo=FALSE, message=FALSE}
+rm(list = ls())
+library(plotly)
+library(tidyverse)
+library(MRAr)
+library(scales)
+library(xtable)
+```
+
+# Setup Model 
+This is the setup of the ODE model.
+
+Our (internal) states x are described by the odemodel which is turned into a prediction via the prediction function x():
+
+dx/dt = f(x,p_dyn)
+x = x(t, p_dyn, x_ini)
+
+p_dyn are dynamical parameters like rate constants etc, x_ini are initial values for all states.
+The prediction function xs() runs the stimulation until it reaches a steady state.
+
+
+Then, these states are linked to observables y via the observation function g(). In our case the observables will be the communicating species:
+
+y = g(x, p_obs)
+
+p_obs are observation parameters like scaling factors.
+
+
+Since all parameters are positive, it is beneficial to use log-parameters, therefore all parameters are transformed to the log-scale. These we call "outer parameters", p_outer. To feed them into our original model, we transform them back to the linear scale ("p_inner") by a parameter transformation function p(). This way, all our calculations can be made in log-space:
+
+p_inner = p(p_outer) = p(log(p_obs), log(p_dyn), log(x_ini))
+
+
+These three types of functions can be concatenated by the "*"-operator.
+g(x(t, p(p_outer))) = g*x*p(t, p_outer)
+
+
+## Prediction function
+odemodel() writes the function f as a C-function, which is called by x and xs.
+```{r Prediction function Cascade, results='asis'}
+modelpath <- paste0("Models/HubInCascade/")
+modelname   <- "HubInCascade"
+mymodel     <- as.eqnlist(read.csv(paste0(modelpath, modelname, ".csv")))
+
+# myodemodel <- odemodel(mymodel, modelname = paste0(modelname), deriv = T)
+# save(myodemodel, file = paste0(modelpath, "odemodel",modelname, ".RData"))
+load(paste0(modelpath, "odemodel",modelname, ".RData"))
+
+# Prediction function
+x <- Xs(odemodel = myodemodel)
+# Prediction function for steady states
+xs <- Xs_steady(myodemodel) # When computing steady states, set deriv = F
+# print(mymodel)
+# mymodel %>% as.eqnvec() %>% print(pander = T)
+
+# write.csv(myodemodel[[1]] %>% attr("eq") %>% data.frame(), "~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/SI/Hub in Cascade model", quote = F)
+```
+
+## Observation function
+Observation function which returns our communicating species. 
+The free parameters a_ij are introduced here to perform the linear combination of states which we wish to observe.
+We chose to call them pars_opt, since they will be used to optimize the objective function later on.
+```{r Observation function with Cx2z2 in x-module}
+modules <- modules0 <- c("u", "x", "y", "z", "w", "s")
+complexes <- c("Cu2x1", "Cx2y1", "Cx2z1", "Cz2w2", "Cw2s1")
+
+to_single_module_pars_opt <- paste0("a_to_", outer(modules, complexes, paste, sep = "_")) %>% matrix(ncol = 5)
+
+to_single_module <- prodSymb(to_single_module_pars_opt, t(t(complexes)))
+# modules_grid <- outer(modules,modules, paste0)
+# modules_grid[upper.tri(modules_grid)] <- t(modules_grid)[upper.tri(modules_grid)]
+# diag(modules_grid) <- "0"
+# to_both_modules <- paste0("a_to_", outer(modules_grid, complexes, paste, sep = "_")) %>% matrix(ncol = 4)
+
+free_species <- c("u2","x2","y2","z2","w2", "s2")
+
+
+obs <- obs0 <- paste(free_species, to_single_module, sep = " + ")
+  
+  
+g <-  g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), mymodel, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
+```
+
+## Inner parameters
+Load all parameters and format them for further use.
+```{r Parameters Cascade}
+
+pars_raw <- read.csv(paste0(modelpath, "pars.csv"), header = FALSE)  # dynamical parameters
+pars_raw <- structure(pars_raw$V2, names = as.character(pars_raw$V1))
+ic_raw <- read.csv(paste0(modelpath, "IC.csv"), header = F)          # initial conditions
+ic_raw <- structure(ic_raw$V2, names = as.character(ic_raw$V1))
+# sort ics like they appear in x, so it can be used in stode()
+vars_x <- attr(x, "parameters")[attr(x, "parameters") %in% names(ic_raw)]
+ic_raw <- ic_raw[vars_x]
+
+pars_inner_opt_0 <- setdiff(attr(g, "parameters"),names(c(pars_raw,ic_raw)))
+pars_inner_opt_0 <- structure(rep(0, length(pars_inner_opt_0)), 
+                              names = pars_inner_opt_0)
+
+pars_inner_0 <- pars_inner <- c(ic_raw, pars_raw, pars_inner_opt_0)
+
+
+# check if all parameters are assigned a value. Both lines should evaluate to the same number.
+# x_pars <- unique(union((g) %>% attr("parameters"),(xs) %>% attr("parameters")))
+# names(pars_inner) %in% x_pars %>% sum()
+# x_pars %in% names(pars_inner) %>% sum()
+```
+
+
+## Parameter transformation function
+```{r}
+# Logtrafo of all pars
+logtrafo <- structure(paste0("exp( log", names(pars_inner_0), ")"), 
+                             names = names(pars_inner_0))
+
+
+# initial values
+logtrafo[c("x2", "Cx2y1", "y2", "Cx2z1", "z2", "u2", "Cu2x1", "w2", "Cz2w2", "s2", "Cw2s1")] <- 0
+
+
+p_log <- P(trafo = logtrafo,
+           compile = TRUE,
+           modelname = "p_log")
+           
+
+pars_0 <- pars <- structure(log(pars_inner_0+.Machine$double.eps), names = paste0("log", names(pars_inner_0))) 
+
+pars_opt_0 <- pars_opt <- structure(log(pars_inner_opt_0+.Machine$double.eps), names = paste0("log", names(pars_inner_opt_0)))
+
+# pars_opt_0 <- pars_opt <- pars_opt_0[c("loga_1", "loga_2")]
+# pars_0
+# p_log(pars_0, deriv = F)
+```
+
+# Simulate perturbation data
+
+For the perturbation experiments we use another parameter transformation to scale some parameters.
+p_pert_fun automatically generates a parameter transformation function, which returns different sets of parameters for different conditions and a control condition.
+Eg. if we have pars_perturbed = c("logx1" = log(0.9)), p_pert_fun(pars_perturbed) will return a parameter transformation with the control condition with unchanged parameters and one condition in which logx' = logx + log(0.9)
+
+"log(0.9)" corresponds to a ~10% reduction of the original parameter value.
+```{r}
+# Which pars shall be perturbed?
+pars_perturbed_0 <- pars_perturbed <- c("logu1" = log(0.9), "logx1" = log(0.9), "logy1" = log(0.9), "logz1" = log(0.9), "logw1" = log(0.9), "logs1" = log(0.9))
+# pars_perturbed_0 <- pars_perturbed <- c("logx1" = log(0.8), "logy1" = log(0.8), "logz1" = log(0.8))
+
+
+
+# pars_perturbed
+p_pert <- p_pert_fun(pars_perturbed = pars_perturbed, pars = pars)
+
+```
+
+
+```{r}
+find_symmetric_elements_both_nonzero <- function(mat) {
+  myupper <- mat[upper.tri(mat)]
+  mylower <- t(mat)[upper.tri(mat)]
+
+  out <- matrix(FALSE, nrow = nrow(mat), ncol = ncol(mat))
+  out[upper.tri(out)] <- (abs(myupper) > 0.01 & abs(mylower) > 0.01)
+  out <- out + t(out)
+  return(out)
+}
+
+r_kept_fun <- function(pars_opt = pars_opt_0,
+                      perturbation_prediction = perturbation_prediction_0,
+                      obs_fun = g0,
+                      p_fun = (p_log*p_pert),
+                      pars = pars_0,
+                      alpha = -log(0+.Machine$double.eps)) {
+
+  r_0 <- R_fun(pars_opt = pars_opt,
+               perturbation_prediction = perturbation_prediction,
+               obs_fun = obs_fun,
+               p_fun = p_fun,
+               pars = pars) %>% local_response_matrix_eq10()
+
+  r_1 <- R_fun(pars_opt = pars_opt + alpha, #yields asymptotically the same results as only complexes without free species.
+               perturbation_prediction = perturbation_prediction,
+               obs_fun = obs_fun,
+               p_fun = p_fun,
+               pars = pars) %>% local_response_matrix_eq10()
+
+  # Which elements are kept in the optimization process?
+  
+  # sign switch
+  signs <- (sign(r_0) - sign(r_1)) %>% as.logical() %>% matrix(nrow = nrow(r_0))
+  
+  # small elements
+  # smalls <- abs(r_0) < 1e-3
+  
+  # corresponding symmetric element is non-zero
+  syms <- find_symmetric_elements_both_nonzero(r_0)
+  
+  keep <- (signs & syms) #| smalls
+
+  return(keep)
+}
+
+find_small_before_and_big_after_optimization <- function(r_0, r_opt) {
+  small_before <- abs(r_0) < 1e-2
+  big_after <- abs(r_opt) > 1e-2
+  return(small_before & big_after)
+}
+
+
+```
+
+
+## Final parameter values
+```{r}
+pars <- c(100,0,0,       100,0,0,      100,0,0,      100,0,0,      100,0,0,    100,0,
+          100,1,100,1,     0.01,0.4,0.05, #km1 - k3cat
+          100,5,            0.05,0.4,0.008, #km5 - k6cat
+          100,1, # km8 v8
+          0.01,0.5,0.01,    100,1.5, #k91 - v10
+          0.01,0.4,0.05,    100,1.5, #k111 - v12
+          0.01,0.4,0.05,    100,1.5, #k131 - v14
+          1, # kcrossztoy 
+          rep(0, length(pars_opt_0))) %>%
+  set_names(names(pars_inner_0)) # as in cascade
+pars %>% data.frame()
+
+# write.csv(pars %>% data.frame(), "~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/SI/Hub in Cascade parameters", quote = F)
+# pars <- c(100,0,0,       100,0,0,      100,0,0,      100,0,0,      100,0,0,    100,0, 
+#           100,1,100,1,     0.02,0.3,0.05, #km1 - k3cat   x to y
+#           100,5,            0.01,0.4,0.008, #km5 - k6cat  x to z 
+#           100,1, # km8 v8
+#           0.005,0.5,0.01,    100,1.5, #k91 - v10   u to x
+#           0.005,0.4,0.05,    100,1.5, #k111 - v12
+#           0.005,0.4,0.05,    100,1.5, #k131 - v14
+#           0, # kcrossztoy 
+#           rep(0, length(pars_opt_0))) %>%
+#   set_names(names(pars_inner_0)) # as in cascade
+
+pars_0 <- pars <- log(pars+.Machine$double.eps) %>% set_names(names(pars_0))# large complex concentrations
+
+```
+
+## Generate the perturbation data
+```{r}
+perturbation_prediction_0 <- perturbation_prediction <-  (xs*p_log*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
+perturbation_prediction %>% lapply(round,1)
+
+(x*p_log*p_pert)(times = seq(0,20000, length.out = 50), pars = pars) %>%
+  plotPrediction()
+```
+
+
+
+
+## 1st measurement: Detect that there is sequestration
+```{r}
+
+# perturbation_prediction <- lapply(perturbation_prediction_0, function(i)  exp(log(i) + rnorm(length(i), sd = 0.005)))
+# perturbation_prediction %>% lapply(round,0)# %>% lapply(log)
+
+r_0 <-   R_fun(pars_opt = pars_opt_0,
+               perturbation_prediction = perturbation_prediction,
+               obs_fun = g,
+               p_fun = (p_log*p_pert),
+               pars = pars) %>% local_response_matrix_eq10()
+r_0%>% round(1)
+
+find_symmetric_elements_both_nonzero(r_0)
+```
+
+## Iteration 1: Complexes are measured, add them to communicating species
+It is assumed to be known, which species are active in the complexes.
+Therefore, the complexes can be added only to the regulating modules.
+Subsequently, make the first iteration of optimization
+```{r}
+pars_opt_subset <- paste0("log",to_single_module_pars_opt[c(1,8,14,22,29)])
+# pars_opt_subset <- paste0("log",to_single_module_pars_opt[c(1,14)])
+pars_opt_subset
+
+r_kept_1 <- r_kept_fun(pars_opt = pars_opt[pars_opt_subset],
+                       perturbation_prediction = perturbation_prediction, 
+                       obs_fun = g,
+                       p_fun = (p_log * p_pert), 
+                       pars = pars,
+                       alpha = -log(0+.Machine$double.eps))
+r_kept_1
+
+
+# r_kept_1 <- matrix(F, nrow = 6, ncol = 6)
+# r_kept_1[2,4] <- T
+# r_kept_1[1,2] <- T
+
+r_0%>% round(2)
+
+r_1 <-   R_fun(pars_opt = structure(rep(0, length(pars_opt_subset)), names = pars_opt_subset),
+               perturbation_prediction = perturbation_prediction,
+               obs_fun = g,
+               p_fun = (p_log*p_pert),
+               pars = pars) %>% local_response_matrix_eq10()
+r_1 %>% round(2)
+
+myfits_1 <- mstrust(obj_alpha, center =  structure(rep(0, length(pars_opt_subset)), names = pars_opt_subset), studyname = "Fits", cores = 3, fits = 6, sd = 1, mypars = pars, perturbation_prediction = perturbation_prediction_0, r_kept = r_kept_1)
+myfits_1 %>% as.parframe()
+best_fit_1 <- myfits_1 %>% as.parframe() %>% as.parvec()
+# exp(best_fit)
+r_opt_1 <- r_alpha_fun(pars_opt = unclass(best_fit_1), pars = pars, perturbation_prediction = perturbation_prediction) 
+r_opt_1 %>% round(1)
+# pars
+```
+
+
+## Iteration 2: some connections are increased by the optimization procedure
+Determine, which complexes have to be added where for further disentangling
+```{r}
+
+find_small_before_and_big_after_optimization(r_0,r_opt_1)
+r_kept_2 <- r_kept_1 | find_small_before_and_big_after_optimization(r_0,r_opt_1)
+
+r_kept_2
+matrix(1:30, ncol = 5)
+to_single_module_pars_opt
+```
+
+
+```{r}
+pars_opt_subset <- paste0("log",to_single_module_pars_opt[c(1,8,14,22,29 # as before
+                                                            ,15 # to y: cxz
+                                                            ,21     #to y: czw
+                                                            ,10      # to z: cxy
+                                                            # 3         # to y: cux
+                                                            )])
+
+r_0%>% round(2)
+
+r_1 <-   R_fun(pars_opt = structure(rep(0, length(pars_opt_subset)), names = pars_opt_subset),
+               perturbation_prediction = perturbation_prediction,
+               obs_fun = g,
+               p_fun = (p_log*p_pert),
+               pars = pars) %>% local_response_matrix_eq10()
+r_1 %>% round(2)
+
+myfits_2 <- mstrust(obj_alpha, center =  structure(rep(0, length(pars_opt_subset)), names = pars_opt_subset), studyname = "Fits", cores = 3, fits = 12, sd = 1, mypars = pars, perturbation_prediction = perturbation_prediction_0, r_kept = r_kept_2)
+myfits_2 %>% as.parframe()
+best_fit_2 <- myfits_2 %>% as.parframe() %>% extract() %>% as.parvec()
+# exp(best_fit)
+r_opt_2 <- r_alpha_fun(pars_opt = unclass(best_fit_2), pars = pars, perturbation_prediction = perturbation_prediction) %>% round(2)
+r_opt_2
+# pars
+```
+
+## Iteration 3: some connections are increased by the optimization procedure
+Determine, which complexes have to be added where for further disentangling
+```{r}
+find_small_before_and_big_after_optimization(r_0,r_opt_2)
+r_kept_3 <- r_kept_2 | find_small_before_and_big_after_optimization(r_0,r_opt_2)
+r_kept_3
+
+matrix(1:20, ncol = 4)
+to_single_module_pars_opt
+```
+
+
+```{r}
+pars_opt_subset <- paste0("log",to_single_module_pars_opt[c(1,8,14,22,29 # as before
+                                                            # ,15 # to y: cxz
+                                                            ,21     #to y: czw
+                                                            ,10      # to z: cxy
+                                                            # 3         # to y: cux
+                                                            ,9         # to w cxy
+                                                            )])       
+
+r_0%>% round(2)
+
+r_1 <-   R_fun(pars_opt = structure(rep(0, length(pars_opt_subset)), names = pars_opt_subset),
+               perturbation_prediction = perturbation_prediction,
+               obs_fun = g,
+               p_fun = (p_log*p_pert),
+               pars = pars) %>% local_response_matrix_eq10()
+r_1 %>% round(2)
+
+myfits_3 <- mstrust(obj_alpha, center =  structure(rep(0, length(pars_opt_subset)), names = pars_opt_subset), studyname = "Fits", cores = 3, fits = 12, sd = 1, mypars = pars, perturbation_prediction = perturbation_prediction_0, r_kept = r_kept_3)
+myfits_3 %>% as.parframe()
+best_fit_3 <- myfits_3 %>% as.parframe() %>% as.parvec()
+# exp(best_fit)
+r_opt_3 <- r_alpha_fun(pars_opt = unclass(best_fit_3), pars = pars, perturbation_prediction = perturbation_prediction) %>% round(2)
+r_opt_3
+# pars
+
+```
+
+## Iteration 4: The algorithm terminates
+No additional elements are added to be kept in the optimization procedure.
+No additional free parameters are introduced by the algorithm.
+
+```{r}
+find_small_before_and_big_after_optimization(r_0,r_opt_3)
+r_kept_4 <- r_kept_3 | find_small_before_and_big_after_optimization(r_0,r_opt_3)
+r_kept_4
+
+cat("Are the matrices identical?\n")
+identical(r_kept_3, r_kept_4)
+
+matrix(1:20, ncol = 4)
+to_single_module_pars_opt
+```
+
+Just for curiosity, add cxy to w and czw to x
+```{r}
+pars_opt_subset <- paste0("log",to_single_module_pars_opt[c(1,7,12,19, # as before: to u: cux, to x: cxy and cxz, to z: czw
+                                                            13,18,     # to y: cxz and czw
+                                                            9,         # to z: cxy
+                                                            10,         # to w: cxy
+                                                            15,17)])    # to w:cxz and to to x: czw (just for fun)   
+
+r_0%>% round(2)
+
+r_1 <-   R_fun(pars_opt = structure(rep(0, length(pars_opt_subset)), names = pars_opt_subset),
+               perturbation_prediction = perturbation_prediction,
+               obs_fun = g,
+               p_fun = (p_log*p_pert),
+               pars = pars) %>% local_response_matrix_eq10()
+r_1 %>% round(2)
+
+myfits_4 <- mstrust(obj_alpha, center =  structure(rep(0, length(pars_opt_subset)), names = pars_opt_subset), studyname = "Fits", cores = 3, fits = 12, sd = 1, mypars = pars, perturbation_prediction = perturbation_prediction_0, r_kept = r_kept_4)
+myfits_4 %>% as.parframe()
+best_fit_4 <- myfits_4 %>% as.parframe() %>% as.parvec()
+# exp(best_fit)
+r_opt_4 <- r_alpha_fun(pars_opt = unclass(best_fit_4), pars = pars, perturbation_prediction = perturbation_prediction) %>% round(2)
+r_opt_4
+# pars
+
+```
+This doesn't help anymore.
