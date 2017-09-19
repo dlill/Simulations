@@ -1,0 +1,345 @@
+Notebook[{
+Cell[BoxData[
+ RowBox[{"(*", 
+  RowBox[{"States", ",", " ", "rates", ",", " ", "N"}], "*)"}]], "Input",
+ CellChangeTimes->{{3.714805546000709*^9, 3.7148055485511923`*^9}, {
+  3.7148055814526873`*^9, 3.71480558388538*^9}, {3.7148056153728237`*^9, 
+  3.714805620678853*^9}, {3.714805773794259*^9, 3.7148057744180117`*^9}}],
+
+Cell[BoxData[{
+ RowBox[{
+  RowBox[{"ClearAll", "[", "\"\<Global`*\>\"", "]"}], " ", 
+  ";"}], "\[IndentingNewLine]", 
+ RowBox[{
+  RowBox[{"states", " ", "=", " ", 
+   RowBox[{"{", 
+    RowBox[{"x1", ",", "x2", ",", "Cx2y1", ",", "y1", ",", "y2"}], "}"}]}], 
+  ";"}], "\n", 
+ RowBox[{
+  RowBox[{"rates", " ", "=", 
+   RowBox[{"{", 
+    RowBox[{
+     RowBox[{"k1", "*", "x1"}], ",", " ", 
+     RowBox[{"k2", "*", "x2"}], ",", " ", 
+     RowBox[{"k31", "*", "x2", "*", "y1"}], ",", " ", 
+     RowBox[{"k32", "*", "Cx2y1"}], ",", " ", 
+     RowBox[{"k4", "*", "Cx2y1"}], ",", " ", 
+     RowBox[{"k5", "*", "y2"}]}], "}"}]}], ";"}], "\n", 
+ RowBox[{
+  RowBox[{
+   RowBox[{"pars", " ", "=", " ", 
+    RowBox[{"Cases", "[", 
+     RowBox[{"rates", ",", "_Symbol", ",", " ", "Infinity"}], "]"}]}], ";"}], 
+  
+  RowBox[{"(*", 
+   RowBox[{"get", " ", "all", " ", "symbols"}], 
+   "*)"}]}], "\[IndentingNewLine]", 
+ RowBox[{
+  RowBox[{"pars", "=", 
+   RowBox[{"DeleteCases", "[", 
+    RowBox[{"pars", ",", 
+     RowBox[{"Alternatives", "@@", "states"}], ",", "Infinity"}], "]"}]}], 
+  ";"}], "\n", 
+ RowBox[{
+  RowBox[{"S", "=", 
+   RowBox[{"{", 
+    RowBox[{
+     RowBox[{"{", 
+      RowBox[{
+       RowBox[{"-", "1"}], ",", "1", ",", "0", ",", "0", ",", "0", ",", "0"}],
+       "}"}], ",", "\[IndentingNewLine]", 
+     RowBox[{"{", 
+      RowBox[{"1", ",", 
+       RowBox[{"-", "1"}], ",", 
+       RowBox[{"-", "1"}], ",", "1", ",", "1", ",", "0"}], "}"}], ",", 
+     "\[IndentingNewLine]", 
+     RowBox[{"{", 
+      RowBox[{"0", ",", "0", ",", "1", ",", 
+       RowBox[{"-", "1"}], ",", 
+       RowBox[{"-", "1"}], ",", "0"}], "}"}], ",", "\[IndentingNewLine]", 
+     RowBox[{"{", 
+      RowBox[{"0", ",", "0", ",", 
+       RowBox[{"-", "1"}], ",", "1", ",", "0", ",", "1"}], "}"}], ",", 
+     "\[IndentingNewLine]", 
+     RowBox[{"{", 
+      RowBox[{"0", ",", "0", ",", "0", ",", "0", ",", "1", ",", 
+       RowBox[{"-", "1"}]}], "}"}]}], "\[IndentingNewLine]", "}"}]}], ";", 
+  RowBox[{"(*", " ", 
+   RowBox[{"stoichiometric", " ", "matrix"}], " ", "*)"}]}]}], "Input",
+ CellChangeTimes->{{3.7148055516926327`*^9, 3.714805565097453*^9}, {
+   3.714805776883965*^9, 3.7148057915972967`*^9}, 3.714807534233512*^9, {
+   3.714807828069667*^9, 3.714807848534564*^9}, {3.714807893102963*^9, 
+   3.7148079112903023`*^9}, {3.714808152464374*^9, 3.714808160786577*^9}, {
+   3.714809115030274*^9, 3.7148091175029287`*^9}, {3.714809246339964*^9, 
+   3.714809250185712*^9}, {3.7148098483073883`*^9, 3.71480986709968*^9}, {
+   3.714810224041644*^9, 3.7148102260598783`*^9}}],
+
+Cell[BoxData[{
+ RowBox[{
+  RowBox[{"f", "=", 
+   RowBox[{"S", ".", "rates"}]}], ";"}], "\n", 
+ RowBox[{
+  RowBox[{"J", "=", 
+   RowBox[{"D", "[", 
+    RowBox[{"f", ",", 
+     RowBox[{"{", "states", "}"}]}], "]"}]}], ";"}], "\[IndentingNewLine]", 
+ RowBox[{
+  RowBox[{"Jp", "=", 
+   RowBox[{"D", "[", 
+    RowBox[{"f", ",", 
+     RowBox[{"{", "pars", "}"}]}], "]"}]}], ";"}]}], "Input",
+ CellChangeTimes->{{3.714807667575782*^9, 3.714807697055107*^9}, 
+   3.7148081670820837`*^9}],
+
+Cell[CellGroupData[{
+
+Cell[BoxData[
+ RowBox[{"MatrixForm", "@", "Jp"}]], "Input",
+ CellChangeTimes->{{3.714811341005962*^9, 3.714811346640195*^9}}],
+
+Cell[BoxData[
+ TagBox[
+  RowBox[{"(", "\[NoBreak]", GridBox[{
+     {
+      RowBox[{"-", "x1"}], "x2", "0", "0", "0", "0"},
+     {"x1", 
+      RowBox[{"-", "x2"}], 
+      RowBox[{
+       RowBox[{"-", "x2"}], " ", "y1"}], "Cx2y1", "Cx2y1", "0"},
+     {"0", "0", 
+      RowBox[{"x2", " ", "y1"}], 
+      RowBox[{"-", "Cx2y1"}], 
+      RowBox[{"-", "Cx2y1"}], "0"},
+     {"0", "0", 
+      RowBox[{
+       RowBox[{"-", "x2"}], " ", "y1"}], "Cx2y1", "0", "y2"},
+     {"0", "0", "0", "0", "Cx2y1", 
+      RowBox[{"-", "y2"}]}
+    },
+    GridBoxAlignment->{
+     "Columns" -> {{Center}}, "ColumnsIndexed" -> {}, "Rows" -> {{Baseline}}, 
+      "RowsIndexed" -> {}},
+    GridBoxSpacings->{"Columns" -> {
+        Offset[0.27999999999999997`], {
+         Offset[0.7]}, 
+        Offset[0.27999999999999997`]}, "ColumnsIndexed" -> {}, "Rows" -> {
+        Offset[0.2], {
+         Offset[0.4]}, 
+        Offset[0.2]}, "RowsIndexed" -> {}}], "\[NoBreak]", ")"}],
+  Function[BoxForm`e$, 
+   MatrixForm[BoxForm`e$]]]], "Output",
+ CellChangeTimes->{{3.714811341759593*^9, 3.71481134707971*^9}}]
+}, Open  ]],
+
+Cell[BoxData[""], "Input",
+ CellChangeTimes->{{3.7148121362528477`*^9, 3.714812138960224*^9}}],
+
+Cell["Moiety conservation laws applied", "Text",
+ CellFrame->{{0, 0}, {0, 3}},
+ CellChangeTimes->{{3.7148082293528423`*^9, 3.714808240650473*^9}}],
+
+Cell[BoxData[{
+ RowBox[{
+  RowBox[{"ClearAll", "[", "\"\<Global`*\>\"", "]"}], 
+  " "}], "\[IndentingNewLine]", 
+ RowBox[{
+  RowBox[{"states", " ", "=", " ", 
+   RowBox[{"{", 
+    RowBox[{"x1", ",", "x2", ",", "Cx2y1", ",", "y1", ",", "y2"}], "}"}]}], 
+  ";"}], "\[IndentingNewLine]", 
+ RowBox[{
+  RowBox[{"rates", " ", "=", 
+   RowBox[{"{", 
+    RowBox[{
+     RowBox[{"k1", "*", "x1"}], ",", " ", 
+     RowBox[{"k2", "*", "x2"}], ",", " ", 
+     RowBox[{"k31", "*", "x2", "*", "y1"}], ",", " ", 
+     RowBox[{"k32", "*", "Cx2y1"}], ",", " ", 
+     RowBox[{"k4", "*", "Cx2y1"}], ",", " ", 
+     RowBox[{"k5", "*", "y2"}]}], "}"}]}], ";"}], "\n", 
+ RowBox[{
+  RowBox[{"moieties", " ", "=", " ", 
+   RowBox[{"{", 
+    RowBox[{
+     RowBox[{"x1", "\[Rule]", 
+      RowBox[{"Xtot", "-", "x2", "-", "Cx2y1"}]}], ",", 
+     RowBox[{"y1", "\[Rule]", 
+      RowBox[{"Ytot", "-", "y2", "-", "Cx2y1"}]}]}], "}"}]}], ";"}], "\n", 
+ RowBox[{
+  RowBox[{
+   RowBox[{"S", "=", 
+    RowBox[{"{", 
+     RowBox[{
+      RowBox[{"{", 
+       RowBox[{
+        RowBox[{"-", "1"}], ",", "1", ",", "0", ",", "0", ",", "0", ",", 
+        "0"}], "}"}], ",", "\[IndentingNewLine]", 
+      RowBox[{"{", 
+       RowBox[{"1", ",", 
+        RowBox[{"-", "1"}], ",", 
+        RowBox[{"-", "1"}], ",", "1", ",", "1", ",", "0"}], "}"}], ",", 
+      "\[IndentingNewLine]", 
+      RowBox[{"{", 
+       RowBox[{"0", ",", "0", ",", "1", ",", 
+        RowBox[{"-", "1"}], ",", 
+        RowBox[{"-", "1"}], ",", "0"}], "}"}], ",", "\[IndentingNewLine]", 
+      RowBox[{"{", 
+       RowBox[{"0", ",", "0", ",", 
+        RowBox[{"-", "1"}], ",", "1", ",", "0", ",", "1"}], "}"}], ",", 
+      "\[IndentingNewLine]", 
+      RowBox[{"{", 
+       RowBox[{"0", ",", "0", ",", "0", ",", "0", ",", "1", ",", 
+        RowBox[{"-", "1"}]}], "}"}]}], "\[IndentingNewLine]", "}"}]}], ";"}], 
+  
+  RowBox[{"(*", " ", 
+   RowBox[{"stoichiometric", " ", "matrix"}], " ", "*)"}]}], "\n", 
+ RowBox[{
+  RowBox[{"f", "=", 
+   RowBox[{"S", ".", "rates"}]}], ";"}], "\n"}], "Input",
+ CellChangeTimes->{{3.7148055516926327`*^9, 3.714805565097453*^9}, {
+   3.714805776883965*^9, 3.7148057915972967`*^9}, 3.714807534233512*^9, {
+   3.714807828069667*^9, 3.714807848534564*^9}, {3.714807893102963*^9, 
+   3.7148079112903023`*^9}, {3.714808152464374*^9, 3.714808160786577*^9}, {
+   3.7148082463530188`*^9, 3.714808329281465*^9}, {3.7148086135469427`*^9, 
+   3.7148086209394493`*^9}, {3.7148086535374603`*^9, 3.714808666891205*^9}}],
+
+Cell[CellGroupData[{
+
+Cell[BoxData[{
+ RowBox[{"states", " ", "=", " ", 
+  RowBox[{"DeleteCases", "[", 
+   RowBox[{"states", ",", 
+    RowBox[{"Alternatives", "@@", 
+     RowBox[{"{", 
+      RowBox[{"x1", ",", "y1"}], "}"}]}], ",", " ", "Infinity"}], 
+   "]"}]}], "\[IndentingNewLine]", 
+ RowBox[{
+  RowBox[{"rates", " ", "=", " ", 
+   RowBox[{"rates", "/.", "moieties"}]}], ";"}]}], "Input",
+ CellChangeTimes->{{3.7148055516926327`*^9, 3.714805565097453*^9}, {
+   3.714805776883965*^9, 3.7148057915972967`*^9}, 3.714807534233512*^9, {
+   3.714807828069667*^9, 3.714807848534564*^9}, {3.714807893102963*^9, 
+   3.7148079112903023`*^9}, {3.714808152464374*^9, 3.714808160786577*^9}, {
+   3.7148082463530188`*^9, 3.7148083835730457`*^9}, 3.714808463924365*^9, {
+   3.714808576690456*^9, 3.714808595383939*^9}, {3.7148087213095903`*^9, 
+   3.714808723877281*^9}, 3.714808773262278*^9, {3.7148089482583323`*^9, 
+   3.7148089671741133`*^9}, {3.7148102623501587`*^9, 3.7148102739282417`*^9}}],
+
+Cell[BoxData[
+ RowBox[{"{", 
+  RowBox[{"x2", ",", "Cx2y1", ",", "y2"}], "}"}]], "Output",
+ CellChangeTimes->{{3.7148089631947393`*^9, 3.714808967730111*^9}, 
+   3.714810281452608*^9}]
+}, Open  ]],
+
+Cell[BoxData[{
+ RowBox[{
+  RowBox[{
+   RowBox[{"pars", " ", "=", " ", 
+    RowBox[{"DeleteDuplicates", "@", 
+     RowBox[{"Cases", "[", 
+      RowBox[{"rates", ",", "_Symbol", ",", " ", "Infinity"}], "]"}]}]}], 
+   ";"}], 
+  RowBox[{"(*", 
+   RowBox[{"get", " ", "all", " ", "symbols"}], "*)"}]}], "\n", 
+ RowBox[{
+  RowBox[{"pars", " ", "=", 
+   RowBox[{"DeleteCases", "[", 
+    RowBox[{"pars", ",", 
+     RowBox[{"Alternatives", "@@", "states"}], ",", "Infinity"}], "]"}]}], 
+  ";", " ", 
+  RowBox[{"(*", 
+   RowBox[{"extract", " ", "pars"}], "*)"}]}]}], "Input",
+ CellChangeTimes->{{3.7148055516926327`*^9, 3.714805565097453*^9}, {
+   3.714805776883965*^9, 3.7148057915972967`*^9}, 3.714807534233512*^9, {
+   3.714807828069667*^9, 3.714807848534564*^9}, {3.714807893102963*^9, 
+   3.7148079112903023`*^9}, {3.714808152464374*^9, 3.714808160786577*^9}, {
+   3.7148082463530188`*^9, 3.7148083835730457`*^9}, 3.714808463924365*^9, {
+   3.714808576690456*^9, 3.714808595383939*^9}, {3.7148087213095903`*^9, 
+   3.714808723877281*^9}, 3.714808773262278*^9, 3.714808814568471*^9, 
+   3.7148103101154423`*^9}],
+
+Cell[BoxData[{
+ RowBox[{
+  RowBox[{"x1", "=", 
+   RowBox[{"x1", "/.", "moieties"}]}], ";"}], "\[IndentingNewLine]", 
+ RowBox[{
+  RowBox[{"y1", "=", 
+   RowBox[{"y1", "/.", "moieties"}]}], ";"}], "\[IndentingNewLine]", 
+ RowBox[{
+  RowBox[{"f", "=", 
+   RowBox[{"f", "[", 
+    RowBox[{"[", 
+     RowBox[{"{", 
+      RowBox[{"2", ",", "3", ",", "5"}], "}"}], "]"}], "]"}]}], 
+  ";"}]}], "Input",
+ CellChangeTimes->{{3.7148084958781013`*^9, 3.7148085262398233`*^9}, {
+  3.714810916975678*^9, 3.714810942231875*^9}}],
+
+Cell[BoxData[{
+ RowBox[{
+  RowBox[{"J", "=", 
+   RowBox[{"D", "[", 
+    RowBox[{"f", ",", 
+     RowBox[{"{", "states", "}"}]}], "]"}]}], ";"}], "\[IndentingNewLine]", 
+ RowBox[{
+  RowBox[{"Jp", "=", 
+   RowBox[{"D", "[", 
+    RowBox[{"f", ",", 
+     RowBox[{"{", "pars", "}"}]}], "]"}]}], ";"}]}], "Input"],
+
+Cell[CellGroupData[{
+
+Cell[BoxData[
+ RowBox[{"Jp", "//", "MatrixForm"}]], "Input",
+ CellChangeTimes->{{3.7148103348847637`*^9, 3.714810335091864*^9}, {
+  3.714810992627337*^9, 3.71481099396066*^9}}],
+
+Cell[BoxData[
+ TagBox[
+  RowBox[{"(", "\[NoBreak]", GridBox[{
+     {
+      RowBox[{
+       RowBox[{"-", "Cx2y1"}], "-", "x2", "+", "Xtot"}], "k1", 
+      RowBox[{"-", "x2"}], 
+      RowBox[{
+       RowBox[{"-", "x2"}], " ", 
+       RowBox[{"(", 
+        RowBox[{
+         RowBox[{"-", "Cx2y1"}], "-", "y2", "+", "Ytot"}], ")"}]}], 
+      RowBox[{
+       RowBox[{"-", "k31"}], " ", "x2"}], "Cx2y1", "Cx2y1", "0"},
+     {"0", "0", "0", 
+      RowBox[{"x2", " ", 
+       RowBox[{"(", 
+        RowBox[{
+         RowBox[{"-", "Cx2y1"}], "-", "y2", "+", "Ytot"}], ")"}]}], 
+      RowBox[{"k31", " ", "x2"}], 
+      RowBox[{"-", "Cx2y1"}], 
+      RowBox[{"-", "Cx2y1"}], "0"},
+     {"0", "0", "0", "0", "0", "0", "Cx2y1", 
+      RowBox[{"-", "y2"}]}
+    },
+    GridBoxAlignment->{
+     "Columns" -> {{Center}}, "ColumnsIndexed" -> {}, "Rows" -> {{Baseline}}, 
+      "RowsIndexed" -> {}},
+    GridBoxSpacings->{"Columns" -> {
+        Offset[0.27999999999999997`], {
+         Offset[0.7]}, 
+        Offset[0.27999999999999997`]}, "ColumnsIndexed" -> {}, "Rows" -> {
+        Offset[0.2], {
+         Offset[0.4]}, 
+        Offset[0.2]}, "RowsIndexed" -> {}}], "\[NoBreak]", ")"}],
+  Function[BoxForm`e$, 
+   MatrixForm[BoxForm`e$]]]], "Output",
+ CellChangeTimes->{3.7148103360388803`*^9, 3.714810959474663*^9, 
+  3.714810994325802*^9}]
+}, Open  ]]
+},
+WindowSize->{1920, 1056},
+WindowMargins->{{0, Automatic}, {0, 6}},
+ShowSelection->True,
+Magnification:>2. Inherited,
+FrontEndVersion->"11.0 for Linux x86 (64-bit) (September 21, 2016)",
+StyleDefinitions->"Default.nb"
+]
