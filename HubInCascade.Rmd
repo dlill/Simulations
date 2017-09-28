@@ -160,50 +160,6 @@ p_pert <- p_pert_fun(pars_perturbed = pars_perturbed, pars = pars)
 
 
 ```{r}
-find_symmetric_elements_both_nonzero <- function(mat) {
-  myupper <- mat[upper.tri(mat)]
-  mylower <- t(mat)[upper.tri(mat)]
-
-  out <- matrix(FALSE, nrow = nrow(mat), ncol = ncol(mat))
-  out[upper.tri(out)] <- (abs(myupper) > 0.01 & abs(mylower) > 0.01)
-  out <- out + t(out)
-  return(out)
-}
-
-r_kept_fun <- function(pars_opt = pars_opt_0,
-                      perturbation_prediction = perturbation_prediction_0,
-                      obs_fun = g0,
-                      p_fun = (p_log*p_pert),
-                      pars = pars_0,
-                      alpha = -log(0+.Machine$double.eps)) {
-
-  r_0 <- R_fun(pars_opt = pars_opt,
-               perturbation_prediction = perturbation_prediction,
-               obs_fun = obs_fun,
-               p_fun = p_fun,
-               pars = pars) %>% local_response_matrix_eq10()
-
-  r_1 <- R_fun(pars_opt = pars_opt + alpha, #yields asymptotically the same results as only complexes without free species.
-               perturbation_prediction = perturbation_prediction,
-               obs_fun = obs_fun,
-               p_fun = p_fun,
-               pars = pars) %>% local_response_matrix_eq10()
-
-  # Which elements are kept in the optimization process?
-  
-  # sign switch
-  signs <- (sign(r_0) - sign(r_1)) %>% as.logical() %>% matrix(nrow = nrow(r_0))
-  
-  # small elements
-  # smalls <- abs(r_0) < 1e-3
-  
-  # corresponding symmetric element is non-zero
-  syms <- find_symmetric_elements_both_nonzero(r_0)
-  
-  keep <- (signs & syms) #| smalls
-
-  return(keep)
-}
 
 find_small_before_and_big_after_optimization <- function(r_0, r_opt) {
   small_before <- abs(r_0) < 1e-2

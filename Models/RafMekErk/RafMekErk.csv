@@ -1,0 +1,15 @@
+"Description","Rate","Raf1","Raf1a","MEK","pMEK","ppMEK","ERK","pERK","ppERK","Raf1aMEK","Raf1apMEK","ppMEKERK","ppMEKpERK"
+"actRaf","k1*Raf1",-1,1,,,,,,,,,,
+"deactRaf","k2*Raf1a * ( 1 + gain*ppMEK/(ppMEK+k3))/( 1 + ppMEK/(ppMEK+k3))",1,-1,,,,,,,,,,
+"v16a","  k16af*MEK*Raf1a - k16ar*Raf1aMEK",,-1,-1,,,,,,1,,,
+"v16b"," k16b*Raf1aMEK",,1,,1,,,,,-1,,,
+"deactpMEK","k17*pMEK",,,1,-1,,,,,,,,
+"v18a","  k18af*pMEK*Raf1a - k18ar*Raf1apMEK",,-1,,-1,,,,,,1,,
+"v18b"," k18b*Raf1apMEK",,1,,,1,,,,,-1,,
+"deactppMEK","k19*ppMEK",,,,1,-1,,,,,,,
+"v20a","k20af*ppMEK*ERK-k20ar*ppMEKERK",,,,,-1,-1,,,,,1,
+"v20b","k20b*ppMEKERK",,,,,1,,1,,,,-1,
+"deactpERK","k21*pERK",,,,,,1,-1,,,,,
+"v22a","k22af*ppMEK*pERK-k22ar*ppMEKpERK",,,,,-1,,-1,,,,,1
+"v22b","k22b*ppMEKpERK",,,,,1,,,1,,,,-1
+"deactppERK","k23*ppERK",,,,,,,1,-1,,,,

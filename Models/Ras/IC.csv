@@ -1,14 +1,18 @@
-"RasGDP",72000,0.4
-"RasGTP",0,
-"RalGEF",36000,
-"a_RalGEF",0,
-"RalGEF_Ras",0,
-"a_RalGEF_Ras",0,
-"RalGDP",36000,
-"RalGTP",0,
-"Raf",40000,0.013
-"a_Raf",0,
-"Raf_Ras",0,
-"a_Raf_Ras",0,
-"MEK",22000000,1.4
-"ppMEK",0,
+"RasGDP",700,,700,"total nm","try to decrease to 400 and double kds of binding"
+"RasGTP",0,,"25-400",,
+"RalGEF",300,,"(100-500)",,
+"aRalGEF",0,,,,"kd of ras binding partner is about 2* the concentration of the binding partner"
+"RalGEF_Ras",0,,,,"400nm -800 nm"
+"aRalGEF_Ras",0,,,,
+"RalGDP",600,,"2*RalGEF",,
+"RalGTP",0,,,,
+"Raf",200,,"100-200","total nm",
+"aRaf",0,,,,"kd of ras raf"
+"Raf_Ras",0,,,,"400nm"
+"aRaf_Ras",0,,,,
+"MEK",1600,,1600,"total nm",
+"ppMEK",0,,,,
+"aRalGEF_Ras_RalGDP",0,,,,
+"aRaf_Ras_MEK",0,,,,
+"aRalGEF_RalGDP",0,,,,
+"aRaf_MEK",0,,,,

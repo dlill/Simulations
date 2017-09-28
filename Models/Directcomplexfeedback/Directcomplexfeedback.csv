@@ -1,0 +1,8 @@
+"Description","Rate","x1","x2","Cx2y1","y1","y2","Cx2y2"
+"act_x","k1*x1",-1,1,,,,
+"deact_x","k2*x2",1,-1,,,,
+"x_y_to_comp","(k31 * y1 *x2)  - (k32 *Cx2y1)",,-1,1,-1,,
+"act_y","k4*Cx2y1",,1,-1,,1,
+"deact_y","k5*y2",,,,1,-1,
+"y_x_to_complex","(k61 * y2 *x2)  - (k62 *Cx2y2)",,-1,,,-1,1
+"deact_x_2","k7 * Cx2y2",1,,,,1,-1

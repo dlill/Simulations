@@ -40,7 +40,7 @@ mymodel     <- as.eqnlist(read.csv(paste0(modelpath, modelname, ".csv")))
 # mymodel
 
 
-modelname   <- "Prabakaranwithxy"
+modelname   <- "Prabakaran"
 # myodemodel <- odemodel(mymodel, modelname = modelname, deriv = T)
 # save(myodemodel, file = paste0(modelpath, "odemodel",modelname, ".RData"))
 load(paste0(modelpath, "odemodel",modelname, ".RData"))
@@ -50,7 +50,7 @@ load(paste0(modelpath, "odemodel",modelname, ".RData"))
 x <- Xs(odemodel = myodemodel)
 # Prediction function for steady states
 xs <- Xs_steady(myodemodel)
-print(mymodel, pander = T)
+# print(mymodel, pander = T)
 ```
 
 ### Modules, their observables and the observation function. {#modulesandobsfuns}
@@ -58,10 +58,10 @@ Observation function which depends also on the optimization parameters. With the
 
 This is the naive modularization used in the Prabakaran Paper, desregarding, which species are actually the communicating ones. This is fair enough, because usually the "active" forms are consedered to be the communicating species in a non-parametric network reconstruction.
 ```{r Naive observation function}
-modules <- modules0 <- c("m2P","e2P")
+modules <- modules0 <- c("X","Y")
 
 obs <- obs0 <- c("m2+a_1*Cm2e1",
-                 "e2+Ce2p1")
+                 "e2+CY1")
 g <- g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), mymodel, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
 ```
 
@@ -85,10 +85,10 @@ pars_opt_0 <- structure(rep(0, length(pars_opt_0)), names = pars_opt_0)
 pars_0 <- pars <- c(ic_raw, pars_raw, pars_opt_0)
 
 
-# check if all parameters are assigned a value. Both lines should evaluate to the same number.
-x_pars <- unique(union((g) %>% attr("parameters"),(xs) %>% attr("parameters")))
-names(pars) %in% x_pars %>% sum()
-x_pars %in% names(pars) %>% sum()
+# # check if all parameters are assigned a value. Both lines should evaluate to the same number.
+# x_pars <- unique(union((g) %>% attr("parameters"),(xs) %>% attr("parameters")))
+# names(pars) %in% x_pars %>% sum()
+# x_pars %in% names(pars) %>% sum()
 
 ```
 
@@ -118,7 +118,7 @@ I use "Analytics with complexes in both modules_OR_2-1.nb"
 
 Ugly hardcoded shit!
 ```{r}
-dfxde <- "(k2*(e2P*k31 - etot*k31 - k32 - k4 + k31*m2P + sqrt(4*(e2P - etot)*k31^2*m2P + (k32 + k4 + k31*(-e2P + etot + m2P))^2)))/(2*sqrt(4*(e2P - etot)*k31^2*m2P + (k32 + k4 + k31*(-e2P + etot + m2P))^2))"
+dfxde <- "(k2*(Y*k31 - etot*k31 - k32 - k4 + k31*X + sqrt(4*(Y - etot)*k31^2*X + (k32 + k4 + k31*(-Y + etot + X))^2)))/(2*sqrt(4*(Y - etot)*k31^2*X + (k32 + k4 + k31*(-Y + etot + X))^2))"
 mypars <- getSymbols(dfxde)
 mypars <- c(pars, etot= unname(pars["e1"]))[mypars]
 mypars <- mypars[!is.na(mypars)]
@@ -132,8 +132,8 @@ pars <- pars_0
 pars["a_1"] <- 1
 myss <- (g*xs)(c(0,Inf), pars)[[1]]
 complexes <- (xs)(c(0,Inf), pars)[[1]]
-myfun(m2P = unname(myss[,"m2P"]), 
-      e2P = unname(myss[,"e2P"]), 
+myfun(X = unname(myss[,"X"]), 
+      Y = unname(myss[,"Y"]), 
       k2 = unname(pars["k2"]), 
       k31 =unname(pars["k31"]), 
       k32 = unname(pars["k32"]), 
@@ -155,8 +155,8 @@ mydoseresponse <- lapply(seq(-2,2, by = .01), function(i) {
   
   myss <- (g*xs)(c(0,Inf), pars, deriv = F)[[1]]
   complexes <- (xs)(c(0,Inf), pars, deriv = F)[[1]]
-  d <- myfun(m2P = unname(myss[,"m2P"]), 
-        e2P = unname(myss[,"e2P"]), 
+  d <- myfun(X = unname(myss[,"X"]), 
+        Y = unname(myss[,"Y"]), 
         k2 = unname(pars["k2"]), 
         k31 =unname(pars["k31"]), 
         k32 = unname(pars["k32"]), 
@@ -171,8 +171,8 @@ mydoseresponse <- lapply(seq(-2,2, by = .01), function(i) {
   dim(r) <- NULL
   names(r) <-  paste0("r" ,outer(as.character(1:2),as.character(1:2), paste0))
   
-  return(data.frame(m2P = myss[,"m2P"], 
-                    e2P = myss[,"e2P"], 
+  return(data.frame(X = myss[,"X"], 
+                    Y = myss[,"Y"], 
                     complexes, 
                     deriv = d, 
                     par_dose = 10^i, 
@@ -198,21 +198,23 @@ library(tidyverse)
 theme_set(theme_dMod())
 mydoseresponse %>% 
   mutate(log10_ratio_complex_m2 = log10(Cm2e1/m2)) %>% 
-  filter(log10_ratio_complex_m2 < 0, log10_ratio_complex_m2 >-2) %>% 
-  mutate(x = m2P, y = e2P, dfxdetot = deriv) %>% 
-  gather(key = key,value =value , dfxdetot, r21,r12,Cm2e1) %>%  
-  ggplot(aes(x = log10_ratio_complex_m2, y = log10(value))) +
-  geom_line() +
-  facet_wrap(~key, scales = "free")
-
+  # filter(log10_ratio_complex_m2 < 0, log10_ratio_complex_m2 >-2) %>% 
+  filter(Cm2e1>20, Cm2e1<75) %>% 
+  mutate("df_x/dERKtot" = deriv, Cm2e1 = Cm2e1/100) %>% 
+  gather_(key_col = "key",value_col = "value" , c("df_x/dERKtot", "r21","r12")) %>%  
+  ggplot(aes(x = Cm2e1, y = log10(value))) +
+  geom_path() +
+  facet_wrap(~key, scales = "free")+
+  xlab("[ppMEK-ERK]/MEKtot")
+ggsave("~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/dose-response dfxdetot vs Cm2e1.png", device = "png", width = 15, height = 7, units = "cm")
 ```
 
 ## Plot against fold changes of the parameter scanned through
 ```{r}
 mydoseresponse %>% 
-  mutate(log10_ratio_complex_m2 = log10(Cm2e1/m2P)) %>% 
+  mutate(log10_ratio_complex_m2 = log10(Cm2e1/X)) %>% 
   # mutate(deriv = log10(deriv)) %>%
-  mutate(x = m2P, y = e2P, dfxdetot = deriv) %>% 
+  mutate(x = X, y = Y, dfxdetot = deriv) %>% 
   gather(key = key,value =value , dfxdetot, r21,r12, Cm2e1, log10_ratio_complex_m2) %>% 
   ggplot(aes(x = log10(par_dose), y = value)) +
   geom_line() +
@@ -221,7 +223,7 @@ mydoseresponse %>%
 
 ```{r}
 mydoseresponse %>% 
-  mutate(log10_ratio_complex_m2 = log10(Cm2e1/m2P)) %>% 
+  mutate(log10_ratio_complex_m2 = log10(Cm2e1/X)) %>% 
   # mutate(deriv = log10(deriv)) %>%
   # gather(key = key,value =value , deriv, r11,r21,r12,r22) %>% 
   ggplot(aes(x = deriv, y = r12)) +
@@ -249,7 +251,8 @@ JIR
 
 ```{r}
 library("ggnet")
-net <- network::network.adjacency(JIR)
+mynet <- network::network.initialize(7)
+net <- network::network.adjacency(JIR,mynet)
 ggnet2(net)
 
 net = rgraph(10, mode = "graph", tprob = 0.5)

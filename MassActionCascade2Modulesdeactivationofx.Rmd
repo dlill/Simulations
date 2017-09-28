@@ -1,0 +1,249 @@
+---
+title: "MEK-ERK-Model"
+author: "Daniel Lill"
+output: 
+  pdf_document:
+    keep_tex: true
+---
+
+# Load libraries and define some useful paths
+
+```{r Libraries, results='hide', echo=FALSE, message=FALSE}
+rm(list = ls())
+library(MRAr)
+library(scales)
+library(xtable)
+```
+
+# Setup Model 
+This is the setup of the ODE model.
+
+Our (internal) states x are described by the odemodel which is turned into a prediction via the prediction function x():
+
+dx/dt = f(x,p_dyn)
+x = x(t, p_dyn, x_ini)
+
+p_dyn are dynamical parameters like rate constants etc, x_ini are initial values for all states.
+The prediction function xs() runs the stimulation until it reaches a steady state.
+
+
+Then, these states are linked to observables y via the observation function g(). In our case the observables will be the communicating species:
+
+y = g(x, p_obs)
+
+p_obs are observation parameters like scaling factors.
+
+
+Since all parameters are positive, it is beneficial to use log-parameters, therefore all parameters are transformed to the log-scale. These we call "outer parameters", p_outer. To feed them into our original model, we transform them back to the linear scale ("p_inner") by a parameter transformation function p(). This way, all our calculations can be made in log-space:
+
+p_inner = p(p_outer) = p(log(p_obs), log(p_dyn), log(x_ini))
+
+
+These three types of functions can be concatenated by the "*"-operator.
+g(x(t, p(p_outer))) = g*x*p(t, p_outer)
+
+
+## Prediction function
+odemodel() writes the function f as a C-function, which is called by x and xs.
+```{r Prediction function}
+modelpath <- paste0("Models/MassActionCascade2Modules/")
+modelname   <- "MassActionCascade2Modules"
+mymodel     <- as.eqnlist(read.csv(paste0(modelpath, modelname, ".csv")))
+# mymodel
+mymodel$smatrix[5,1]<-1
+mymodel$smatrix[5,2]<-NA
+modelname <- "model2"
+# myodemodel <- odemodel(mymodel, modelname = modelname, deriv = T)
+# save(myodemodel, file = paste0(modelpath, "odemodel",modelname, ".RData"))
+load(paste0(modelpath, "odemodel",modelname, ".RData"))
+
+
+# Prediction function
+x <- Xs(odemodel = myodemodel)
+# Prediction function for steady states
+xs <- Xs_steady(myodemodel)
+print(mymodel)
+```
+
+## Observation function
+Observation function which returns our communicating species. 
+The free parameters a_ij are introduced here to perform the linear combination of states which we wish to observe.
+We chose to call them pars_opt, since they will be used to optimize the objective function later on.
+```{r Naive observation function}
+modules <- modules0 <- c("X","Y")
+
+obs <- obs0 <- c("m2+a*Cm2e1+a_1*Cm2e1",
+                 "e2+a*Cm2e1+a_2*Cm2e1")
+g <- g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), mymodel, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
+```
+
+
+
+
+## Inner parameters
+Load all parameters and format them for further use.
+```{r Parameters}
+
+pars_raw <- read.csv(paste0(modelpath, "pars.csv"), header = FALSE)  # dynamical parameters
+pars_raw <- structure(pars_raw$V2, names = as.character(pars_raw$V1))
+ic_raw <- read.csv(paste0(modelpath, "IC.csv"), header = F)          # initial conditions
+ic_raw <- structure(ic_raw$V2, names = as.character(ic_raw$V1))
+# sort ics like they appear in x, so it can be used in stode()
+vars_x <- attr(x, "parameters")[attr(x, "parameters") %in% names(ic_raw)]
+ic_raw <- ic_raw[vars_x]
+
+pars_inner_opt_0 <- setdiff(attr(g, "parameters"),names(c(pars_raw,ic_raw)))
+pars_inner_opt_0 <- structure(rep(0, length(pars_inner_opt_0)), 
+                              names = pars_inner_opt_0)
+
+pars_inner_0 <- pars_inner <- c(ic_raw, pars_raw, pars_inner_opt_0)
+
+
+# # check if all parameters are assigned a value. Both lines should evaluate to the same number.
+# x_pars <- unique(union((g) %>% attr("parameters"),(xs) %>% attr("parameters")))
+# names(pars) %in% x_pars %>% sum()
+# x_pars %in% names(pars) %>% sum()
+
+```
+
+## Parameter transformation function
+```{r}
+# Logtrafo of all pars
+logtrafo <- structure(paste0("exp( log", names(pars_inner_0), ")"), 
+                             names = names(pars_inner_0))
+
+# initial values
+logtrafo[c("m2", "Cm2e1", "e2")] <- 0
+
+
+
+p_log <- P(trafo = logtrafo,
+           compile = TRUE,
+           modelname = "p_log")
+           
+
+pars_opt_0 <- pars_opt <- structure(rep(log(0+.Machine$double.eps), length(pars_inner_opt_0)), names = paste0("log", names(pars_inner_opt_0)))
+
+pars_0 <- pars <- structure(log(pars_inner_0+.Machine$double.eps), names = paste0("log", names(pars_inner_0))) 
+pars_0[names(pars_opt_0)] <- log(0+.Machine$double.eps)
+
+
+# pars_0
+# p_log(pars_0, deriv = F)
+```
+
+
+# Simulate perturbation data
+
+For the perturbation experiments we use another parameter transformation to scale some parameters.
+p_pert_fun automatically generates a parameter transformation function, which returns different sets of parameters for different conditions and a control condition.
+Eg. if we have pars_perturbed = c("logx1" = log(0.9)), p_pert_fun(pars_perturbed) will return a parameter transformation with the control condition with unchanged parameters and one condition in which logx' = logx + log(0.9)
+
+"log(0.9)" corresponds to a ~10% reduction of the original parameter value.
+```{r which pars are perturbed}
+# Which pars shall be perturbed?
+pars_perturbed_0 <- pars_perturbed <- c(logm1 = log(0.9), logk4 = log(0.9))
+
+p_pert <- p_pert_fun(pars_perturbed = pars_perturbed_0,
+                     pars = pars_0)
+
+perturbation_prediction <- perturbation_prediction_0 <-  (xs*p_log*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
+# perturbation_prediction
+r_kept_0 <- r_kept_fun(pars_opt = pars_opt_0, obs_fun = g, p_fun = (p_log*p_pert))
+r_kept_0 <- c(F,F,T,F)
+
+# perturbation_prediction_0 <-  (xs*p_pert)(times = c(0,Inf), pars = pars_0, deriv = F)
+
+r_0 <-   R_fun(pars_opt = pars_opt[c("loga_1")],
+               perturbation_prediction = perturbation_prediction,
+               obs_fun = g,
+               p_fun = (p_log*p_pert),
+               pars = pars) %>% local_response_matrix_eq10()
+r_0%>% round(3)
+
+myfits <- mstrust(obj_alpha,
+                  center =  (pars_opt_0-pars_opt_0)["loga_1"],
+                  studyname = "Fits",
+                  cores = 3,
+                  fits = 3,
+                  sd = 3, mypars = pars)
+# myfits %>% as.parframe() %>% plotValues()
+
+(best_fit <- myfits %>% as.parframe() %>% as.parvec())
+r_alpha_fun(best_fit, pars = pars) %>% round(3)
+
+
+```
+
+# Compute the local response matrix in dependence of a
+Use par_opt_setting to define, to which module(s) the complex should be added.
+```{r, warning=FALSE}
+par_opt_settings <- list("loga", "loga_1", "loga_2", c("loga_1", "loga_2")) %>% set_names(1:4)
+par_opt_settings <- par_opt_settings[2]
+dr_list <- lapply(par_opt_settings, function(i) {
+  r_opt_dose_response(which_par = "logk4", 
+                      dosages = pars_0["logk4"],
+                      pars_opt = pars_opt_0[i],
+                      alpha_scan_range = sort(unique(seq(-10,10,by = .1))),
+                      pars = pars
+  )
+})
+
+```
+
+
+# Plot the local response matrix in dependence of a
+ - Different opacities correspond to different communicating species
+```{r}
+myplot <- dr_list %>%   
+  # extract2(1) %>%
+  combine_dr_list() %>% 
+  # filter(par_opt_setting %in% 1:2) %>%
+  # filter(near(dose,log(0.1))) %>%
+  filter(! (r_element %in% paste0("r", c(11,22,33)))) %>% 
+  # filter(alpha >-5, alpha <3) %>% 
+  filter(matrix == "r_alpha") %>%
+  apply_expression({
+    x$matrix[x$matrix == "r_alpha"] <- "r"
+    x$matrix[x$matrix == "r_opt"] <- "r(a = a_opt)"
+    x$matrix <- x$matrix %>% factor(levels = c("r", "r(a = a_opt)", "r_kept"))
+    x
+  }) %>% 
+  mutate(Element = r_element) %>% 
+  mutate(points = value) %>% 
+  # apply_expression({
+  #   nears <- seq(-10,10,by=0.1)[apply(sapply(c(-8.5,-0.7,2.1,9), function(i) near(seq(-10,10,by=0.1),i)),1,any)]
+  #   x[!(x$alpha %in% nears),"points"] <- NA
+  #   x[(x$alpha < (-6))|(x$alpha > (7)),"value"] <- NA
+  #   filter(x, alpha >= (-9))
+  # }) %>% 
+  # apply_expression({
+  #   x$par_opt_setting[x$par_opt_setting == 1] <- "X* and Y*"
+  #   x$par_opt_setting[x$par_opt_setting == 2] <- "X*"
+  #   x$par_opt_setting <- x$par_opt_setting %>% factor(levels = c("X* and Y*","X*"))
+  #   x
+  # }) %>%
+  
+  ggplot(mapping = aes(x = alpha, y = value, color = Element, linetype = Element, frame = dose)) +
+  geom_line() +
+  theme_dMod() +
+  scale_color_dMod() +
+  geom_abline(slope = 0,intercept = 0, linetype = 3) +
+  # geom_rect(xmin = -0.7, xmax = 3.2, ymin = -10, ymax = 10, alpha = 0.01, size = 0)+
+  # geom_point(aes(y = points), size = 3)+
+  # facet_grid(.~par_opt_setting, scales = "free")+
+  # facet_grid(matrix~par_opt_setting, scales = "free")+
+  scale_alpha_discrete(name = "Complex \nadded to", range = c(0.3,1)) +
+  scale_x_continuous(breaks = c(-5,0,5))+
+  xlab("log(a)")
+plotly::ggplotly(myplot)
+# myplot
+# ggsave(plot = myplot,
+#        filename = paste0("small width algorithm pos12",".png"),
+#        width = 10,
+#        height = 8,
+#        units = "cm",
+#        device = "png")
+
+```
+

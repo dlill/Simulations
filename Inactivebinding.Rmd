@@ -1,5 +1,5 @@
 ---
-title: "Prabakaran-Model"
+title: "Inactive-Model"
 author: "Daniel Lill"
 output: 
   pdf_document:
@@ -137,15 +137,15 @@ Set up the perturbations
 # Which pars shall be perturbed?
 pars[1] <- log(10)
 pars[6] <- 1
-pars_perturbed_0 <- pars_perturbed <- c(logx1 = 0.8, logy1 = 0.8)
+(pars_perturbed_0 <- pars_perturbed <- c(logk1 = 0.8, logk4 = 0.8))
 
 p_pert <- p_pert_fun(pars_perturbed = pars_perturbed_0,
                      pars = pars)
 
 perturbation_prediction <- perturbation_prediction_0 <-  (xs*p_log*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
-r_kept_0 <- r_kept_fun(pars_opt = pars_opt_0, obs_fun = g, p_fun = (p_log*p_pert))
+(r_kept_0 <- r_kept_fun(pars_opt = pars_opt[c("loga")], obs_fun = g, p_fun = (p_log*p_pert)))
 
-
+  
 # perturbation_prediction_0 <-  (xs*p_pert)(times = c(0,Inf), pars = pars_0, deriv = F)
 
 r_0 <-   R_fun(pars_opt = pars_opt[c("loga")],

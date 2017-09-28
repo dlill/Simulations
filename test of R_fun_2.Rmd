@@ -69,7 +69,13 @@ obs <- obs0 <- c("m2+a_1*Cm2e1",
 g <- g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), mymodel, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
 ```
 
+```{r Naive observation function}
+modules2 <- c("m2","e2tot")
 
+obs2 <-  c("m2",
+           "e2+Ce2p1+a_1*Cm2e1")
+g2 <- Y(as.eqnvec(structure(obs2, names = modules2)), mymodel, compile = TRUE, modelname = "obsfn2", attach.input = FALSE)
+```
 
 ### Parameters.
 Load all parameters and format them for further use.
@@ -114,7 +120,7 @@ p_pert <- p_pert_fun(pars_perturbed = pars_perturbed_0,
 Just to show the code...
 ```{r Generate perturbation data}
 perturbation_prediction_0 <-  (xs*p_pert)(times = c(0,Inf), pars = pars_0, deriv = F)
-r_kept_0 <- r_kept_fun(obs_fun = g0)
+# r_kept_0 <- r_kept_fun(obs_fun = g0)
 
 ```
 
@@ -125,6 +131,7 @@ Plot r(R_fun_2) against alpha and see if it qualitatively behaves the same as r(
 ```{r}
 perturbation_prediction <-  (xs*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
 alpha_scan_range <- seq(-2,2,by = 0.1)
+r_names_0 <- paste0("r",outer(1:2,1:2, paste0))
 
 r_df <- sapply(alpha_scan_range, function(par_opt) {
   pars_opt <- structure(10^(par_opt), names = c("a_1"))
@@ -167,3 +174,53 @@ myplot <- r_df %>%
 
 plotly::ggplotly(myplot)
 ```
+
+# Test the same for the modularization when the complex is added to the ERK-Module
+```{r}
+perturbation_prediction <-  (xs*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
+alpha_scan_range <- seq(-2,4,by = 0.1)
+r_names_0 <- paste0("r",outer(1:2,1:2, paste0))
+
+r_df <- sapply(alpha_scan_range, function(par_opt) {
+  pars_opt <- structure(10^(par_opt), names = c("a_1"))
+  myr <- R_fun(pars_opt = pars_opt, p_fun = (p_pert), obs_fun = g2) %>% local_response_matrix_eq10()
+})%>%
+  t %>%
+  structure(. , dimnames = list(NULL, r_names_0)) %>%
+  cbind(log10alpha = alpha_scan_range, .) %>%
+  as.data.frame(stringsAsFactors =  F) %>%
+    cbind(R= "R") %>% 
+  tidyr::gather_(key = "r_element", value = "r_alpha", gather_cols = r_names_0)
+
+r_2_df <- sapply(alpha_scan_range, function(par_opt) {
+  pars_opt <- structure(10^(par_opt), names = c("a_1"))
+  myr <- R_fun_2(pars_opt = pars_opt, obs_fun = g2) %>% local_response_matrix_eq10()
+})%>%
+  t %>%
+  structure(. , dimnames = list(NULL, r_names_0)) %>%
+  cbind(log10alpha = alpha_scan_range, .) %>%
+  as.data.frame(stringsAsFactors =  F) %>%
+  cbind(R= "R2") %>% 
+  tidyr::gather_(key = "r_element", value = "r_alpha", gather_cols = r_names_0)
+
+r_df <- rbind(r_df, r_2_df)
+
+myplot <- r_df %>%
+  # filter(! (r_element %in% paste0("r", c(11,22)))) %>%
+  # filter( near(alpha,-9) | near(alpha,0) | near(alpha, 9)) %>%
+  # filter(dose < 4) %>%
+  # gather(key = "matrix", value  = "value", r_alpha, r_kept, r_opt) %>%
+  ggplot(mapping = aes(x = log10alpha, y = r_alpha, color = r_element)) +
+  geom_line() +
+  # xkcd::theme_xkcd() +
+  scale_color_dMod() +
+  # scale_x_continuous(breaks = -9:12) +
+  scale_y_continuous(limits = c(-3,3))+
+  geom_hline(yintercept = 0, linetype = 3) +
+  geom_vline(xintercept = 0, linetype = 3) +
+  facet_wrap(~R, scales = "free")
+
+plotly::ggplotly(myplot)
+```
+
+

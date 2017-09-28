@@ -5,18 +5,26 @@
 "k3f",1,"Ras  Ral to complex"
 "k3r",5,
 "k4",1,"Activation of Ral_Ras complex"
-"k5cat",1,"Activation of RalGDP"
-"km5",5000,
+"k5f",1,"Activation of RalGDP by  complex"
+"k5r",1,
+"k5cat",5000,
 "v6",100,"Dephosphorylation of RalGTP"
 "km6",5000,
 "k7f",1,"Ras Raf to complex"
 "k7r",5,
 "k8",1,"Activation of Ras_Raf complex"
-"k9cat",1,"Activation of MEK"
-"k9m",5000,
+"k9f",1,"Activation of MEK by complex"
+"k9r",1,
+"k9cat",5000,
 "v10",400,"Deactivation of ppMEK"
 "k10m",20000,
 "k11",1,"Decay of a_RalGEF_Ras"
 "k12",1,"Deactivation of a_RalGEF"
 "k13",1,"Decay of a_Raf_Ras"
 "k14",1,"Deactivation of a_Raf"
+"k15f",1,"Activation of RalGDP by aRalGEF"
+"k15r",1,
+"k15cat",1,
+"k16f",1,"Activation of MEK by aRaf"
+"k16r",1,
+"k16cat",1,

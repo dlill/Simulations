@@ -1,15 +1,21 @@
-"Description","Rate","RasGDP","RasGTP","RalGEF","a_RalGEF","RalGEF_Ras","a_RalGEF_Ras","RalGDP","RalGTP","Raf","a_Raf","Raf_Ras","a_Raf_Ras","MEK","ppMEK"
-"Activation of Ras","v1 * RasGDP / (RasGDP + km1)",-1,1,,,,,,,,,,,,
-"Deactivation of Ras","v2 * RasGTP / (RasGTP + km2)",1,-1,,,,,,,,,,,,
-"Ras  Ral to complex","k3f * RasGTP * RalGEF - k3r * RalGEF_Ras",,-1,-1,,1,,,,,,,,,
-"Activation of Ral_Ras complex","k4 * RalGEF_Ras",,,,,-1,1,,,,,,,,
-"Activation of RalGDP","k5cat * a_RalGEF_Ras * RalGDP / (RalGDP + km5)",,,,,,,-1,1,,,,,,
-"Dephosphorylation of RalGTP","v6 * RalGTP / (RalGTP + km6)",,,,,,,1,-1,,,,,,
-"Ras Raf to complex","k7f * RasGTP * Raf - k7r * Raf_Ras",,-1,,,,,,,-1,,1,,,
-"Activation of Ras_Raf complex","k8 * Raf_Ras",,,,,,,,,,,-1,1,,
-"Activation of MEK","k9cat * a_Raf_Ras * MEK / (MEK + k9m)",,,,,,,,,,,,,-1,1
-"Deactivation of ppMEK","v10 * ppMEK / (ppMEK + k10m)",,,,,,,,,,,,,1,-1
-"Decay of a_RalGEF_Ras","k11 * a_RalGEF_Ras",,1,,1,,-1,,,,,,,,
-"Deactivation of a_RalGEF","k12 * a_RalGEF",,,1,-1,,,,,,,,,,
-"Decay of a_Raf_Ras","k13 * a_Raf_Ras",,1,,,,,,,,1,,-1,,
-"Deactivation of a_Raf","k14 * a_Raf",,,,,,,,,1,-1,,,,
+"Description","Rate","RasGDP","RasGTP","RalGEF","aRalGEF","RalGEF_Ras","aRalGEF_Ras","RalGDP","RalGTP","Raf","aRaf","Raf_Ras","aRaf_Ras","MEK","ppMEK","aRalGEF_Ras_RalGDP","aRaf_Ras_MEK","aRalGEF_RalGDP","aRaf_MEK"
+"Activation of Ras","v1 * RasGDP / (RasGDP + km1)",-1,1,,,,,,,,,,,,,,,,
+"Deactivation of Ras","v2 * RasGTP / (RasGTP + km2)",1,-1,,,,,,,,,,,,,,,,
+"Ras  Ral to complex","k3f * RasGTP * RalGEF - k3r * RalGEF_Ras",,-1,-1,,1,,,,,,,,,,,,,
+"Activation of Ral_Ras","k4 * RalGEF_Ras",,,,,-1,1,,,,,,,,,,,,
+"RalGef_Ras RalGDP to complex","k5f * aRalGEF_Ras * RalGDP - k5r * aRalGEF_Ras_RalGDP",,,,,,-1,-1,,,,,,,,1,,,
+"Activation of RalGDP","k5cat * aRalGEF_Ras_RalGDP",,,,,,1,,1,,,,,,,-1,,,
+"Dephosphorylation of RalGTP","v6 * RalGTP / (RalGTP + km6)",,,,,,,1,-1,,,,,,,,,,
+"Ras Raf to complex","k7f * RasGTP * Raf - k7r * Raf_Ras",,-1,,,,,,,-1,,1,,,,,,,
+"Activation of Ras_Raf complex","k8 * Raf_Ras",,,,,,,,,,,-1,1,,,,,,
+"Raf_Ras MEK to complex","k9f * aRaf_Ras * MEK - k9r * aRaf_Ras_MEK",,,,,,,,,,,,-1,-1,,,1,,
+"Activation of MEK","k9cat * aRaf_Ras_MEK",,,,,,,,,,,,1,,1,,-1,,
+"Deactivation of ppMEK","v10 * ppMEK / (ppMEK + k10m)",,,,,,,,,,,,,1,-1,,,,
+"Decay of aRalGEF_Ras","k11 * aRalGEF_Ras",,1,,1,,-1,,,,,,,,,,,,
+"Deactivation of aRalGEF","k12 * aRalGEF",,,1,-1,,,,,,,,,,,,,,
+"Decay of aRaf_Ras","k13 * aRaf_Ras",,1,,,,,,,,1,,-1,,,,,,
+"Deactivation of aRaf","k14 * aRaf",,,,,,,,,1,-1,,,,,,,,
+"aRalGEF RalGDP to complex","k15f * aRalGEF * RalGDP - k15r * aRalGEF_RalGDP",,,,-1,,,-1,,,,,,,,,,1,
+"Activation of RalGDP by aRalGEF","k15cat * aRalGEF_RalGDP",,,,1,,,,1,,,,,,,,,-1,
+"aRaf MEK to complex","k16f * aRaf * MEK - k16r * aRaf_MEK",,,,,,,,,,-1,,,-1,,,,,1
+"Activation of MEK by aRaf","k16cat * aRaf_MEK",,,,,,,,,,1,,,,1,,,,-1

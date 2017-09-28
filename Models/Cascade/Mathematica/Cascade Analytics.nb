@@ -321,7 +321,71 @@ Cell[BoxData[
    3.694252814145178*^9, 3.694252821711852*^9}, {3.694252912595557*^9, 
    3.694252924782658*^9}, {3.6945139121044273`*^9, 3.694513964218451*^9}, {
    3.694937642432212*^9, 3.694937672174699*^9}, 3.699108292311715*^9, {
-   3.701521231840713*^9, 3.7015213765931*^9}, 3.70152159681201*^9}],
+   3.701521231840713*^9, 3.7015213765931*^9}, 3.70152159681201*^9}]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell[BoxData[
+ RowBox[{"TeXForm", "[", "f", "]"}]], "Input",
+ CellChangeTimes->{
+  3.708667576406521*^9, {3.7086677660403557`*^9, 3.7086677705448427`*^9}}],
+
+Cell["\<\
+\\left\\{\\text{Cx2z2}
+   \\text{k12}-\\frac{\\text{v1} \\text{x1}
+   (\\text{gainuf}
+   \\text{z2}+\\text{k9}+\\text{z2})}{(\\text{k1
+   }+\\text{x1}) (\\text{k9}+2
+   \\text{z2})}+\\frac{\\text{v2}
+   \\text{x2}}{\\text{k2}+\\text{x2}}-\\text{kde
+   gx1} \\text{x1}+\\text{ksynx1},\\text{Cx2y1}
+   \\text{k32}+\\text{Cx2y1}
+   \\text{k4}+\\text{Cx2z2}
+   \\text{k112}-\\frac{\\text{k31} \\text{x2}
+   \\text{y1} (\\text{gainlf}
+   \\text{z2}+\\text{k10}+\\text{z2})}{\\text{k1
+   0}+2 \\text{z2}}+\\frac{\\text{v1} \\text{x1}
+   (\\text{gainuf}
+   \\text{z2}+\\text{k9}+\\text{z2})}{(\\text{k1
+   }+\\text{x1}) (\\text{k9}+2
+   \\text{z2})}-\\text{k111} \\text{x2}
+   \\text{z2}-\\frac{\\text{v2}
+   \\text{x2}}{\\text{k2}+\\text{x2}}-\\text{kde
+   gx2} \\text{x2},\\frac{\\text{k31} \\text{x2}
+   \\text{y1} (\\text{gainlf}
+   \\text{z2}+\\text{k10}+\\text{z2})-\\text{Cx2
+   y1} (\\text{k10}+2 \\text{z2})
+   (\\text{k32}+\\text{k4})}{\\text{k10}+2
+   \\text{z2}},\\text{Cx2y1}
+   \\text{k32}-\\frac{\\text{k31} \\text{x2}
+   \\text{y1} (\\text{gainlf}
+   \\text{z2}+\\text{k10}+\\text{z2})}{\\text{k1
+   0}+2 \\text{z2}}+\\frac{\\text{v5}
+   \\text{y2}}{\\text{k5}+\\text{y2}}-\\text{kde
+   gy1} \\text{y1}+\\text{ksyny1},\\text{Cx2y1}
+   \\text{k4}+\\text{Cy2z1}
+   (\\text{k62}+\\text{k7})+\\text{y2}
+   \\left(-\\frac{\\text{v5}}{\\text{k5}+\\text{y
+   2}}-\\text{k61}
+   \\text{z1}-\\text{kdegy2}\\right),\\text{k61}
+   \\text{y2} \\text{z1}-\\text{Cy2z1}
+   (\\text{k62}+\\text{k7}),\\text{Cy2z1}
+   \\text{k62}-\\text{k61} \\text{y2}
+   \\text{z1}+\\frac{\\text{v8}
+   \\text{z2}}{\\text{k8}+\\text{z2}}-\\text{kde
+   gz1} \\text{z1}+\\text{ksynz1},\\text{Cx2z2}
+   (\\text{k112}+\\text{k12})+\\text{Cy2z1}
+   \\text{k7}+\\text{z2} \\left(-\\text{k111}
+   \\text{x2}-\\frac{\\text{v8}}{\\text{k8}+\\tex
+   t{z2}}-\\text{kdegz2}\\right),\\text{k111}
+   \\text{x2} \\text{z2}-\\text{Cx2z2}
+   (\\text{k112}+\\text{k12})\\right\\}\
+\>", "Output",
+ CellChangeTimes->{3.7086675773849173`*^9, 3.708667771515246*^9}]
+}, Open  ]],
+
+Cell[CellGroupData[{
 
 Cell["\<\
 Set the rate parameters of the Cx2z2 complex and the synthesis and \
@@ -1018,8 +1082,8 @@ Cell[BoxData[
   3.701602584788471*^9}, {3.701602620001041*^9, 3.70160262444049*^9}, {
   3.701603015964223*^9, 3.7016030192375793`*^9}}]
 },
-WindowSize->{1680, 1032},
-WindowMargins->{{Automatic, 0}, {Automatic, 0}},
+WindowSize->{1920, 1056},
+WindowMargins->{{0, Automatic}, {Automatic, 0}},
 PrivateNotebookOptions->{"FileOutlineCache"->False},
 ShowSelection->True,
 Magnification:>2. Inherited,

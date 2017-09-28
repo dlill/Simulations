@@ -60,6 +60,7 @@ f     <- as.eqnlist(read.csv(paste0(modelpath, modelname, ".csv")))
 load(paste0(modelpath, "odemodel",modelname, ".RData"))
 
 # Prediction function for continuous times
+# x() is a function of time and parameters
 x <- Xs(odemodel = myodemodel)
 # Prediction function for steady states
 xs <- Xs_steady(myodemodel) # When computing steady states, set deriv = F
@@ -198,6 +199,7 @@ Parameters for Figure 5
 ```
 
 
+
 ## Generate the perturbation data
 ```{r}
 perturbation_prediction <-  (xs*p_log*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
@@ -237,14 +239,15 @@ r_kept_0 <- r_kept_fun(pars_opt = pars_opt[which_pars_opt],
 r_kept_0
 ```
 
-Evaluate the objective function for demonstration.
+Evaluate the objective function to demonstrate how it works.
 ```{r}
+pars_opt <- rep(0,2) %>% set_names(c("loga_Cxy", "loga_Cyz"))
 obj_alpha(pars_opt, fixed = NULL, perturbation_prediction = perturbation_prediction, r_kept = r_kept_0, obs_fun = g, p_fun = (p_log * p_pert), mypars = pars_0)
 ```
 
 Optimize the objective function with trust region optimizer starting from multiple random starting points in our parameter space and take a look at the fits.
 
-This method has proven to be the most stable.
+This method combined with the trust-region optimizer has proven to return find the optimum most reliably compared to other optimizers like optim with various different options.
 ```{r}
 myfits <- mstrust(obj_alpha, center =  structure(rep(0, length(which_pars_opt)), names = which_pars_opt), studyname = "Fits", cores = 3, fits = 3, sd = 1, mypars = pars, perturbation_prediction = perturbation_prediction, r_kept = r_kept_0)
 
@@ -269,7 +272,10 @@ par_opt_settings <- list(par_opt_names[c(1,2)]
                          , par_opt_names[c(3,5)]
                          )
 
-# Figure 4
+```
+
+```{r}
+# computations for Figure 4
 pars <- c(100,0,0,100,0,0,100,0,0,
           100,1.5,100,1,     0.01,0.4,0.05,
           100,5,            0.05,0.4,0.008,
@@ -284,15 +290,17 @@ pars_0 <- pars <- log(pars+.Machine$double.eps) %>% set_names(names(pars_0))
 dr_list <- lapply(seq_along(par_opt_settings), function(i) {
   # list(
   r_opt_dose_response(which_par = "loggainuf",
-                      dosages = sort(unique(c(-9:5, seq(-3,3,by = 0.5)))),
+                      dosages = sort(unique(c(seq(-3,3,by = 0.05)))),
                       pars = pars,
-                      alpha_scan_range = seq(-3,3,by = 0.05),
-                      pars_opt = pars_opt_0[par_opt_settings[[i]]])
+                      alpha_scan_range = seq(-3,3,by = 0.2),
+                      pars_opt = pars_opt_0[par_opt_settings[[i]]],
+                      pars_opt_default_value = 0)
   # )
 })
+```
 
-# Figure 5
-
+```{r, eval=FALSE}
+# computations for Figure 5
 pars <- c(100,0,0,100,0,0,100,0,0,
           100,1.5,100,1,     0.002,0.4,0.05,
           100,5,            0.005,0.4,0.05,
@@ -304,35 +312,48 @@ pars_0 <- pars <- log(pars+.Machine$double.eps) %>% set_names(names(pars_0))
 
 dr_list2 <- lapply(seq_along(par_opt_settings), function(i) {
   r_opt_dose_response(which_par = "loggainlf",
-                      dosages = sort(unique(c(-9:5, seq(-3,3,by = 0.5)))),
+                      dosages = sort(unique(c(seq(-3,3,by = 0.05)))),
                       pars = pars,
-                      alpha_scan_range = seq(-3,3,by = 0.05),
-                      pars_opt = pars_opt_0[par_opt_settings[[i]]])
+                      alpha_scan_range = seq(-3,3,by = 0.2),
+                      pars_opt = pars_opt_0[par_opt_settings[[i]]],
+                      pars_opt_default_value = 0)
 })
 ```
 
+```{r, eval=FALSE}
+save(dr_list,dr_list2, file = "Output/datasets_for_plotting.RData")
+```
+
+
 
 # Plot the results
+
+```{r, eval=FALSE}
+load("Output/datasets_for_plotting.RData")
+```
+
 
 ## Figure 4
 Plot as dose-response with alpha as facets
 ```{r Plot generation}
 # load("Output/2017-07-24 dr_lists large complex concentrations.RData")
-load("Output/dr_lists Cascade nice pars.RData")
+# load("Output/dr_lists Cascade nice pars.RData")
+# load("Output/dr_list3 Cascade nice pars given r_kept.RData")
 
 myplot <- c(dr_list,dr_list2) %>% 
+  # dr_list3 %>% 
   combine_dr_list() %>%
   filter(! (r_element %in% paste0("r", c(11,22,33)))) %>% 
   filter(dose >= -2, dose <= 2.5) %>%
   filter(par_opt_setting == 1) %>% 
   filter(alpha %in% 0) %>%
   filter(matrix != "r_kept") %>%
-  apply_expression({
-    x$matrix[x$matrix == "r_alpha"] <- "r(a_i = 1)"
-    x$matrix[x$matrix == "r_opt"] <- "r(a = a_opt)"
-    x$matrix <- x$matrix %>% factor(levels = c("r(a_i = 1)", "r(a = a_opt)", "r_kept"))
-    x
-  }) %>% 
+  {
+    .$matrix[.$matrix == "r_alpha"] <- "r(a_i = 1)"
+    .$matrix[.$matrix == "r_opt"] <- "r(a = a_opt)"
+    .$matrix <- .$matrix %>% factor(levels = c("r(a_i = 1)", "r(a = a_opt)", "r_kept"))
+    .
+  } %>% 
   mutate(Element = r_element) %>% 
   ggplot(mapping = aes(x = dose, y = value, color = Element, linetype = Element)) +
   geom_line() +
@@ -357,7 +378,9 @@ myplot
 
 ```
 
+
 ## Figure 5
+Problem with Figure 5 is that if the r23 element is kicked out and we have random multistart-fits, the curve of r23 doesn't look smooth anymore (since it's basically random). What do we do?
 ```{r Plot generation}
 myplot <- c(dr_list,dr_list2) %>% 
   combine_dr_list() %>%
@@ -365,13 +388,12 @@ myplot <- c(dr_list,dr_list2) %>%
   filter(dose >= -2, dose <= 2.5) %>%
   filter(par_opt_setting == 3) %>% 
   filter(alpha %in% 0) %>%
-  filter(matrix != "r_kept") %>%
-  apply_expression({
-    x$matrix[x$matrix == "r_alpha"] <- "r(a_i = 1)"
-    x$matrix[x$matrix == "r_opt"] <- "r(a = a_opt)"
-    x$matrix <- x$matrix %>% factor(levels = c("r(a_i = 1)", "r(a = a_opt)", "r_kept"))
-    x
-  }) %>% 
+  # filter(matrix != "r_kept") %>%
+  { .$matrix[.$matrix == "r_alpha"] <- "r(a_i = 1)"
+    .$matrix[.$matrix == "r_opt"] <- "r(a = a_opt)"
+    .$matrix <- .$matrix %>% factor(levels = c("r(a_i = 1)", "r(a = a_opt)", "r_kept"))
+    .
+  } %>% 
   mutate(Element = r_element) %>% 
   ggplot(mapping = aes(x = dose, y = value, color = Element, linetype = Element)) +
   geom_line() +
@@ -396,3 +418,40 @@ myplot
 
 ```
 
+```{r Plot generation}
+myplot <- c(dr_list,dr_list2) %>% 
+  combine_dr_list() %>%
+  filter(! (r_element %in% paste0("r", c(11,22,33)))) %>% 
+  # filter(dose >= -2, dose <= 2.5) %>%
+  # filter(near(dose,0.3)) %>% 
+  filter(par_opt_setting == 3) %>% 
+  # filter(alpha %in% 0) %>%
+  # filter(matrix != "r_kept") %>%
+  { .$matrix[.$matrix == "r_alpha"] <- "r(a_i = 1)"
+    .$matrix[.$matrix == "r_opt"] <- "r(a = a_opt)"
+    .$matrix <- .$matrix %>% factor(levels = c("r(a_i = 1)", "r(a = a_opt)", "r_kept"))
+    .
+  } %>% 
+  mutate(Element = r_element) %>% 
+  ggplot(mapping = aes(x = alpha, y = value, color = Element, linetype = Element, frame = dose)) +
+  geom_line() +
+  theme_dMod() +
+  scale_color_dMod() +
+  geom_abline(slope = 0,intercept = 0, linetype = 3) +
+  geom_vline(xintercept = 0, linetype = 3, size = 0.1) +
+  facet_grid(matrix~., scales = "free")+
+  xlab("log(gl)")
+
+# myplot
+
+# look at them interactively with plotly:
+plotly::ggplotly(myplot)
+
+# ggsave(plot = myplot,
+#        filename = paste0("gl small sequestration",".png"),
+#        width = 10,
+#        height = 10,
+#        units = "cm",
+#        device = "png")
+
+```

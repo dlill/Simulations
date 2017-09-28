@@ -70,8 +70,8 @@ We chose to call them pars_opt, since they will be used to optimize the objectiv
 ```{r Naive observation function}
 modules <- modules0 <- c("X","Y")
 
-obs <- obs0 <- c("m2+a*Cm2e1+a_1*Cm2e1",
-                 "e2+a*Cm2e1+a_2*Cm2e1")
+obs <- obs0 <- c("m2+a_xy*Cm2e1+a_tox_xy*Cm2e1",
+                 "e2+a_xy*Cm2e1+a_toy_xy*Cm2e1")
 g <- g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), mymodel, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
 ```
 
@@ -156,7 +156,7 @@ r_kept_0 <- r_kept_fun(pars_opt = pars_opt_0, obs_fun = g, p_fun = (p_log*p_pert
 
 # perturbation_prediction_0 <-  (xs*p_pert)(times = c(0,Inf), pars = pars_0, deriv = F)
 
-r_0 <-   R_fun(pars_opt = pars_opt[c("loga_1")],
+r_0 <-   R_fun(pars_opt = pars_opt[c("loga_tox_xy")],
                perturbation_prediction = perturbation_prediction,
                obs_fun = g,
                p_fun = (p_log*p_pert),
@@ -164,7 +164,7 @@ r_0 <-   R_fun(pars_opt = pars_opt[c("loga_1")],
 r_0%>% round(3)
 
 myfits <- mstrust(obj_alpha,
-                  center =  (pars_opt_0-pars_opt_0)["loga_1"],
+                  center =  (pars_opt_0-pars_opt_0)["loga_tox_xy"],
                   studyname = "Fits",
                   cores = 3,
                   fits = 3,
@@ -178,8 +178,9 @@ r_alpha_fun(best_fit, pars = pars) %>% round(3)
 ```
 
 # Compute the local response matrix in dependence of a
+Use par_opt_setting to define, to which module(s) the complex should be added.
 ```{r, warning=FALSE}
-par_opt_settings <- list("loga", "loga_1", "loga_2", c("loga_1", "loga_2")) %>% set_names(1:4)
+par_opt_settings <- list("loga_xy", "loga_tox_xy", "loga_toy_xy", c("loga_tox_xy", "loga_toy_xy")) %>% set_names(1:4)
 par_opt_settings <- par_opt_settings[1:2]
 dr_list <- lapply(par_opt_settings, function(i) {
   r_opt_dose_response(which_par = "logk1", 
@@ -194,6 +195,7 @@ dr_list <- lapply(par_opt_settings, function(i) {
 
 
 # Plot the local response matrix in dependence of a
+ - Different opacities correspond to different communicating species
 ```{r}
 myplot <- dr_list %>%   
   # extract2(1) %>%
@@ -203,29 +205,28 @@ myplot <- dr_list %>%
   filter(! (r_element %in% paste0("r", c(11,22,33)))) %>% 
   # filter(alpha >-5, alpha <3) %>% 
   filter(matrix == "r_alpha") %>%
-  apply_expression({
-    x$matrix[x$matrix == "r_alpha"] <- "r"
-    x$matrix[x$matrix == "r_opt"] <- "r(a = a_opt)"
-    x$matrix <- x$matrix %>% factor(levels = c("r", "r(a = a_opt)", "r_kept"))
-    x
-  }) %>% 
+  {
+    .$matrix[.$matrix == "r_alpha"] <- "r"
+    .$matrix[.$matrix == "r_opt"] <- "r(a = a_opt)"
+    .$matrix <- .$matrix %>% factor(levels = c("r", "r(a = a_opt)", "r_kept"))
+    .
+  } %>% 
   mutate(Element = r_element) %>% 
   mutate(points = value) %>% 
-  apply_expression({
+  {
     nears <- seq(-10,10,by=0.1)[apply(sapply(c(-8.5,-0.7,2.1,9), function(i) near(seq(-10,10,by=0.1),i)),1,any)]
-    x[!(x$alpha %in% nears),"points"] <- NA
-    x[(x$alpha < (-6))|(x$alpha > (7)),"value"] <- NA
-    filter(x, alpha >= (-9))
-  }) %>% 
-  apply_expression({
-    x$par_opt_setting[x$par_opt_setting == 1] <- "X* and Y*"
-    x$par_opt_setting[x$par_opt_setting == 2] <- "X*"
-    x$par_opt_setting <- x$par_opt_setting %>% factor(levels = c("X* and Y*","X*"))
-    x
-  }) %>%
+    .[!(.$alpha %in% nears),"points"] <- NA
+    .[(.$alpha < (-6))|(.$alpha > (7)),"value"] <- NA
+    filter(., alpha >= (-9))
+  } %>% 
+  {
+    .$par_opt_setting[.$par_opt_setting == 1] <- "X* and Y*"
+    .$par_opt_setting[.$par_opt_setting == 2] <- "X*"
+    .$par_opt_setting <- .$par_opt_setting %>% factor(levels = c("X* and Y*","X*"))
+    .
+  } %>%
   
   ggplot(mapping = aes(x = alpha, y = value, color = Element, linetype = Element, alpha = par_opt_setting)) +
-  # ggplot(mapping = aes(x = alpha, y = value, color = Element, linetype = Element, frame = dose)) +
   geom_line() +
   theme_dMod() +
   scale_color_dMod() +
@@ -239,256 +240,12 @@ myplot <- dr_list %>%
   xlab("log(a)")
 # plotly::ggplotly(myplot)
 myplot
-ggsave(plot = myplot,
-       filename = paste0("~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/plots/Prabakaran as phosphatase ", "small width algorithm pos12",".png"),
-       width = 10,
-       height = 8,
-       units = "cm",
-       device = "png")
-
-```
-
-```{r}
-myplot <- dr_list %>%   
-  # extract2(1) %>%
-  combine_dr_list() %>% 
-  filter(par_opt_setting ==1) %>%
-  # filter(near(dose,log(0.1))) %>%
-  filter(! (r_element %in% paste0("r", c(11,22,33)))) %>% 
-  # filter(alpha >-5, alpha <3) %>% 
-  filter(matrix == "r_alpha") %>%
-  apply_expression({
-    x$matrix[x$matrix == "r_alpha"] <- "r"
-    x$matrix[x$matrix == "r_opt"] <- "r(a = a_opt)"
-    x$matrix <- x$matrix %>% factor(levels = c("r", "r(a = a_opt)", "r_kept"))
-    x
-  }) %>% 
-  mutate(Element = r_element) %>% 
-  # ggplot(mapping = aes(x = alpha, y = value, color = Element, linetype = Element)) +
-  ggplot(mapping = aes(x = dose, y = value, color = Element, linetype = Element, frame = alpha)) +
-  geom_point(shape =1) +
-  theme_dMod() +
-  scale_color_dMod() +
-  geom_abline(slope = 0,intercept = 0, linetype = 3) +
-  # facet_grid(.~par_opt_setting, scales = "free")+
-  # facet_grid(matrix~par_opt_setting, scales = "free")+
-  xlab("log(a)")
-plotly::ggplotly(myplot)
 # ggsave(plot = myplot,
-#        filename = paste0("~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/plots/Prabakaran ", "par_opt_setting 1",".png"),
+#        filename = paste0("small width algorithm pos12",".png"),
 #        width = 10,
-#        height = 10,
+#        height = 8,
 #        units = "cm",
 #        device = "png")
-#   
-```
-
-
-
-# Plot the pars_opt as a function of alpha faceted with respect to alpha-combinations
-```{r}
-dr_list %>%   
-  combine_dr_list %>% 
-  filter(! (r_element %in% paste0("r", c(11,22,33)))) %>% 
-  ggplot(mapping = aes(x = alpha, y = par_opt_value, color = par_opt)) +
-  geom_line() +
-  xkcd::theme_xkcd() +
-  scale_color_dMod() +
-  # scale_x_continuous(breaks = -9:12) +
-  # scale_y_continuous(limits = c(-2,5))+
-  geom_hline(yintercept = 0, linetype = 3) +
-  facet_grid(~par_opt_setting, scales = "free")
-# plotly::ggplotly()
-
 
 ```
 
-# Profiles
-```{r}
-best_fit <- dr_list %>%   
-  combine_dr_list %>% 
-  filter(alpha == 0, par_opt_setting == 3) %>% 
-  select(par_opt, par_opt_value) %>% 
-  unique() %>% 
-  spread(par_opt, par_opt_value) %>% 
-  unlist()
-
-perturbation_prediction_0
-r_kept_0
-
-
-
-myprof <- profile(obj_alpha, best_fit, names(best_fit), limits = c(-10,10))
-plotProfile(myprof)
-
-```
-
-
-
-
-## Explore the effect of the alpha when choosing elements to keep
-```{r Effect of alpha on r_kept, results='asis', echo=FALSE}
-r_alpha <-function(pars_opt = pars_opt_0,
-                      perturbation_prediction = perturbation_prediction_0,
-                      obs_fun = g0,
-                      p_fun = (p_log*p_pert),
-                      pars = pars_0) {
-  # set pars_opt to zero
-  sapply(pars_opt, function(i) {
-    names(i) <- names(pars_opt_0)
-    R_fun(pars_opt = i,
-               perturbation_prediction = perturbation_prediction,
-               obs_fun = obs_fun,
-               p_fun = p_fun,
-               pars = pars) %>% local_response_matrix_eq10() %>% unclass
-    })
-}
-
-mydf <- cbind(log10alpha = seq(-3,3,length.out = 50), r_alpha(pars_opt = 10^seq(-3,3,length.out = 50))[-c(1,4),] %>% t %>% structure(. , dimnames = list(NULL,c( "r21", "r12")))) %>% as.data.frame(stringsAsFactors =  F)
-mydf <- tidyr::gather_(mydf, key = "r_element", value = "Value", gather_cols = c("r21", "r12"))
-
-myplot <- ggplot(mydf, mapping = aes(x = log10alpha, y = Value, color = r_element))+geom_line() + theme_dMod() + scale_color_dMod() + scale_x_continuous(breaks = scales::pretty_breaks()) 
-# ggsave(filename = "Output/Prabakaran.r-values.pdf", plot = myplot)
-```
-
-## Fit and analyze different conditions and perturbations.
-
-### Find good Parameter values to compare behaviour for different conditions.
-
-Run this chunk of code with the "plot"-line uncommented to see predictions.
-Once happy, comment out the plotting and proceed.
-```{r Find good pars, eval=FALSE}
-ic_list <- list(e1 = c(1000,1100),
-                p1 = c(100,110)
-                )
-
-pars <- pars_0
-pars[names(reduce_ic_list(ic_list)[[2]])] <- reduce_ic_list(ic_list)[[2]]
-ic_list <- reduce_ic_list(ic_list)[[1]]
-p_ic <- p_ic_fun(ic_list)
-plot((g0*x*p_ic)(times = seq(0,100, length.out = 50), pars))
-# print(pars)
-```
-
-
-### Create lists for different settings.
-```{r Summary of pars and ic_list}
-pars_perturbed_list <- list()
-ic_list_list <- list()
-pars_list <- list()
-obs_fun_list <- list()
-setting_description <- c("")
-```
-
-### Settings
-A setting is all the circumstances which need to be taken into consideration when simulating.
-Especially, they are:
-  1. Which Parameters are perturbed? All perturbed parameters are increased 1.1-fold as their perturbation.
-    This I might adapt in the future to add more control.
-  2. Which modularization is to be chosen? This is governed by the observation function, which can perform any kind of combination of states. If you are interested in the modularization, go back to section [modulesandobsfuns] to read about the observation function that I used here.
-  3. "Parameter conditions" To conveniently check the settings in different parameter conditions, one can specify parameters that deviate from the original pars in an *ic_list*, which is used for automated condition generation with P().
-```{r Setting 1}
-pars_perturbed_list <- list(c(m1 = 1.1, e1 = 1.1),
-                                  c("m1" = 1.1, "p1" = 1.1),
-                                  c("m1" = 1.1, "k4" = 1.1),
-                                  c("m1" = 1.1, "k5on" = 1.1),
-                                  c("m1" = 1.1, "k5off" = 1.1),
-                                  c("m1" = 1.1, "k6" = 1.1) )
-                                       
-obs_fun_list <- lapply(seq_along(pars_perturbed_list), function(i) g0)
-
-ic_list <- list(e1 = c(1000))
-
-pars <- pars_0
-# pars[names(reduce_ic_list(ic_list)[[2]])] <- reduce_ic_list(ic_list)[[2]]
-# ic_list <- reduce_ic_list(ic_list)[[1]]
-
-p_ic <- p_ic_fun(ic_list)
-plot((x*p_ic)(times = seq(0,100, length.out = 50), pars))
-
-pars_list <- lapply(seq_along(pars_perturbed_list), function(i) pars)
-ic_list_list <- lapply(seq_along(pars_perturbed_list), function(i) ic_list)
-```
-
-
-## Fit the multiple conditions and save the fits to a file..
-Run this only once before knitting and knit the document with the loaded dataset.
-```{r Fit multiple conditions, eval=FALSE}
-machine <- "localhost"
-fit_job1<- runbg({
-  myfits <- lapply(seq_along(pars_list), function(i) {
-    # cat("Setting ", i, " of ", length(pars_list), " \n")
-    run_simulations(ic_list = ic_list_list[[i]],
-                    nfits = 12,
-                    cores = 3,
-                    pars = pars_list[[i]],
-                    pars_perturbed = pars_perturbed_list[[i]],
-                    obs_fun = obs_fun_list[[i]],
-                    alpha = 1)
-    })
-  names(myfits) <- paste0("Setting", seq_along(pars_list))
-  myfits
-}, machine = machine, filename = "Prabakaran_job_intermediates")
-```
-
-```{r, eval=FALSE}
-while(!fit_job1$check()) {
-  Sys.sleep(5)
-}
-beepr::beep(2)
-multiple_fits <- fit_job1$get()
-multiple_fits <- multiple_fits[[machine]]
-fit_job1$purge()
-save(multiple_fits, file = paste0(pathout,fit_name, "Prabakaran", ".RData"))
-```
-
-
-## Analyze the fits.
-```{r Analyze Fits to knitr-Document, results='asis', out.width='45%'}
-# Load the multiple fits
-load(paste0(pathout,fit_name, "Prabakaran", ".RData"))
-
-lapply(seq_along(pars_list), function(setting) {
-  
-  cat("\\newpage
-# Fit setting: ", setting, ": ", setting_description[setting], "
-\n
-### Standard pars of the following fits \n")
-  print(xtable(as.matrix(pars_list[[setting]], nrow = 1), digits = 3), comment = F, floating = F)
-    
-  
-  
-  # multiple_fits <- lapply(seq_along(multiple_fits), function(j) {
-  #   if(is.null(multiple_fits[[j]]$condition)) multiple_fits[[j]]$condition <- names(multiple_fits)[j]
-  #   return(multiple_fits[[j]])
-  # })
-  output <- lapply(multiple_fits[[setting]], function(cond) {
-    
-    cat("\\newpage
-      # Condition: ",(cond$condition %>% str_split("_") %>% extract2(1) %>% paste(collapse = ", ") %>% str_replace_all("=", " = ")), "\n
-      # Perturbed Parameters: ", names(cond$pars_perturbed), " = ", cond$pars_perturbed, "\n")
-    
-    # Plot the result of the mstrust()
-    print(plotValues(cond$all_fits) )
-    print(plot(cond$prediction))
-    
-    cat(" \n Local response matrices before and after optimization.\n")
-    cat(" Left is the local response matrix of free species, right is the matrix with complexes. \n")
-    print(xtable(cbind(cond$r_0, rep(0, nrow(cond$r_0)), cond$r_alpha), digits = 5), comment = F, floating = F)
-    cat(" ")
-    print(xtable(cond$r_kept, digits = 5), comment = F, floating = F)
-    cat(" ")
-    print(xtable(cond$r_best_fit, digits = 5), comment = F, floating = F)
-    
-    cat("\n Best fit with reasonable parameter: \n")
-    print(cond$best_fit %>% unclass %>%  matrix(.,nrow = 1, dimnames = list(NULL, names(.))) %>% xtable(digits = 3), comment = F, floating = F)
-    
-    cat("\n Steady state: \n")
-    print(xtable(as.matrix(cond$steady_states[[1]])), comment = F, floating = F)
-    
-    cat("\n All fits: \n")
-    print(xtable(cond$all_fits, digits = 4), comment = F, floating = F)
-    return()
-  })
-})
-```
