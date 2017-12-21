@@ -407,7 +407,7 @@ rbind(r0,r1,ropt) %>%
   print(sanitize.text.function = verbatim,
         include.rownames = F)
 
-rbind(r0,r1,ropt) %>% write_excel_csv(file = "~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/Figure6 matrices.csv")
+rbind(r0,r1,ropt) %>% write_excel_csv(path = "~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/Figure6 matrices.csv")
 ```
 
 
