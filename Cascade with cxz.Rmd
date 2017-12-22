@@ -370,7 +370,7 @@ mydr <- c(dr_list, dr_list2, dr_list3) %>%
   combine_dr_list() 
 #a_0
 r0 <- mydr %>% 
-  filter(par_opt_setting ==3) %>% 
+  filter(par_opt_setting ==9) %>% 
   filter(alpha == -3) %>%
   filter(dose ==-2) %>% 
   filter(matrix == "r_alpha") %>%
@@ -381,7 +381,7 @@ r0 <- mydr %>%
   set_rownames(NULL)
 #a_1
 r1 <- mydr %>% 
-  filter(par_opt_setting ==3) %>% 
+  filter(par_opt_setting ==9) %>% 
   filter(alpha == 1) %>%
   filter(dose ==-2) %>% 
   filter(matrix == "r_alpha") %>%
@@ -392,8 +392,8 @@ r1 <- mydr %>%
   set_rownames(NULL) 
 # a_opt
 ropt <- mydr %>% 
-  filter(par_opt_setting ==3) %>% 
-  filter(alpha == 0) %>%
+  filter(par_opt_setting ==9) %>% 
+  filter(alpha == 1) %>%
   filter(dose ==-2) %>% 
   filter(matrix == "r_opt") %>%
   select(r_element, value) %>% unique() %>% extract2(2) %>% 
@@ -401,13 +401,12 @@ ropt <- mydr %>%
   data.frame(c("\\hline \n", "$\\vec{a} = \\vec{a}_{opt}$",""),modulnames,.) %>% 
   set_colnames(c("", "", modulnames)) %>% 
   set_rownames(NULL) 
-
 rbind(r0,r1,ropt) %>% 
   xtable(align=c("r|c|c|rrr|")) %>% 
   print(sanitize.text.function = verbatim,
         include.rownames = F)
 
-rbind(r0,r1,ropt) %>% write_excel_csv(path = "~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/Figure6 matrices.csv")
+rbind(r0,r1,ropt)  %>% write_excel_csv(path = "~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/Figure6 matrices.csv")
 ```
 
 
