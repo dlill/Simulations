@@ -60,8 +60,10 @@ load(paste0(modelpath, "odemodel",modelname, ".RData"))
 x <- Xs(odemodel = myodemodel)
 # Prediction function for steady states
 xs <- Xs_steady(myodemodel)
+# loadDLL(xs)
 print(mymodel)
 ```
+
 
 ## Observation function
 Observation function which returns our communicating species. 
@@ -147,8 +149,11 @@ p_pert <- p_pert_fun(pars_perturbed = pars_perturbed_0,
 
 ```
 
+
+
 ## Generate the perturbation data and run the algorithm
 ```{r}
+loadDLL(xs)
 perturbation_prediction <- perturbation_prediction_0 <-  (xs*p_log*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
 # perturbation_prediction
 r_kept_0 <- r_kept_fun(pars_opt = pars_opt_0, obs_fun = g, p_fun = (p_log*p_pert))
@@ -174,7 +179,6 @@ myfits <- mstrust(obj_alpha,
 (best_fit <- myfits %>% as.parframe() %>% as.parvec())
 r_alpha_fun(best_fit, pars = pars) %>% round(3)
 
-
 ```
 
 # Compute the local response matrix in dependence of a
@@ -184,12 +188,14 @@ par_opt_settings <- list("loga_xy", "loga_tox_xy", "loga_toy_xy", c("loga_tox_xy
 par_opt_settings <- par_opt_settings[1:2]
 dr_list <- lapply(par_opt_settings, function(i) {
   r_opt_dose_response(which_par = "logk1", 
-                      dosages = pars_0["logk1"]+seq(-2,2,by = 2),
+                      dosages = pars_0["logk1"],#+seq(-2,2,by = 2),
                       pars_opt = pars_opt_0[i],
                       alpha_scan_range = sort(unique(seq(-10,10,by = .1))),
                       pars = pars
   )
 })
+
+saveRDS(dr_list, file = "Prabakaran_dr_list.rds")
 
 ```
 
@@ -226,6 +232,13 @@ myplot <- dr_list %>%
     .
   } %>%
   
+  
+  filter(alpha<3) %>%
+  mutate(alpha = exp(alpha)) %>%
+  filter(!is.na(value)) %>%
+  
+  
+  
   ggplot(mapping = aes(x = alpha, y = value, color = Element, linetype = Element, alpha = par_opt_setting)) +
   geom_line() +
   theme_dMod() +
@@ -236,16 +249,16 @@ myplot <- dr_list %>%
   # facet_grid(.~par_opt_setting, scales = "free")+
   # facet_grid(matrix~par_opt_setting, scales = "free")+
   scale_alpha_discrete(name = "Complex \nadded to", range = c(0.3,1)) +
-  scale_x_continuous(breaks = c(-5,0,5))+
+  # scale_x_continuous(breaks = c(-5,0,5))+
   xlab("log(a)")
 # plotly::ggplotly(myplot)
 myplot
-# ggsave(plot = myplot,
-#        filename = paste0("small width algorithm pos12",".png"),
-#        width = 10,
-#        height = 8,
-#        units = "cm",
-#        device = "png")
+ggsave(plot = myplot,
+       filename = paste0("~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/plots/", "linear x-axis small width algorithm pos12",".png"),
+       width = 10,
+       height = 8,
+       units = "cm",
+       device = "png")
 
 ```
 
