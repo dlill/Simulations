@@ -49,6 +49,7 @@ save(myodemodel, file = paste0(modelpath, "odemodel",modelname, ".RData"))
 x <- Xs(odemodel = myodemodel)
 # Prediction function for steady states
 xs <- Xs_steady(myodemodel)
+loadDLL(xs)
 print(mymodel)
 ```
 
@@ -201,14 +202,16 @@ r_1 <-   R_fun(pars_opt = pars_opt[c("loga")]-(log(0+.Machine$double.eps)),
                p_fun = (p_log*p_pert),
                pars = pars) %>% local_response_matrix_eq10()
 r_1 %>% round(2)
-# pars_opt_0
-# par_opt_names <- c("loga")
-# # matrix(c(F,F,F,T,F,F,F,T,F), ncol = 3)
-# myfits <- mstrust(obj_alpha, center =  structure(rep(0, length(pars_opt_0[par_opt_names])), names = names(pars_opt_0[par_opt_names])), studyname = "Fits", cores = 3, fits = 3, sd = 1, mypars = pars, perturbation_prediction = perturbation_prediction_0, r_kept = r_kept_0)
-# # myfits %>% as.parframe() 
-# best_fit <- myfits %>% as.parframe() %>% as.parvec()
-# 
-# r_alpha_fun(pars_opt = unclass(best_fit), pars = pars, perturbation_prediction = perturbation_prediction) %>% round(2)
+
+
+pars_opt_0
+par_opt_names <- c("loga_2")
+# matrix(c(F,F,F,T,F,F,F,T,F), ncol = 3)
+myfits <- mstrust(obj_alpha, center =  structure(rep(0, length(pars_opt_0[par_opt_names])), names = names(pars_opt_0[par_opt_names])), studyname = "Fits", cores = 3, fits = 3, sd = 1, mypars = pars, perturbation_prediction = perturbation_prediction_0, r_kept = r_kept_0)
+# myfits %>% as.parframe()
+best_fit <- myfits %>% as.parframe() %>% as.parvec()
+
+r_alpha_fun(pars_opt = unclass(best_fit), pars = pars, perturbation_prediction = perturbation_prediction) %>% round(2)
 ```
 
 
@@ -243,12 +246,12 @@ myplot <- dr_list %>%
   filter(! (r_element %in% paste0("r", c(11,22,33)))) %>% 
   # filter(alpha >-5, alpha <3) %>% 
   filter(matrix != "r_kept") %>%
-  apply_expression({
-    x$matrix[x$matrix == "r_alpha"] <- "r"
-    x$matrix[x$matrix == "r_opt"] <- "r(a = a_opt)"
-    x$matrix <- x$matrix %>% factor(levels = c("r", "r(a = a_opt)"))
-    x
-  }) %>% 
+  {
+    .$matrix[.$matrix == "r_alpha"] <- "r"
+    .$matrix[.$matrix == "r_opt"] <- "r(a = a_opt)"
+    .$matrix <- .$matrix %>% factor(levels = c("r", "r(a = a_opt)"))
+    .
+  } %>% 
   mutate(Element = r_element) %>% 
   # ggplot(mapping = aes(x = alpha, y = value, color = Element, linetype = Element)) +
   ggplot(mapping = aes(x = alpha, y = value, color = Element, linetype = Element, frame = dose)) +
@@ -267,3 +270,187 @@ plotly::ggplotly(myplot)
 #        device = "png")
 #   
 ```
+
+
+
+
+
+
+
+
+# Perturb different parameters
+
+
+```{r Perturb parameter k4}
+# Which pars shall be perturbed?
+pars_perturbed_0 <- pars_perturbed <- c(logm1 = log(0.8), logk1 = log(0.8))
+
+p_pert <- p_pert_fun(pars_perturbed = pars_perturbed_0,
+                     pars = pars_0)
+```
+
+
+
+```{r}
+par_opt_settings <- list("loga", "loga_1", "loga_2", c("loga_1", "loga_2")) %>% set_names(1:4)
+
+dr_list_2 <- lapply(par_opt_settings, function(i) {
+  r_opt_dose_response(which_par = "logk4", 
+                      dosages = pars["logk4"]+seq(0,10,by = 1),
+                      pars_opt = pars_opt_0[i],
+                      alpha_scan_range = sort(unique(seq(-10,10,by = .2))),
+                      pars = pars
+  )
+})
+
+```
+
+
+# Plot as alpha-response with doses as facets
+```{r}
+myplot <- dr_list_2 %>%   
+  # extract2(1) %>%
+  combine_dr_list() %>% 
+  # filter(par_opt_setting ==1) %>% 
+  # filter(near(dose,log(0.1))) %>%
+  filter(! (r_element %in% paste0("r", c(11,22,33)))) %>% 
+  # filter(alpha >-5, alpha <3) %>%
+  filter(!(dose %in% c(5:10))) %>% 
+  filter(matrix != "r_kept") %>%
+  {
+    .$matrix[.$matrix == "r_alpha"] <- "r"
+    .$matrix[.$matrix == "r_opt"] <- "r(a = a_opt)"
+    .$matrix <- .$matrix %>% factor(levels = c("r", "r(a = a_opt)"))
+    .
+  } %>% 
+  mutate(Element = r_element) %>% 
+  # ggplot(mapping = aes(x = alpha, y = value, color = Element, linetype = Element)) +
+  ggplot(mapping = aes(x = alpha, y = value, color = Element, linetype = Element, frame = dose)) +
+  geom_line() +
+  theme_dMod() +
+  scale_color_dMod() +
+  geom_abline(slope = 0,intercept = 0, linetype = 3) +
+  facet_grid(matrix~par_opt_setting, scales = "free")+
+  xlab("log(a)")
+plotly::ggplotly(myplot)
+# ggsave(plot = myplot,
+#        filename = paste0("~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/plots/Phosphatase ", "par_opt_settings",".png"),
+#        width = 10,
+#        height = 10,
+#        units = "cm",
+#        device = "png")
+#   
+```
+
+
+
+# Analyse model
+
+## Print derivs
+
+```{r}
+get("derivs", envir = environment(get("X2Y", environment(g0))))
+```
+
+```{r}
+myodemodel$extended %>% attr("eq") %>% extract(-(1:5)) %>% names %>% matrix(nrow = 5)
+```
+
+```{r}
+mymodel$smatrix %>% t #%>% extract(c(1,2,3,5,4),)
+
+
+
+myodemodel$extended %>% attr("eq") %>% extract(-(1:5)) %>% matrix(nrow = 5)
+```
+
+
+
+```{r Full observation function}
+modules <- modules1 <- c("m1", "X", "Cm2e2", "e1", "Y")
+
+obs <- obs1 <- c("m1",
+                 "m2+a*Cm2e2+a_1*Cm2e2",
+                 "Cm2e2",
+                 "e1",
+                 "e2+a*Cm2e2+a_2*Cm2e2")
+g <- g1 <- Y(as.eqnvec(structure(obs1, names = modules1)), mymodel, compile = TRUE, modelname = "obsfn1", attach.input = FALSE)
+```
+
+```{r}
+get("derivs", envir = environment(get("X2Y", environment(g1)))) %>%names %>%  matrix(nrow = 5)
+```
+
+```{r}
+get("derivs", envir = environment(get("X2Y", environment(g1)))) %>% matrix(nrow = 5)
+```
+
+
+# Structural sensitivity analysis
+
+
+
+
+
+```{r}
+A11 <- mymodel$rates %>% set_names(paste0("r", 1:6)) %>% cOde::jacobianSymb(variables = mymodel$states ) %>% matrix(nrow = 6)
+
+A21 <- -matrix(c(1,1,1,0,0,
+                0,0,1,1,1), nrow = 2, byrow = T)
+
+
+conservedQuantities(mymodel$smatrix %>% t %>% set_colnames(paste0("r", 1:6)))
+
+A12 <- -c(1,1, rep(0,4),
+         0,0,1,1,0,0,
+         0,0,1,0,1,1) %>% matrix(nrow = 6)
+
+A22 <- matrix(0, nrow = 2, ncol = 3)
+
+
+
+A <- rbind(cbind(A11,A12), cbind(A21,A22))
+
+```
+
+
+```{r, include=FALSE}
+eq <- NULL
+eq <- addReaction(eq, "m1", "m2", "k1*m1")
+eq <- addReaction(eq, "m2", "m1", "k2*m2")
+eq <- addReaction(eq, "e1", "e2", "v3*m2*e1/(km3+e1)")
+# eq <- addReaction(eq, "e1", "e2", "k3*e1*m2")
+eq <- addReaction(eq, "e2", "e1", "k4*e2")
+mymodel <- eq
+```
+
+
+```{r}
+A11 <- mymodel$rates %>% set_names(paste0("r", 1:4)) %>% cOde::jacobianSymb(variables = mymodel$states ) %>% matrix(nrow = 4)
+
+A21 <- -matrix(c(1,1,0,0,
+                0,0,1,1), nrow = 2, byrow = T)
+
+
+conservedQuantities(mymodel$smatrix %>% t %>% set_colnames(paste0("r", 1:4)))
+
+A12 <- -c(1,1,0,0,
+         0,0,1,1) %>% matrix(nrow = 4)
+
+A22 <- -matrix(0, nrow = 2, ncol = 2)
+
+
+
+A <- rbind(cbind(A11,A12), cbind(A21,A22))
+dput(A)
+A
+```
+
+```{r}
+mymodel %>% steadyStates()
+```
+
+
+
+
+
