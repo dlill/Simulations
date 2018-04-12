@@ -9,7 +9,6 @@ output:
 
 ```{r Initialization, results='hide', echo=FALSE, message=FALSE}
 # Load libraries and define some useful paths
-
 rm(list = ls())
 library(MRAr)
 library(scales)
@@ -18,32 +17,8 @@ library(xtable)
 
 
 # Setup Model 
-This is the setup of the ODE model.
 
-Our (internal) states x are described by the odemodel which is turned into a prediction via the prediction function x():
-
-dx/dt = f(x,p_dyn)
-x = x(t, p_dyn, x_ini)
-
-p_dyn are dynamical parameters like rate constants etc, x_ini are initial values for all states.
-The prediction function xs() runs the stimulation until it reaches a steady state.
-
-
-Then, these states are linked to observables y via the observation function g(). In our case the observables will be the communicating species:
-
-y = g(x, p_obs)
-
-p_obs are observation parameters like scaling factors.
-
-
-Since all parameters are positive, it is beneficial to use log-parameters, therefore all parameters are transformed to the log-scale. These we call "outer parameters", p_outer. To feed them into our original model, we transform them back to the linear scale ("p_inner") by a parameter transformation function p(). This way, all our calculations can be made in log-space:
-
-p_inner = p(p_outer) = p(log(p_obs), log(p_dyn), log(x_ini))
-
-
-These three types of functions can be concatenated by the "*"-operator.
-g(x(t, p(p_outer))) = g*x*p(t, p_outer)
-
+Careful, it might be broken due to the new comple Cx1z2 in the model...
 
 ## Prediction function
 odemodel() writes the function f as a C-function, which is called by x and xs.
