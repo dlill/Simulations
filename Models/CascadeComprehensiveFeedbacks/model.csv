@@ -10,7 +10,7 @@ z_deact,((v8 * z2)/(k8 + z2)),,,,,1,-1,,,,,,
 short z_y to comp,kzy1*z2*y2-kzy2*Cz2y2,,,,-1,,-1,,,1,,,
 short z_y catalysis step,kzy3*Cz2y2,,,1,,,1,,,-1,,,
 short y_x to comp,kyx1*y2*x2-kyx2*Cy2x2,,-1,,-1,,,,,,1,,
-short y_x catalysis step,kyx*Cy2x2,1,,,1,,,,,,-1,,
+short y_x catalysis step,kyx3*Cy2x2,1,,,1,,,,,,-1,,
 z2_x2_to_comp,kzx1*x2*z2-kzx2*Cz2x2,,-1,,,,-1,,,,,1,
 deact_x_by_z2,kzx*Cz2x2,1,,,,,1,,,,,-1,
 z2_x1_to_comp,kzx1_1*x1*z2-kzx1_2*Cz2x1,-1,,,,,-1,,,,,,1
