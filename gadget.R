@@ -5,7 +5,7 @@ library(ggplot2)
 ropt_gadget <- function(which_pars_opt) {
   
   ui <- miniPage(
-    gadgetTitleBar("Fuck you"),
+    gadgetTitleBar("Explore the algorithm's behaviour depending on complexes and alphas"),
     miniContentPanel(
       # The brush="brush" argument means we can listen for
       # brush events on the plot using input$brush.
@@ -75,7 +75,8 @@ ropt_gadget <- function(which_pars_opt) {
       write.csv(cbind(out, pars_opt, names(pars_opt)), file = paste0(filename, ".csv"))
       saveRDS(ropt() %>% attr("pars_opt") %>% {bla <- .; attr(bla, "alpha") <- input$value; bla}, paste0(filename, "_pars.rds"))
     })
-    
+  
+    observeEvent(input$done, stopApp(NULL))  
   }
   
   runGadget(ui, server)
