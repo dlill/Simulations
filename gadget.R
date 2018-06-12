@@ -2,8 +2,9 @@ library(shiny)
 library(miniUI)
 library(ggplot2)
 
-ropt_gadget <- function(which_pars_opt) {
+ropt_gadget <- function(which_pars_opt, dMod.frame, hypothesis = 1) {
   
+  # ------------ ui ------------ 
   ui <- miniPage(
     gadgetTitleBar("Explore the algorithm's behaviour depending on complexes and alphas"),
     miniContentPanel(
@@ -18,7 +19,19 @@ ropt_gadget <- function(which_pars_opt) {
     )
   )
   
+  # ------------ Preparation for server --------
+  # get objects from dMod.frame
+  g <- dMod.frame$g[[hypothesis]]
+  p_pert <- dMod.frame$p_pert[[hypothesis]]
+  p <- dMod.frame$p[[hypothesis]]
+  xs <- dMod.frame$xs[[hypothesis]]
+  pars <- dMod.frame$pars[[hypothesis]]
+  
+  perturbation_prediction <- (xs*p*p_pert)(c(0,Inf), pars, deriv = F)
+
+  # ------------ Server  ------------ 
   server <- function(input, output, session) {
+    
     r0 <- R_fun(pars_opt = pars_opt,
           perturbation_prediction = perturbation_prediction,
           obs_fun = g,
