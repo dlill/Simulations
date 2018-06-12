@@ -27,8 +27,8 @@ f     <- "model.csv" %>% read.csv %>% as.eqnlist
 
 # If the odemodel has been calculated already, it can be loaded with "load".
 # If not, uncomment the next two lines.
-# myodemodel <- odemodel(f, modelname = "cascade_comprehensive")
-# saveRDS(myodemodel, "odemodel.rds")
+myodemodel <- odemodel(f, modelname = "cascade_comprehensive")
+saveRDS(myodemodel, "odemodel.rds")
 myodemodel <- readRDS("odemodel.rds")
 
 # Prediction function for continuous times
