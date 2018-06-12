@@ -175,11 +175,11 @@ loadDLL((g*x*p*p_pert), xs)
 cat("bla\n")
 (xs*p*p_pert)(c(0,Inf), pars, deriv = F) %>% do.call(rbind,.)
 
-# times <- seq(0,1000, length.out = 100)
-# (x*p*p_pert)(times = times, pars = pars, deriv = F) %>%
-#   plotPrediction(
-# scales = "fixed"
-# )
+times <- seq(0,1000, length.out = 100)
+(x*p*p_pert)(times = times, pars = pars, deriv = F) %>%
+  plotPrediction(
+scales = "fixed"
+)
 
 # plotFluxes(pars, (x*p*p_pert), times, fluxes, conditions = "Ctr")
 # ggplotly()
@@ -326,10 +326,10 @@ cat("bla\n")
 (xs*p*p_pert)(c(0,Inf), pars, deriv = F) %>% do.call(rbind,.)
 
 # times <- seq(0,1000, length.out = 100)
-# (x*p*p_pert)(times = times, pars = pars, deriv = F) %>%
-#   plotPrediction(
-# scales = "fixed"
-# )
+(x*p*p_pert)(times = times, pars = pars, deriv = F) %>%
+  plotPrediction(
+scales = "fixed"
+)
 
 # plotFluxes(pars, (x*p*p_pert), times, fluxes, conditions = "Ctr")
 # ggplotly()
