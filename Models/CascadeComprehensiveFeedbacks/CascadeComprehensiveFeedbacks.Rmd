@@ -23,12 +23,15 @@ Careful, it might be broken due to the new comple Cx1z2 in the model...
 ## Prediction function
 odemodel() writes the function f as a C-function, which is called by x and xs.
 ```{r, results='asis'}
-f     <- "model.csv" %>% read.csv %>% as.eqnlist
+f     <- "model.csv" %>% 
+  read.csv %>%
+  .[1:16,] %>% #kick out synthesis and degradation
+  as.eqnlist
 
 # If the odemodel has been calculated already, it can be loaded with "load".
 # If not, uncomment the next two lines.
-myodemodel <- odemodel(f, modelname = "cascade_comprehensive")
-saveRDS(myodemodel, "odemodel.rds")
+# myodemodel <- odemodel(f, modelname = "cascade_comprehensive")
+# saveRDS(myodemodel, "odemodel.rds")
 myodemodel <- readRDS("odemodel.rds")
 
 # Prediction function for continuous times
@@ -77,6 +80,64 @@ fluxes <- f %>%
   .[c(1:14)]
 
 ```
+
+
+# Use the Japanese guys' structural analysis
+
+Name of their paper: Sensitivity and network topology in chemical reaction systems
+
+Vocabulary of their paper:
+M spezies m
+R reactions j
+
+Stoichiometrixc matrix nu_{m j}
+c =  steady state fluxes, ker(s)
+
+r_j = j-te Ratengleichung = "flux"
+A  = matrix(dr_j/dx_m, 
+            matrix(rbind(coefficients of conserved quantities)_{Nc M},
+            matrix(cbind(coefficients of steady state fluxes)),
+            0
+            )
+
+```{r}
+# dr_j/dx_m
+myrates <- f$rates
+myrates <- myrates %>% str_replace("\\* ?\\(.*", "") # kill regulatory feedback
+
+drdx <- jacobianSymb(myrates %>% setNames(.,paste0("j", 1:length(.))),f$states) %>% 
+  matrix(ncol = length(f$states)) 
+
+# conserved moieties
+conserved <-
+  f$smatrix %>% replace(.,is.na(.), 0) %>% nullZ() %>% {rownames(.) <- f$states;.} %>% 
+{out <- mymat <- .; out[,1] <- mymat[,2]+ mymat[,3];out[,2] <- mymat[,1]+ mymat[,3];out[,3] <- mymat[,2]+ mymat[,1]; out} %>% t 
+
+# fluxes
+fluxes <-
+  f$smatrix %>% replace(.,is.na(.), 0) %>%t %>% nullZ()
+
+# matrix of zeros
+zeros <- matrix(0, nrow = 3, ncol = 7)
+
+# A
+A <- cbind(rbind(drdx, -conserved), rbind(-fluxes, zeros))
+#print A
+A%>% print_mathematica.matrix("A")
+
+# Matrices of eigensensitivities
+symdiag <- function(vec) {
+  mymat <- diag(1:length(vec))
+  mymat[diag(1:length(vec))!=0] <- vec
+  mymat
+}
+symdiag(paste0("Er", 1:length(f$rates))) %>% print_mathematica.matrix("ER")
+symdiag(paste0("c", 1:nrow(conserved))) %>% print_mathematica.matrix("ENc")
+```
+
+
+
+
 
 
 # Apply the algorithm interactively
@@ -195,7 +256,7 @@ myframe <- dMod.frame("1", g,x, p, data = NULL, e = NULL, p_pert = list(p_pert),
 Start an interactive interface, where you can choose alpha-values and the optimization parameters
 ```{r}
 source('../../gadget.R', echo=TRUE)
-ropt_gadget(pars_opt %>% names)
+ropt_gadget(pars_opt %>% names, myframe)
 ```
 
 Combinations
