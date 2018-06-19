@@ -82,58 +82,7 @@ fluxes <- f %>%
 ```
 
 
-# Use the Japanese guys' structural analysis
 
-Name of their paper: Sensitivity and network topology in chemical reaction systems
-
-Vocabulary of their paper:
-M spezies m
-R reactions j
-
-Stoichiometrixc matrix nu_{m j}
-c =  steady state fluxes, ker(s)
-
-r_j = j-te Ratengleichung = "flux"
-A  = matrix(dr_j/dx_m, 
-            matrix(rbind(coefficients of conserved quantities)_{Nc M},
-            matrix(cbind(coefficients of steady state fluxes)),
-            0
-            )
-
-```{r}
-# dr_j/dx_m
-myrates <- f$rates
-myrates <- myrates %>% str_replace("\\* ?\\(.*", "") # kill regulatory feedback
-
-drdx <- jacobianSymb(myrates %>% setNames(.,paste0("j", 1:length(.))),f$states) %>% 
-  matrix(ncol = length(f$states)) 
-
-# conserved moieties
-conserved <-
-  f$smatrix %>% replace(.,is.na(.), 0) %>% nullZ() %>% {rownames(.) <- f$states;.} %>% 
-{out <- mymat <- .; out[,1] <- mymat[,2]+ mymat[,3];out[,2] <- mymat[,1]+ mymat[,3];out[,3] <- mymat[,2]+ mymat[,1]; out} %>% t 
-
-# fluxes
-fluxes <-
-  f$smatrix %>% replace(.,is.na(.), 0) %>%t %>% nullZ()
-
-# matrix of zeros
-zeros <- matrix(0, nrow = 3, ncol = 7)
-
-# A
-A <- cbind(rbind(drdx, -conserved), rbind(-fluxes, zeros))
-#print A
-A%>% print_mathematica.matrix("A")
-
-# Matrices of eigensensitivities
-symdiag <- function(vec) {
-  mymat <- diag(1:length(vec))
-  mymat[diag(1:length(vec))!=0] <- vec
-  mymat
-}
-symdiag(paste0("Er", 1:length(f$rates))) %>% print_mathematica.matrix("ER")
-symdiag(paste0("c", 1:nrow(conserved))) %>% print_mathematica.matrix("ENc")
-```
 
 
 
@@ -209,6 +158,10 @@ a_toz_Cz2y2	=	.Machine$double.eps
 ) %>% 
  map_dbl(1)
 
+pars <- c(pinner[1:3], str_subset_name(pinner, "a_to")) %>% log
+pars_opt <- pars %>% str_subset_name("a_to")
+
+
 trafo <- getParameters(x,g) %>% 
   setNames(.,.) %>% 
   insert("x~0", x = getSymbols(mytrafo[[i]]) %>% str_subset("deg|syn")) %>% 
@@ -222,8 +175,6 @@ p <- trafo %>%
   # insert("x~log(x)", x = getSymbols(mytrafo[[i]]) %>% str_subset("^a_to")) %>% 
   P()
 
-pars <- c(pinner[1:3], str_subset_name(pinner, "a_to")) %>% log
-pars_opt <- pars %>% str_subset_name("a_to")
 
 # generate functions for the different experimental conditions
 pars_perturbed_0 <- pars_perturbed <- c("x1" = log(0.9), "y1" = log(0.9), "z1" = log(0.9))
@@ -233,7 +184,7 @@ compile(p, p_pert, output = "Cascade_trafos")
 loadDLL((g*x*p*p_pert), xs)
 
 
-cat("bla\n")
+cat("out\n")
 (xs*p*p_pert)(c(0,Inf), pars, deriv = F) %>% do.call(rbind,.)
 
 times <- seq(0,1000, length.out = 100)
@@ -383,7 +334,7 @@ p_pert <- p_pert_fun(pars_perturbed = pars_perturbed, pars = pars)
 compile(p, p_pert, output = "Cascade_trafos")
 loadDLL((g*x*p*p_pert), xs)
 
-cat("bla\n")
+cat("out\n")
 (xs*p*p_pert)(c(0,Inf), pars, deriv = F) %>% do.call(rbind,.)
 
 # times <- seq(0,1000, length.out = 100)
@@ -433,6 +384,742 @@ Combinations
 5. a_tox_Cx2y1, a_toy_Cy2z1, a_toz_Cz2x2, -----------, -----------, a_tox_Cy2x2, a_toy_Cz2y2
 
 6. a_tox_Cx2y1, -----------, -----------, -----------, -----------, a_tox_Cy2x2, a_toy_Cz2y2
+
+
+
+
+
+
+# Explore the numerical sensitivities
+
+If one imagines that one does a linear combination of the rows of the global responses with positive free parameters, one can see that some connections can be brought to zero, since 
+
+```{r}
+# 
+pred <- (xs*p*p_pert)(c(0,Inf), pars, deriv = T)
+# pred %>% getDerivs()
+states <- f$states
+
+cat("Global responses\n")
+
+conveniencefunctions::extract_derivs(pred, states, states) %>%
+  .[[1]] %>%
+  .[-1] %>%
+  matrix(ncol = 3) %>%
+
+  
+  {out <- .; map(1:3, function(i) out[,i]/out[i,i])} %>%
+  do.call(cbind,.) %>%
+
+  round(2) %>% 
+  
+  # sign %>% 
+  magrittr::set_rownames(states) %>%
+  magrittr::set_colnames(paste0(letters[24:26], "1")) %>% 
+  
+  # {.} %T>% print %>%
+  {.}
+```
+
+```{r}
+
+```
+
+
+
+
+
+
+
+
+# Use the Japanese guys' structural analysis
+
+## Analytically - prepare Mathematica objects
+
+Name of their paper: Sensitivity and network topology in chemical reaction systems
+
+Vocabulary of their paper:
+M spezies m
+R reactions j
+
+Stoichiometrixc matrix nu_{m j}
+c =  steady state fluxes, ker(s)
+
+r_j = j-te Ratengleichung = "flux"
+A  = matrix(dr_j/dx_m, 
+            matrix(rbind(coefficients of conserved quantities)_{Nc M},
+            matrix(cbind(coefficients of steady state fluxes)),
+            0
+            )
+
+```{r}
+f <- read.csv("modelJapanese.csv") %>% 
+  .[-(20:22),] %>% select(-Cz2x1) %>% as.data.frame() %>%  
+  as.eqnlist()
+
+# simplify model: kick out z
+# f <- f %>%
+#   as.data.frame %>% 
+#   filter(Description %>% str_detect("z") %>% `!`) %>% .[!str_detect(names(.), "z")] %>% 
+#   as.eqnlist()
+#   
+# simplify model: simplify rate equations
+myrates <- f$rates
+myrates <-
+  myrates %>%
+    str_replace("\\* ?\\(.*", "") %>% # Optionally for Mathematica: kill regulatory feedback
+    str_replace("v([0-9]*) *\\* *([x-z][12]).*", "k\\1 * \\2))") # Optionally for Mathematica: replace intrinsic Michaelis Menten activation by Mass Action activation
+    {.}
+
+
+# dr_j/dx_m
+drdx <- jacobianSymb(myrates %>% setNames(.,paste0("j", 1:length(.))),f$states) %>%
+  matrix(ncol = length(f$states))
+
+# conserved moieties
+conserved <-
+  f$smatrix %>% replace(.,is.na(.), 0) %>% nullZ() %>% {rownames(.) <- f$states;.} %>%
+# {out <- mymat <- .; out[,1] <- mymat[,2]+ mymat[,3];out[,2] <- mymat[,1]+ mymat[,3];out[,3] <- mymat[,2]+ mymat[,1]; out} %>% # for the full model
+  {out <- mymat <- .; out[,2] <- mymat[,1]+ mymat[,2]; out[,1] <- mymat[,2]; out} %>% # for the full model
+   t
+
+# fluxes
+fluxes <-
+  f$smatrix %>% replace(.,is.na(.), 0) %>%t %>% nullZ()
+
+# matrix of zeros
+zeros <- matrix(0, nrow = nrow(conserved), ncol = ncol(fluxes))
+
+# A
+A <- cbind(rbind(drdx, -conserved), rbind(-fluxes, zeros))
+#print A
+A%>% print_mathematica.matrix("A")
+
+# Matrices of eigensensitivities
+symdiag <- function(vec) {
+  mymat <- diag(1:length(vec))
+  mymat[diag(1:length(vec))!=0] <- vec
+  mymat
+}
+symdiag(paste0("Er", 1:length(f$rates))) %>% print_mathematica.matrix("ER")
+symdiag(paste0("c", 1:nrow(conserved))) %>% print_mathematica.matrix("ENc")
+```
+
+
+## Numerically - interface to dMod
+
+Unfortunately, things aren't so easy, as the paper by Okada et al assuma mass action kinetics in each reaction. Therefore, I first need to several things
+
+1. Change equations to Mass action, and kill feedback
+2. Find good parameters which resemble the original parameters
+3. Apply their algorithm
+
+
+```{r}
+f <- read.csv("modelJapanese.csv") %>% 
+  .[-(20:22),] %>% select(-Cz2x1) %>% as.data.frame() %>%  
+  as.eqnlist()
+
+f$rates <-
+  f$rates %>%
+    str_replace("\\* ?\\(.*", "") %>% # Optionally for Mathematica: kill regulatory feedback
+    str_replace("v([0-9]*) *\\* *([x-z][12]).*", "k\\1 * \\2))") %>%  # Optionally for Mathematica: replace intrinsic Michaelis Menten activation by Mass Action activation
+    {.}
+
+model <- f %>% odemodel()
+
+xs <- Xs_steady(model)
+x <- Xs(model)
+g <- g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), f, compile = TRUE, modelname = "obs", attach.input = FALSE)
+
+pinner <- list(
+  # MA model
+x1         	=	100	,
+y1         	=	100	,
+z1         	=	100	,
+
+k1         	=	.1	,
+k2         	=	.01	,
+
+k31        	=	0.01	,
+k32        	=	0.4	,
+k4         	=	0.05	,
+
+k5         	=	.01	,
+
+k61        	=	0.05	,
+k62        	=	0.4	,
+k7         	=	0.01	,
+
+k8         	=	.01	,
+
+kyx1      	=	0.05	,
+kyx2       	=	0.4	,
+kyx3       	=	0.01	,
+
+# kzx1_1     	=	c(0, 
+#                 0.01)	,
+# kzx1_2     	=	0.4	,
+# kzx1_3     	=	0.05	,
+
+kzx1       	=	0.05	,
+kzx2       	=	0.4	,
+kzx        	=	0.01	,
+
+
+kzy1       	=	0.01	,
+kzy2       	=	0.4	,
+kzy3       	=	0.05	,
+
+a_tox_Cx2y1	=	.Machine$double.eps	,
+a_tox_Cz2x1	=	.Machine$double.eps	,
+a_tox_Cz2x2	=	.Machine$double.eps	,
+a_tox_Cy2x2	=	.Machine$double.eps	,
+a_toy_Cy2z1	=	.Machine$double.eps	,
+a_toy_Cz2y2	=	.Machine$double.eps	,
+a_toy_Cy2x2	=	.Machine$double.eps	,
+a_toz_Cz2x1	=	.Machine$double.eps	,
+a_toz_Cz2x2	=	.Machine$double.eps	,
+a_toz_Cz2y2	=	.Machine$double.eps 
+) %>% 
+ map_dbl(1)
+
+pars <- c(pinner[1:3], str_subset_name(pinner, "a_to")) %>% log
+pars_opt <- pars %>% str_subset_name("a_to")
+
+trafo <-
+  getParameters(g,x) %>% 
+  setNames(.,.) %>% 
+  insert("x~0", x = getSymbols(mytrafo[[i]]) %>% str_subset("deg|syn")) %>% 
+  insert("x~0", x = getSymbols(mytrafo[[i]]) %>% str_subset("^[^ak]*[xyz]2")) %>% 
+  insert("x~value", x = names(pinner)[!names(pinner)%in%names(pars)], value = pinner[!names(pinner)%in%names(pars)]) %>% 
+  insert("x~exp(x)", x = getSymbols(mytrafo[[i]])) %>%
+  # {.} %T>% print %>% 
+  {.} 
+
+  
+p <- trafo %>% 
+  # insert("x~log(x)", x = getSymbols(mytrafo[[i]]) %>% str_subset("^a_to")) %>% 
+  P()
+
+
+# generate functions for the different experimental conditions
+pars_perturbed_0 <- pars_perturbed <- c("x1" = log(0.9), "y1" = log(0.9), "z1" = log(0.9))
+p_pert <- p_pert_fun(pars_perturbed = pars_perturbed, pars = pars)
+
+compile(p, p_pert, output = "Cascade_trafos")
+loadDLL((g*x*p*p_pert), xs)
+
+
+cat("out\n")
+(p*p_pert)(pars)
+getParameters(p)
+
+(xs*p*p_pert)(c(0,Inf), pars, deriv = F) %>% do.call(rbind,.)
+
+times <- seq(0,400, length.out = 100)
+(x*p*p_pert)(times = times, pars = pars, deriv = F) %>%
+  plotPrediction(
+scales = "fixed"
+)
+
+# build dMod.frame
+myframe <- dMod.frame("1", g,x, p, data = NULL, e = NULL, p_pert = list(p_pert), xs = list(xs), pars = list(pars), times = list(times))
+  
+```
+
+
+
+```{r}
+# dr_j/dx_m
+drdx <- jacobianSymb(f$rates %>% setNames(.,paste0("j", 1:length(.))),f$states) %>%
+  matrix(ncol = length(f$states))
+
+# conserved moieties
+conserved <-
+  f$smatrix %>% replace(.,is.na(.), 0) %>% nullZ() %>% {rownames(.) <- f$states;.} %>%
+  {out <- mymat <- .; out[,1] <- mymat[,2]+ mymat[,3];out[,3] <- mymat[,1]+ mymat[,3];out[,2] <- mymat[,2]+ mymat[,1]; out} %>% # for the full model
+  t
+
+# fluxes
+fluxes <-
+  f$smatrix %>% replace(.,is.na(.), 0) %>%t %>% nullZ()
+
+# matrix of zeros
+zeros <- matrix(0, nrow = nrow(conserved), ncol = ncol(fluxes))
+
+# A
+A <- cbind(rbind(drdx, -conserved), rbind(-fluxes, zeros))
+
+
+# Make A a function which can be evaluated, use funC0 for that. 
+mynames <- paste0("A_", outer(1:dim(A)[1], 1:dim(A)[2], FUN = paste, sep = "."))
+A_fun <-  A %>% {attr(.,"dim") <- NULL;.} %>% setNames(mynames) %>% funC0()
+
+# Get the steady state of the system
+steady_state <- (xs*p*p_pert)(c(0,Inf),pars, conditions = "Ctr", deriv = F) %>% .[[1]] %>% .[,-1] %>% unlist()
+inpars <- p(pars) %>% .[[1]] %>% unclass() %>% {attr(., "deriv") <- NULL;.} %>%   {out <- .; out[names(steady_state)] <- steady_state; out}
+
+# Compute A
+A_num <- do.call(A_fun, as.list(inpars)) %>% {dim(.) <- dim(A);.}
+
+# Prepare the matrix of eigensensitivities
+Er_Ec <- diag(rep(1, nrow(A)))
+
+
+# check if A_num is ill conditioned, i.e. if it can be inverted without numerical problems
+svd(A_num) %>% .$d %>%  {(max(.)/min(.))}
+
+# Invert the matrix and get the eigensensitiviites
+  # naming
+dynpars <- getParameters(x) %>% setdiff(f$states)
+moieties <- paste0(letters[24:26], "tot")
+states <- f$states
+flux_names <- paste0("flux",1:(dim(fluxes)[2]))
+
+mysens <- (- svdinv(A_num) %*% Er_Ec) %>% {dimnames(.) <- list(c(states, flux_names), c(dynpars, moieties));.}
+
+cat("Sensitivies\n")
+dXdtot <- mysens %>% 
+  .[1:length(states),] %>% # exclude fluxes
+  .[,-(1:length(dynpars))] %>% 
+  
+  {out <- .; map(1:3, function(i) out[,i]/out[i,i])} %>%
+  do.call(cbind,.) %>%
+
+  round(2) %>% 
+  
+  # sign %>% 
+  
+  {.} %T>% print %>%
+  {.}
+
+sum(dXdtot[,1])
+```
+
+```{r}
+R_fun(pars_opt, (xs*p*p_pert)(c(0,Inf),pars, deriv = F), g, (p*p_pert), pars) %>% 
+  local_response_matrix_eq10()
+```
+
+```{r}
+steady_state <- (xs*p*p_pert)(c(0,Inf),pars, deriv = F, conditions = "Ctr")[[1]][1,,drop = T]
+```
+
+
+```{r}
+dXdtot[2,1] / # dx2/dxtot
+  dXdtot[4,1] * # dy2/dxtot
+  steady_state["y2"] / 
+  steady_state["x2"]
+```
+
+
+## Results of the Japanese guys' method
+
+Somehow I had forgotten that their approach delivers global responses, not local ones. However, what's nice about it is that they really get sensitivities for conserved moieties.
+Next, I'm gonna try the local responses from the Jacobian directly
+
+
+
+
+# Local responses from Jacobian
+
+To get the sensitivities wrt the totals, one can easily do a parameter transformation of the states
+
+Example: x = c(x1,x2), x' = c(xt',x2'). (Primes don't mean anything, they're just to make clear in which coordinates we are at the moment). 
+Then x = c(x1,x2) = c(xt'-x2',x2') = matrix(1,0,-1,1, ncol = 2) %*% c(xt',x2') = M x'
+
+(df/dx)_ij  --> (df/dx')_ij = (df/dx)_ik %*% (dx/dx')_kj = (dfdx)_ik %*% M_kj
+
+[] implement the matrix M
+
+
+```{r}
+f <- read.csv("modelJapanese.csv") %>% 
+  .[-(20:22),] %>% select(-Cz2x1) %>% as.data.frame() %>%  
+  as.eqnlist()
+
+f$rates <-
+  f$rates %>%
+    str_replace("\\* ?\\(.*", "") %>% # Optionally for Mathematica: kill regulatory feedback
+    str_replace("v([0-9]*) *\\* *([x-z][12]).*", "k\\1 * \\2))") %>%  # Optionally for Mathematica: replace intrinsic Michaelis Menten activation by Mass Action activation
+    {.}
+
+model <- f %>% odemodel()
+
+xs <- Xs_steady(model)
+x <- Xs(model)
+g <- g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), f, compile = TRUE, modelname = "obs", attach.input = FALSE)
+
+pinner <- list(
+  # MA model
+x1         	=	100	,
+y1         	=	100	,
+z1         	=	100	,
+
+k1         	=	.1	,
+k2         	=	.01	,
+
+k31        	=	0.01	,
+k32        	=	0.4	,
+k4         	=	0.05	,
+
+k5         	=	.01	,
+
+k61        	=	0.05	,
+k62        	=	0.4	,
+k7         	=	0.01	,
+
+k8         	=	.01	,
+
+kyx1      	=	0.05	,
+kyx2       	=	0.4	,
+kyx3       	=	0.01	,
+
+# kzx1_1     	=	c(0, 
+#                 0.01)	,
+# kzx1_2     	=	0.4	,
+# kzx1_3     	=	0.05	,
+
+kzx1       	=	0.05	,
+kzx2       	=	0.4	,
+kzx        	=	0.01	,
+
+
+kzy1       	=	0.01	,
+kzy2       	=	0.4	,
+kzy3       	=	0.05	,
+
+a_tox_Cx2y1	=	.Machine$double.eps	,
+a_tox_Cz2x1	=	.Machine$double.eps	,
+a_tox_Cz2x2	=	.Machine$double.eps	,
+a_tox_Cy2x2	=	.Machine$double.eps	,
+a_toy_Cy2z1	=	.Machine$double.eps	,
+a_toy_Cz2y2	=	.Machine$double.eps	,
+a_toy_Cy2x2	=	.Machine$double.eps	,
+a_toz_Cz2x1	=	.Machine$double.eps	,
+a_toz_Cz2x2	=	.Machine$double.eps	,
+a_toz_Cz2y2	=	.Machine$double.eps 
+) %>% 
+ map_dbl(1)
+
+pars <- c(pinner[1:3], str_subset_name(pinner, "a_to")) %>% log
+pars_opt <- pars %>% str_subset_name("a_to")
+
+trafo <-
+  getParameters(g,x) %>% 
+  setNames(.,.) %>% 
+  insert("x~0", x = getSymbols(mytrafo[[i]]) %>% str_subset("deg|syn")) %>% 
+  insert("x~0", x = getSymbols(mytrafo[[i]]) %>% str_subset("^[^ak]*[xyz]2")) %>% 
+  insert("x~value", x = names(pinner)[!names(pinner)%in%names(pars)], value = pinner[!names(pinner)%in%names(pars)]) %>% 
+  insert("x~exp(x)", x = getSymbols(mytrafo[[i]])) %>%
+  # {.} %T>% print %>% 
+  {.} 
+
+  
+p <- trafo %>% 
+  # insert("x~log(x)", x = getSymbols(mytrafo[[i]]) %>% str_subset("^a_to")) %>% 
+  P()
+
+
+# generate functions for the different experimental conditions
+pars_perturbed_0 <- pars_perturbed <- c("x1" = log(0.9), "y1" = log(0.9), "z1" = log(0.9))
+p_pert <- p_pert_fun(pars_perturbed = pars_perturbed, pars = pars)
+
+compile(p, p_pert, output = "Cascade_trafos")
+loadDLL((g*x*p*p_pert), xs)
+
+
+cat("out\n")
+(p*p_pert)(pars)
+getParameters(p)
+
+(xs*p*p_pert)(c(0,Inf), pars, deriv = F) %>% do.call(rbind,.)
+
+times <- seq(0,400, length.out = 100)
+(x*p*p_pert)(times = times, pars = pars, deriv = F) %>%
+  plotPrediction(
+scales = "fixed"
+)
+
+# build dMod.frame
+myframe <- dMod.frame("1", g,x, p, data = NULL, e = NULL, p_pert = list(p_pert), xs = list(xs), pars = list(pars), times = list(times))
+  
+```
+
+
+```{r}
+
+jac <- f %>% as.eqnvec %>% jacobianSymb(f$states)
+
+jac_fun <- funC0(jac)
+
+
+# Get the steady state of the system
+steady_state <- (xs*p*p_pert)(c(0,Inf),pars, conditions = "Ctr", deriv = F) %>% .[[1]] %>% .[,-1] %>% unlist()
+inpars <- p(pars) %>% .[[1]] %>% unclass() %>% {attr(., "deriv") <- NULL;.} %>%   {out <- .; out[names(steady_state)] <- steady_state; out}
+
+
+M <- diag(2, nrow = length(f$states))
+M[1,] <- -str_detect(f$states, "x")
+M[3,] <- -str_detect(f$states, "y")
+M[5,] <- -str_detect(f$states, "z")
+M[M==2] <- 1
+
+states_prime <- f$states %>% str_replace_all(structure(paste0(letters[24:26], "tot"), names = paste0("\\b", letters[24:26], "1\\b")))
+
+
+jac_num <- do.call(jac_fun, as.list(inpars)) %>% matrix(nrow = length(f$states)) %>% signif(2)
+
+
+
+(- diag(diag(1/(svdinv(M)%*%jac_num%*%M))) %*% svdinv(M)%*%jac_num %*% M) %>% 
+  magrittr::set_colnames(states_prime) %>% 
+  magrittr::set_rownames(f$states)
+
+
+
+
+
+```
+
+
+
+
+
+
+# 3x3 Matrices analysis for Mathematica
+
+```{r}
+letters[1:9] %>% 
+  
+  str_replace_all(c("\\b([adg])\\b" = "\\1 + alpha * \\1_1")) %>% 
+  str_replace_all(c("\\b([beh])\\b" = "\\1 + beta * \\1_1")) %>% 
+
+  matrix(nrow = 3) %>% 
+
+
+  print_mathematica.matrix() %>% 
+  {.}
+```
+
+
+```{r}
+f <- read.csv("modelJapanese.csv") %>% 
+  .[-(20:22),] %>% select(-Cz2x1) %>% as.data.frame() %>%  
+  as.eqnlist()
+
+f$rates <-
+  f$rates %>%
+    str_replace("\\* ?\\(.*", "") %>% # Optionally for Mathematica: kill regulatory feedback
+    str_replace("v([0-9]*) *\\* *([x-z][12]).*", "k\\1 * \\2))") %>%  # Optionally for Mathematica: replace intrinsic Michaelis Menten activation by Mass Action activation
+    {.}
+
+model <- f %>% odemodel()
+
+xs <- Xs_steady(model)
+x <- Xs(model)
+g <- g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), f, compile = TRUE, modelname = "obs", attach.input = FALSE)
+
+pinner <- list(
+  # MA model
+x1         	=	100	,
+y1         	=	100	,
+z1         	=	100	,
+
+k1         	=	.1	,
+k2         	=	.01	,
+
+k31        	=	0.01	,
+k32        	=	0.4	,
+k4         	=	0.05	,
+
+k5         	=	.01	,
+
+k61        	=	0.05	,
+k62        	=	0.4	,
+k7         	=	0.01	,
+
+k8         	=	.01	,
+
+kyx1      	=	0.05	,
+kyx2       	=	0.4	,
+kyx3       	=	0.01	,
+
+# kzx1_1     	=	c(0, 
+#                 0.01)	,
+# kzx1_2     	=	0.4	,
+# kzx1_3     	=	0.05	,
+
+kzx1       	=	0.05	,
+kzx2       	=	0.4	,
+kzx        	=	0.01	,
+
+
+kzy1       	=	0.01	,
+kzy2       	=	0.4	,
+kzy3       	=	0.05	,
+
+a_tox_Cx2y1	=	.Machine$double.eps	,
+a_tox_Cz2x1	=	.Machine$double.eps	,
+a_tox_Cz2x2	=	.Machine$double.eps	,
+a_tox_Cy2x2	=	.Machine$double.eps	,
+a_toy_Cy2z1	=	.Machine$double.eps	,
+a_toy_Cz2y2	=	.Machine$double.eps	,
+a_toy_Cy2x2	=	.Machine$double.eps	,
+a_toz_Cz2x1	=	.Machine$double.eps	,
+a_toz_Cz2x2	=	.Machine$double.eps	,
+a_toz_Cz2y2	=	.Machine$double.eps 
+) %>% 
+ map_dbl(1)
+
+pars <- c(pinner[1:3], str_subset_name(pinner, "a_to")) %>% log
+pars_opt <- pars %>% str_subset_name("a_to")
+
+trafo <-
+  getParameters(g,x) %>% 
+  setNames(.,.) %>% 
+  insert("x~0", x = getSymbols(mytrafo[[i]]) %>% str_subset("deg|syn")) %>% 
+  insert("x~0", x = getSymbols(mytrafo[[i]]) %>% str_subset("^[^ak]*[xyz]2")) %>% 
+  insert("x~value", x = names(pinner)[!names(pinner)%in%names(pars)], value = pinner[!names(pinner)%in%names(pars)]) %>% 
+  insert("x~exp(x)", x = getSymbols(mytrafo[[i]])) %>%
+  # {.} %T>% print %>% 
+  {.} 
+
+  
+p <- trafo %>% 
+  # insert("x~log(x)", x = getSymbols(mytrafo[[i]]) %>% str_subset("^a_to")) %>% 
+  P()
+
+
+# generate functions for the different experimental conditions
+pars_perturbed_0 <- pars_perturbed <- c("x1" = log(0.9), "y1" = log(0.9), "z1" = log(0.9))
+p_pert <- p_pert_fun(pars_perturbed = pars_perturbed, pars = pars)
+
+compile(p, p_pert, output = "Cascade_trafos")
+loadDLL((g*x*p*p_pert), xs)
+
+
+cat("out\n")
+(p*p_pert)(pars)
+getParameters(p)
+
+(xs*p*p_pert)(c(0,Inf), pars, deriv = F) %>% do.call(rbind,.)
+
+times <- seq(0,400, length.out = 100)
+(x*p*p_pert)(times = times, pars = pars, deriv = F) %>%
+  plotPrediction(
+scales = "fixed"
+)
+
+# build dMod.frame
+myframe <- dMod.frame("1", g,x, p, data = NULL, e = NULL, p_pert = list(p_pert), xs = list(xs), pars = list(pars), times = list(times))
+```
+
+```{r}
+whichParOpt <- names(pars_opt)[c(1,4)]
+perturbation_prediction <- (xs*p*p_pert)(c(0,Inf), pars, deriv = F)
+
+r0 <- R_fun(pars_opt = pars_opt,
+            perturbation_prediction = perturbation_prediction,
+            obs_fun = g,
+            p_fun = (p*p_pert),
+            pars = pars) %>% local_response_matrix_eq10()
+
+rkept <- r_kept_fun(pars_opt = pars_opt[whichParOpt],
+                                        perturbation_prediction = perturbation_prediction, 
+                                        obs_fun = g,
+                                        p_fun = (p * p_pert), 
+                                        pars = pars,
+                                        alpha = 
+                                   -log(.Machine$double.eps)) %>% 
+  {.} %T>% print %>%
+  {.}
+myfits <- mstrust(obj_alpha, 
+                        center =  structure(rep(0, length(whichParOpt)), names = whichParOpt), 
+                        studyname = "Fits", 
+                        cores = 3, 
+                        fits = 12, 
+                        sd = 1, 
+                        mypars = pars, 
+                        perturbation_prediction = perturbation_prediction, 
+                        r_kept = rkept, 
+                        p_fun = (p * p_pert),
+                        obs_fun = g)
+myfits %>% as.parframe()
+
+profile(obj_alpha,myfits %>% as.parframe() %>% as.parvec(), whichParOpt,
+        mypars = pars, 
+        perturbation_prediction = perturbation_prediction, 
+        r_kept = rkept, 
+        p_fun = (p * p_pert),
+        obs_fun = g)  
+
+
+R_fun(myfits %>% as.parframe() %>% as.parvec(), perturbation_prediction, g, (p*p_pert), pars) %>% local_response_matrix_eq10() %>% round(2)
+```
+
+
+
+```{r}
+# 
+pred <- (xs*p*p_pert)(c(0,Inf), pars, deriv = T)
+# pred %>% getDerivs()
+states <- f$states
+
+cat("Global responses\n")
+
+R_full <- conveniencefunctions::extract_derivs(pred, states, states) %>%
+  .[[1]] %>%
+  .[-1] %>%
+  matrix(ncol = 3) %>%
+
+  
+  # {out <- .; map(1:3, function(i) out[,i]/out[i,i])} %>%
+  # do.call(cbind,.) %>%
+
+  round(2) %>% 
+  
+  # sign %>% 
+  magrittr::set_rownames(states) %>%
+  magrittr::set_colnames(paste0(letters[24:26], "1")) %>% 
+  
+  {.} %T>% print %>%
+  {.}
+```
+
+
+
+```{r}
+(-R_full[6,2]*R_full[2,3]+R_full[2,2]*R_full[6,3])/
+  (R_full[6,2]*R_full[7,3]-R_full[7,2]*R_full[6,3])
+```
+
+```{r}
+log(.75888)
+
+ana_pars_opt <- c(
+  a_tox_Cx2y1	= log(.75888)	, # 1
+  a_toy_Cy2z1	=	-2)	  # 2 
+
+R_fun(ana_pars_opt, perturbation_prediction, g, (p*p_pert), pars) %>% local_response_matrix_eq10() %>% round(2)
+
+diag(c(-20.17/.1287, 14.42/(-.1147), 22.29/(-.1146)))%*%R_fun(ana_pars_opt-40, perturbation_prediction, g, (p*p_pert), pars) # stimmt bis auf Rundungsfehler mit den integrierten sensitivitäten überein
+
+diag(c(-20.17/.1287, 14.42/(-.1147), 22.29/(-.1146)))%*%R_fun(ana_pars_opt+40, perturbation_prediction, g, (p*p_pert), pars) # stimmt bis auf Rundungsfehler mit den integrierten sensitivitäten überein
+
+```
+
+
+
+
+
+
+
+
+
+
 
 
 
