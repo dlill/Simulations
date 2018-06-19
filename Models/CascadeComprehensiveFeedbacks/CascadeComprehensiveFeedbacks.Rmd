@@ -394,6 +394,119 @@ Combinations
 
 If one imagines that one does a linear combination of the rows of the global responses with positive free parameters, one can see that some connections can be brought to zero, since 
 
+```{r, message=FALSE}
+pinner <- list(
+  # old model
+x1         	=	100	,
+y1         	=	100	,
+z1         	=	100	,
+
+k1         	=	100	,
+v1         	=	5	,
+k2         	=	100	,
+v2         	=	c(5,
+                5)	,
+
+k31        	=	0.01	,
+k32        	=	0.4	,
+k4         	=	0.05	,
+
+k5         	=	100	,
+v5         	=	5	,
+
+k61        	=	0.05	,
+k62        	=	0.4	,
+k7         	=	0.01	,
+
+k8         	=	100	,
+v8         	=	1	,
+
+k9         	=	100	,
+k10        	=	100	,
+gainuf     	=	1	,
+gainlf     	=	1	,
+
+# new complexes
+kyx1      	=	0.05	,
+kyx2       	=	0.4	,
+kyx3       	=	0.01	,
+
+kzx1_1     	=	c(0, 
+                0.01)	,
+kzx1_2     	=	0.4	,
+kzx1       	=	0.05	,
+
+kzx        	=	0.01	,
+kzx2       	=	0.4	,
+kzx1_3     	=	0.05	,
+
+kzy1       	=	0.01	,
+kzy2       	=	0.4	,
+kzy3       	=	0.05	,
+
+a_tox_Cx2y1	=	.Machine$double.eps	,
+a_tox_Cz2x1	=	.Machine$double.eps	,
+a_tox_Cz2x2	=	.Machine$double.eps	,
+a_tox_Cy2x2	=	.Machine$double.eps	,
+a_toy_Cy2z1	=	.Machine$double.eps	,
+a_toy_Cz2y2	=	.Machine$double.eps	,
+a_toy_Cy2x2	=	.Machine$double.eps	,
+a_toz_Cz2x1	=	.Machine$double.eps	,
+a_toz_Cz2x2	=	.Machine$double.eps	,
+a_toz_Cz2y2	=	.Machine$double.eps 
+) %>% 
+ map_dbl(1)
+
+pars <- c(pinner[1:3], str_subset_name(pinner, "a_to")
+          # , str_subset_name(pinner,"v1")
+          ) %>% log
+pars_opt <- pars %>% str_subset_name("a_to")
+
+
+trafo <- getParameters(x,g) %>% 
+  setNames(.,.) %>% 
+  insert("x~0", x = getSymbols(mytrafo[[i]]) %>% str_subset("deg|syn")) %>% 
+  insert("x~0", x = getSymbols(mytrafo[[i]]) %>% str_subset("^[^ak]*[xyz]2")) %>% 
+  insert("x~value", x = names(pinner)[!names(pinner)%in%names(pars)], value = pinner[!names(pinner)%in%names(pars)]) %>% 
+  insert("x~exp(x)", x = getSymbols(mytrafo[[i]])) %>%
+  # {.} %T>% print %>% 
+  {.} 
+
+p <- trafo %>% 
+  # insert("x~log(x)", x = getSymbols(mytrafo[[i]]) %>% str_subset("^a_to")) %>% 
+  P()
+
+
+# generate functions for the different experimental conditions
+pars_perturbed_0 <- pars_perturbed <- c("x1" = log(0.9), "y1" = log(0.9), "z1" = log(0.9))
+p_pert <- p_pert_fun(pars_perturbed = pars_perturbed, pars = pars)
+
+compile(p, p_pert, output = "Cascade_trafos")
+loadDLL((g*x*p*p_pert), xs)
+
+
+cat("out\n")
+(xs*p*p_pert)(c(0,Inf), pars, deriv = F) %>% do.call(rbind,.)
+
+times <- seq(0,1000, length.out = 100)
+(x*p*p_pert)(times = times, pars = pars, deriv = F) %>%
+  plotPrediction(
+scales = "fixed"
+)
+
+# plotFluxes(pars, (x*p*p_pert), times, fluxes, conditions = "Ctr")
+# ggplotly()
+
+
+# build dMod.frame
+myframe <- dMod.frame("1", g,x, p, data = NULL, e = NULL, p_pert = list(p_pert), xs = list(xs), pars = list(pars), times = list(times))
+
+```
+
+
+
+
+
 ```{r}
 # 
 pred <- (xs*p*p_pert)(c(0,Inf), pars, deriv = T)
@@ -422,9 +535,69 @@ conveniencefunctions::extract_derivs(pred, states, states) %>%
 ```
 
 ```{r}
+values <- seq(log(0.1), log(500), length.out = 100)
+
+dr <- map(values, function(v) {
+  mypars <- pars
+  mypars["x1"] <- values
+  
+  pred <- (xs*p*p_pert)(c(0,Inf), mypars, deriv = F, conditions = "Ctr")[[1]]
+}) %>% 
+  do.call(rbind,.) %>% 
+  cbind(xini = values) %>% 
+  as.data.frame() %>% 
+  .[-1] %>% 
+  gather(state, value, -contains("xini"))
+
+dr %>% 
+  filter(str_detect(state, "z")) %>% 
+  ggplot(aes(exp(xini), value, color = state)) +
+  geom_line()
+```
+
+```{r}
+pars["x1"] <- log(10)
+myframe <- dMod.frame("1", g,x, p, data = NULL, e = NULL, p_pert = list(p_pert), xs = list(xs), pars = list(pars), times = list(times))
+
+
+source('../../gadget.R', echo=TRUE)
+ropt_gadget(pars_opt %>% names, myframe)
 
 ```
 
+
+```{r}
+whichParOpt <- names(pars_opt)[c(1,5)]
+perturbation_prediction <- (xs*p*p_pert)(c(0,Inf), pars, deriv = F)
+
+r0 <- R_fun(pars_opt = pars_opt,
+            perturbation_prediction = perturbation_prediction,
+            obs_fun = g,
+            p_fun = (p*p_pert),
+            pars = pars) %>% local_response_matrix_eq10()
+
+rkept <- r_kept_fun(pars_opt = pars_opt[whichParOpt],
+                                        perturbation_prediction = perturbation_prediction, 
+                                        obs_fun = g,
+                                        p_fun = (p * p_pert), 
+                                        pars = pars,
+                                        alpha = 
+                                   -log(.Machine$double.eps)) %>% 
+  {.} %T>% print %>%
+  {.}
+myfits <- mstrust(obj_alpha, 
+                        center =  structure(rep(0, length(whichParOpt)), names = whichParOpt), 
+                        studyname = "Fits", 
+                        cores = 3, 
+                        fits = 12, 
+                        sd = 1, 
+                        mypars = pars, 
+                        perturbation_prediction = perturbation_prediction, 
+                        r_kept = rkept, 
+                        p_fun = (p * p_pert),
+                        obs_fun = g)
+myfits %>% as.parframe()
+```
 
 
 
