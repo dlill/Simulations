@@ -472,7 +472,7 @@ p <- trafo %>%
 
 
 # generate functions for the different experimental conditions
-pars_perturbed_0 <- pars_perturbed <- c("x1" = log(1.1), "y1" = log(1.1), "z1" = log(1.1))
+pars_perturbed_0 <- pars_perturbed <- c("x1" = log(1.001), "y1" = log(1.001), "z1" = log(1.001))
 p_pert <- p_pert_fun(pars_perturbed = pars_perturbed, pars = pars)
 
 compile(p, p_pert, output = "Cascade_trafos")
@@ -482,10 +482,10 @@ cat("out\n")
 (xs*p*p_pert)(c(0,Inf), pars, deriv = F) %>% do.call(rbind,.) %>% round(1)
 
 times <- seq(0,2000, length.out = 100)
-(x*p*p_pert)(times = times, pars = pars, deriv = F) %>% 
-  plotPrediction(
-# scales = "fixed"
-)
+# (x*p*p_pert)(times = times, pars = pars, deriv = F) %>% 
+#   plotPrediction(
+# # scales = "fixed"
+# )
 
 # extract_derivs((g* x*p*p_pert)(times, pars, conditions = "Ctr"), modules0, paste0(letters[24:26], "1")) %>% 
 # as.prdlist() %>%  plotCombined()
@@ -503,6 +503,8 @@ perturbation_prediction <- (xs*p*p_pert)(c(0,Inf), pars, deriv = F)
 
 diag_xi <- (g*xs*p*p_pert)(c(0,Inf), pars, conditions = "Ctr", deriv = F) %>% .[[1]] %>% .[-1] #%>% diag()
 
+
+cat("sensitivities\n")
 r_sens <- conveniencefunctions::extract_derivs((g* xs*p*p_pert)(c(0,Inf), pars, conditions = "Ctr"), modules0, paste0(letters[24:26], "1")) %>%
   .[[1]] %>%
   .[-1] %>%
@@ -518,10 +520,37 @@ r_sens <- conveniencefunctions::extract_derivs((g* xs*p*p_pert)(c(0,Inf), pars, 
   {.} %T>% {round(.,2) %>% print} %>%
   {.}
 
+perturbation_prediction <- (xs*p*p_pert)(c(0,Inf), pars, deriv = F)
+
+# R_2: Just the log-foldchange: log(y(x+dx)/y(x))
+R_2 <- function(pars_opt = pars_opt_0,
+                  perturbation_prediction = perturbation_prediction,
+                  obs_fun = g,
+                  p_fun = (p_log*p_pert),
+                  pars = pars_0) {
+  mypars <- pars
+  mypars[names(pars_opt)] <- pars_opt
+  mypars <- p_fun(mypars, deriv = F)
+
+  my_perturbation_prediction <- lapply(1:length(perturbation_prediction),
+                                       function(i) obs_fun(out = perturbation_prediction[[i]],
+                                                           pars = mypars[[i]],
+                                                           deriv = F)) %>% do.call(c,.)
+  names(my_perturbation_prediction) <- attr(p_fun, "conditions")
 
 
 
-r0 <- R_fun(pars_opt = pars_opt,
+  # R
+  sapply(2:length(my_perturbation_prediction), function(i) {
+    Ctr <- my_perturbation_prediction[[1]]
+    perturbed <- my_perturbation_prediction[[i]]
+    return((log(perturbed)-log(Ctr))[,-1])
+  })
+
+}
+
+cat("R2\n")
+bla <- R_2(pars_opt = pars_opt,
             perturbation_prediction = perturbation_prediction,
             obs_fun = g,
             p_fun = (p*p_pert),
@@ -533,6 +562,84 @@ r0 <- R_fun(pars_opt = pars_opt,
 
 
 
+cat("fractional differences\n")
+r0 <- R_fun(pars_opt = pars_opt,
+            perturbation_prediction = perturbation_prediction,
+            obs_fun = g,
+            p_fun = (p*p_pert),
+            pars = pars) %>% 
+  {.} %T>% {round(.,3) %>% print} %>%
+  local_response_matrix_eq10() %>% 
+  {.} %T>% {round(.,2) %>% print} %>%
+  {.}
+
+# generate functions for the different experimental conditions
+pars_perturbed_0 <- pars_perturbed <- c("x1" = log(1.1), "y1" = log(1.1), "z1" = log(1.1))
+p_pert <- p_pert_fun(pars_perturbed = pars_perturbed, pars = pars)
+
+compile(p, p_pert, output = "Cascade_trafos")
+loadDLL((g*x*p*p_pert), xs)
+cat("\n\n1.1 fold perturbation\n\n")
+
+perturbation_prediction <- (xs*p*p_pert)(c(0,Inf), pars, deriv = F)
+cat("R2\n")
+bla <- R_2(pars_opt = pars_opt,
+            perturbation_prediction = perturbation_prediction,
+            obs_fun = g,
+            p_fun = (p*p_pert),
+            pars = pars) %>% 
+  {.} %T>% {round(.,3) %>% print} %>%
+  local_response_matrix_eq10() %>% 
+  {.} %T>% {round(.,2) %>% print} %>%
+  {.}
+
+
+
+cat("fractional differences\n")
+r0 <- R_fun(pars_opt = pars_opt,
+            perturbation_prediction = perturbation_prediction,
+            obs_fun = g,
+            p_fun = (p*p_pert),
+            pars = pars) %>% 
+  {.} %T>% {round(.,3) %>% print} %>%
+  local_response_matrix_eq10() %>% 
+  {.} %T>% {round(.,2) %>% print} %>%
+  {.}
+
+# generate functions for the different experimental conditions
+pars_perturbed_0 <- pars_perturbed <- c("x1" = log(2), "y1" = log(2), "z1" = log(2))
+p_pert <- p_pert_fun(pars_perturbed = pars_perturbed, pars = pars)
+
+compile(p, p_pert, output = "Cascade_trafos")
+loadDLL((g*x*p*p_pert), xs)
+
+perturbation_prediction <- (xs*p*p_pert)(c(0,Inf), pars, deriv = F)
+
+cat("\n\n2 fold perturbation\n\n")
+cat("R2\n")
+bla <- R_2(pars_opt = pars_opt,
+            perturbation_prediction = perturbation_prediction,
+            obs_fun = g,
+            p_fun = (p*p_pert),
+            pars = pars) %>% 
+  {.} %T>% {round(.,3) %>% print} %>%
+  local_response_matrix_eq10() %>% 
+  {.} %T>% {round(.,2) %>% print} %>%
+  {.}
+
+
+
+cat("fractional differences\n")
+r0 <- R_fun(pars_opt = pars_opt,
+            perturbation_prediction = perturbation_prediction,
+            obs_fun = g,
+            p_fun = (p*p_pert),
+            pars = pars) %>% 
+  {.} %T>% {round(.,3) %>% print} %>%
+  local_response_matrix_eq10() %>% 
+  {.} %T>% {round(.,2) %>% print} %>%
+  {.}
+getEquations(p_pert)
 ```
 
 ### Results of the interactive exploration
