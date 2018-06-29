@@ -183,16 +183,16 @@ r_alpha_fun(best_fit, pars = pars) %>% round(3)
 # Compute the local response matrix in dependence of a
 Use par_opt_setting to define, to which module(s) the complex should be added.
 ```{r, warning=FALSE}
-par_opt_settings <- list("loga_xy", "loga_tox_xy", "loga_toy_xy", c("loga_tox_xy", "loga_toy_xy")) %>% set_names(1:4)
-par_opt_settings <- par_opt_settings[1:2]
-dr_list <- lapply(par_opt_settings, function(i) {
-  r_opt_dose_response(which_par = "logk1", 
-                      dosages = pars_0["logk1"],#+seq(-2,2,by = 2),
-                      pars_opt = pars_opt_0[i],
-                      alpha_scan_range = sort(unique(seq(-10,10,by = .1))),
-                      pars = pars
-  )
-})
+# par_opt_settings <- list("loga_xy", "loga_tox_xy", "loga_toy_xy", c("loga_tox_xy", "loga_toy_xy")) %>% set_names(1:4)
+# par_opt_settings <- par_opt_settings[1:2]
+# dr_list <- lapply(par_opt_settings, function(i) {
+#   r_opt_dose_response(which_par = "logk1", 
+#                       dosages = pars_0["logk1"],#+seq(-2,2,by = 2),
+#                       pars_opt = pars_opt_0[i],
+#                       alpha_scan_range = sort(unique(seq(-10,10,by = .1))),
+#                       pars = pars
+#   )
+# })
 
 # saveRDS(dr_list, file = "Prabakaran_dr_list.rds")
 
@@ -202,13 +202,9 @@ dr_list <- lapply(par_opt_settings, function(i) {
 # Plot the local response matrix in dependence of a
  - Different opacities correspond to different communicating species
 
-```{r}
-dr_list <- readRDS("Prabakaran_dr_list.rds")
-```
-
-
-
 ```{r plot}
+dr_list <- readRDS("Prabakaran_dr_list.rds")
+
 myplot <- dr_list %>%   
   # extract2(1) %>%
   combine_dr_list() %>% 
