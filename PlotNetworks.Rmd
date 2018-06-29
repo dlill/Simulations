@@ -1,0 +1,54 @@
+---
+title: "Network plot"
+author: "Daniel Lill"
+date: "29 June 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+library(conveniencefunctions)
+library(dMod)
+# library(ggnet)
+library(GGally)
+library(network)
+library(sna)
+library(ggplot2)
+```
+
+```{r}
+set.seed(1)
+
+net <- matrix(0, ncol = 20, nrow = 20)
+
+modules <- list(1:5,6:8,9:13, 14:20)
+
+com_spec <- map_dbl(modules, max)
+
+walk(modules, function(m) {
+  net[m,m] <<- runif(length(m)^2) < 0.5
+  net[max(m),] <<- runif(nrow(net)) < 0.2
+})
+
+
+mod_size <- map_dbl(modules, length)
+mycolors <- c("red", "blue", "green", "orange")
+
+modcolors <- map(seq_along(mod_size), function(i) rep(mycolors[[i]], mod_size[[i]])) %>% do.call(c,.)
+
+```
+
+```{r}
+
+# net = rgraph(10, mode = "graph", tprob = 0.5)
+net = network(net, directed = TRUE)
+
+# vertex names
+# network.vertex.names(net) = letters[1:10]
+
+```
+
+```{r}
+ggnet2(net, color = modcolors, arrow.size = 12, arrow.gap = 0.025)
+```
+
