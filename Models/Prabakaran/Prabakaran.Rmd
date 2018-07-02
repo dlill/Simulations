@@ -220,13 +220,13 @@ myplot <- dr_list %>%
     .
   } %>% 
   mutate(Element = r_element) %>% 
-  mutate(points = value) %>% 
-  { logpoints <- c(-8.5,-0.7,2.1,9)
-    nears <- seq(-10,10,by=0.1)[apply(sapply(logpoints, function(i) near(seq(-10,10,by=0.1),i)),1,any)]
-    .[!(.$alpha %in% nears),"points"] <- NA
-    .[(.$alpha < (-6))|(.$alpha > (7)),"value"] <- NA
-    filter(., alpha >= (-9))
-  } %>% 
+  # mutate(points = value) %>% 
+  # { logpoints <- c(-8.5,-0.7,2.1,9)
+  #   nears <- seq(-10,10,by=0.1)[apply(sapply(logpoints, function(i) near(seq(-10,10,by=0.1),i)),1,any)]
+  #   .[!(.$alpha %in% nears),"points"] <- NA
+  #   .[(.$alpha < (-6))|(.$alpha > (7)),"value"] <- NA
+  #   filter(., alpha >= (-9))
+  # } %>% 
   {
     .$par_opt_setting[.$par_opt_setting == 1] <- "X* and Y*"
     .$par_opt_setting[.$par_opt_setting == 2] <- "X*"
@@ -236,10 +236,11 @@ myplot <- dr_list %>%
   
   
   # linear x axis
-  filter(alpha<3) %>%
   mutate(alpha = exp(alpha)) %>%
+  filter(alpha<5) %>%
   filter(!is.na(value)) %>%
-  
+  {.} %T>% {nears <<- 0.5; value <<- .$value; alpha <<- .$alpha} %>%
+  mutate(points = replace(value, map_lgl(alpha, . %>% near(nears, tol = 1e-2) %>% any %>% `!`), NA)) %>% #filter(!is.na(points)) %>% print
   # choose par_opt_settings to plot, uncomment alpha in ggplot call, if there is only one par_opt_setting
   filter(par_opt_setting == "X*") %>% 
   
@@ -258,15 +259,17 @@ myplot <- dr_list %>%
   # facet_grid(matrix~par_opt_setting, scales = "free")+
   scale_alpha_discrete(name = "Complex \nadded to", range = c(0.3,1)) +
   # scale_x_continuous(breaks = c(-5,0,5))+
-  xlab("a") +
+  xlab("Free parameter a") +
   ylab("Connection coefficient")
 # plotly::ggplotly(myplot)
 myplot
-# ggsave(plot = myplot,
-#        filename = paste0("~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/plots/", "linear x-axis small width algorithm pos12",".png"),
-#        width = 10,
-#        height = 8,
-#        units = "cm",
-#        device = "png")
+ggshave(plot = myplot,
+       filename = paste0("~/Promotion/Writing/Conferences/2018 07 SBMC/poster/pics/algorithm linear x-axis",".png"),
+       width = 10,
+       height = 8,
+       units = "cm",
+       device = "png",
+       check_overwrite = F)
+
 ```
 
