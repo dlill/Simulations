@@ -239,7 +239,7 @@ myplot <- dr_list %>%
   mutate(alpha = exp(alpha)) %>%
   filter(alpha<5) %>%
   filter(!is.na(value)) %>%
-  {.} %T>% {nears <<- 0.5; value <<- .$value; alpha <<- .$alpha} %>%
+  # {.} %T>% {nears <<- 0.5; value <<- .$value; alpha <<- .$alpha} %>%
   mutate(points = replace(value, map_lgl(alpha, . %>% near(nears, tol = 1e-2) %>% any %>% `!`), NA)) %>% #filter(!is.na(points)) %>% print
   # choose par_opt_settings to plot, uncomment alpha in ggplot call, if there is only one par_opt_setting
   filter(par_opt_setting == "X*") %>% 
@@ -269,7 +269,8 @@ ggshave(plot = myplot,
        height = 8,
        units = "cm",
        device = "png",
-       check_overwrite = F)
+       check_overwrite = F,
+       commit = T)
 
 ```
 
