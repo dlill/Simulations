@@ -269,7 +269,7 @@ myplot <- plot_data %>%
   # facet_grid(matrix~par_opt_setting, scales = "free")+
   scale_alpha_discrete(name = "Complex \nadded to", range = c(0.3,1)) +
   # scale_x_continuous(breaks = c(-5,0,5))+
-  xlab("Free parameter a") +
+  xlab("\tFree parameter a") +
   ylab("Connection coefficient")
 # plotly::ggplotly(myplot)
 myplot
@@ -283,8 +283,11 @@ ggshave(plot = myplot,
        height = 8,
        units = "cm",
        device = "png",
-       check_overwrite = F,
-       commit = "Algorithm plot, included print function for the matrices.")
+       check_overwrite = F
+       , commit_script = "Moved xlab a bit to the right"
+       )
+
+
 
 ```
 
