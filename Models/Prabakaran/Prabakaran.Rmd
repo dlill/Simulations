@@ -261,7 +261,7 @@ myplot <- plot_data %>%
                        )) +
   geom_line() +
   theme_dMod() +
-  scale_color_dMod() +
+  # scale_color_dMod() +
   scale_colour_manual(values = c("blue", "red", "green")) +
   geom_abline(slope = 0,intercept = 0, linetype = 3) +
   # geom_rect(xmin = -0.7, xmax = 3.2, ymin = -10, ymax = 10, alpha = 0.01, size = 0)+
@@ -334,13 +334,13 @@ plot_data <- dr_list %>%
   {.} %T>% {assign("nears", c(min(.$alpha), 0.4965853, 4.953032), envir = .GlobalEnv)} %>% #assign values where points should be to .GlobalEnv
   mutate(points = replace(value, map_lgl(alpha, . %>% near(nears, tol = 1e-6) %>% any %>% `!`), NA)) %>% #filter(!is.na(points)) %>% print
   # choose par_opt_settings to plot, uncomment alpha in ggplot call, if there is only one par_opt_setting
-  # filter(par_opt_setting == "X* and Y*")  
+  filter(par_opt_setting == "X* and Y*") %>% 
   {.}
 
 # Print the matrices at the points
 map(nears, function(i) {
   plot_data  %>% 
-  filter( near(alpha, i, 1e-6), par_opt == "loga_tox_xy") %>% 
+  filter( near(alpha, i, 1e-6), par_opt == "loga_xy") %>% 
   .$value %>% c(-1, ., -1) %>% matrix(ncol = 2) %>% round(2) %>% 
   xtable() %>% print(tabular.enivronment = "pmatrix", floating = FALSE, hline.after=NULL, include.rownames=FALSE, include.colnames=FALSE) %>% 
   str_replace_all(c("tabular"= "pmatrix", "\\{rr\\}" = "", "\\\\begin" = "$\\\\begin")) %>% paste0(., "$") %>% 
@@ -350,11 +350,11 @@ map(nears, function(i) {
 myplot <- plot_data %>%   
   ggplot(mapping = aes(x = alpha, y = value, color = Element
                        # uncomment for one par_opt_setting only
-                       , alpha = par_opt_setting
+                       # , alpha = par_opt_setting
                        )) +
   geom_line() +
   theme_dMod() +
-  scale_color_dMod() +
+  # scale_color_dMod() +
   scale_colour_manual(values = c("blue", "red", "green")) +
   geom_abline(slope = 0,intercept = 0, linetype = 3) +
   # geom_rect(xmin = -0.7, xmax = 3.2, ymin = -10, ymax = 10, alpha = 0.01, size = 0)+
@@ -371,15 +371,15 @@ myplot
 
 
 
-# ggshave(plot = myplot,
-#        filename = paste0("~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/Algorithm_linear_axis_add_complex_to_both.png"),
-#        width = 10,
-#        height = 8,
-#        units = "cm",
-#        device = "png",
-#        check_overwrite = F
-#        , commit_script = "Algorithm linear axis, adding complexes to both modules"
-#        )
+ggshave(plot = myplot,
+       filename = paste0("~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/Algorithm_linear_axis_add_complex_to_both.png"),
+       width = 10,
+       height = 8,
+       units = "cm",
+       device = "png",
+       check_overwrite = F
+       , commit_script = "Removed par opt setting 1 from adding complexes to both plot"
+       )
 
 
 
