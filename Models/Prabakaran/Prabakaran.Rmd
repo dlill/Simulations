@@ -262,6 +262,7 @@ myplot <- plot_data %>%
   geom_line() +
   theme_dMod() +
   scale_color_dMod() +
+  scale_colour_manual(values = c("blue", "red", "green")) +
   geom_abline(slope = 0,intercept = 0, linetype = 3) +
   # geom_rect(xmin = -0.7, xmax = 3.2, ymin = -10, ymax = 10, alpha = 0.01, size = 0)+
   geom_point(aes(y = points), size = 3)+
@@ -284,7 +285,7 @@ ggshave(plot = myplot,
        units = "cm",
        device = "png",
        check_overwrite = F
-       , commit_script = "Moved xlab a bit to the right"
+       , commit_script = "Changed color of r21 to blue"
        )
 
 
@@ -354,6 +355,7 @@ myplot <- plot_data %>%
   geom_line() +
   theme_dMod() +
   scale_color_dMod() +
+  scale_colour_manual(values = c("blue", "red", "green")) +
   geom_abline(slope = 0,intercept = 0, linetype = 3) +
   # geom_rect(xmin = -0.7, xmax = 3.2, ymin = -10, ymax = 10, alpha = 0.01, size = 0)+
   geom_point(aes(y = points), size = 3)+
