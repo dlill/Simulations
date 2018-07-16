@@ -362,6 +362,7 @@ myplot <- plot_data %>%
   # facet_grid(.~par_opt_setting, scales = "free")+
   # facet_grid(matrix~par_opt_setting, scales = "free")+
   scale_alpha_discrete(name = "Complex \nadded to", range = c(0.3,1)) +
+  scale_y_continuous(breaks = c(-1,0,1,2)) + 
   # scale_x_continuous(breaks = c(-5,0,5))+
   xlab("\tFree parameter a") +
   ylab("Connection coefficient")
