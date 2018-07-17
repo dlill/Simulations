@@ -23,23 +23,23 @@ Careful, it might be broken due to the new comple Cx1z2 in the model...
 ## Prediction function
 odemodel() writes the function f as a C-function, which is called by x and xs.
 ```{r Prediction function Cascade, results='asis'}
-modelpath <- paste0("Models/Cascade/")
 modelname   <- "Cascade"
-f     <- as.eqnlist(read.csv(paste0(modelpath, modelname, ".csv")))
+f     <- as.eqnlist(read.csv(paste0(modelname, ".csv")))
 
 # If the odemodel has been calculated already, it can be loaded with "load".
 # If not, uncomment the next two lines.
 
 # myodemodel <- odemodel(f, modelname = paste0(modelname), deriv = T)
-# save(myodemodel, file = paste0(modelpath, "odemodel",modelname, ".RData"))
-load(paste0(modelpath, "odemodel",modelname, ".RData"))
+# save(myodemodel, file = paste0("odemodel",modelname, ".RData"))
+load(paste0("odemodel",modelname, ".RData"))
 
 # Prediction function for continuous times
 # x() is a function of time and parameters
 x <- Xs(odemodel = myodemodel)
 # Prediction function for steady states
 xs <- Xs_steady(myodemodel) # When computing steady states, set deriv = F
-print(f)
+loadDLL(x)
+
 ```
 
 
@@ -70,9 +70,9 @@ g <- g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), f, compile = TRUE, mo
 Load all parameters and format them for further use.
 ```{r Parameters Cascade}
 
-pars_raw <- read.csv(paste0(modelpath, "pars.csv"), header = FALSE)  # dynamical parameters
+pars_raw <- read.csv(paste0("pars.csv"), header = FALSE)  # dynamical parameters
 pars_raw <- structure(pars_raw$V2, names = as.character(pars_raw$V1))
-ic_raw <- read.csv(paste0(modelpath, "IC.csv"), header = F)          # initial conditions
+ic_raw <- read.csv(paste0("IC.csv"), header = F)          # initial conditions
 ic_raw <- structure(ic_raw$V2, names = as.character(ic_raw$V1))
 # sort ics like they appear in x, so it can be used in stode()
 vars_x <- attr(x, "parameters")[attr(x, "parameters") %in% names(ic_raw)]
@@ -141,6 +141,7 @@ pars_perturbed_0 <- pars_perturbed <- c("logx1" = log(0.9), "logy1" = log(0.9), 
 
 # pars_perturbed
 p_pert <- p_pert_fun(pars_perturbed = pars_perturbed, pars = pars)
+compile(p_log, p_pert)
 ```
 
 ## Final parameter values for different Figures
@@ -149,14 +150,57 @@ Uncomment/comment the respective parameters that you want.
 
 Parameters for Figures 3,4
 ```{r}
-pars <- c(100,0,0,100,0,0,100,0,0,
-          100,1.5,100,1,     0.01,0.4,0.05,
-          100,5,            0.05,0.4,0.008,
-          100,1,
-          100,100,1,1,
-          0,0,0,0,0,0,00,0,0,0,0,0,
-          rep(0, length(pars_opt_0))) %>% set_names(names(pars_inner_0))
-
+pars <- c(
+x1       	=	100	, # 1
+x2       	=	0	, # 2
+Cx2y1    	=	0	, # 3
+y1       	=	100	, # 4
+y2       	=	0	, # 5
+Cy2z1    	=	0	, # 6
+z1       	=	100	, # 7
+z2       	=	0	, # 8
+Cx2z2    	=	0	, # 9
+Cx1z2    	=	0	, # 10
+k1       	=	100	, # 11
+v1       	=	1.5	, # 12
+k2       	=	100	, # 13
+v2       	=	1	, # 14
+k31      	=	0.01	, # 15
+k32      	=	0.4	, # 16
+k4       	=	0.05	, # 17
+k5       	=	100	, # 18
+v5       	=	5	, # 19
+k61      	=	0.05	, # 20
+k62      	=	0.4	, # 21
+k7       	=	0.008	, # 22
+k8       	=	100	, # 23
+v8       	=	1	, # 24
+k9       	=	100	, # 25
+k10      	=	100	, # 26
+gainuf   	=	1	, # 27
+gainlf   	=	1	, # 28
+ksynx1   	=	0	, # 29
+kdegx1   	=	0	, # 30
+kdegx2   	=	0	, # 31
+ksyny1   	=	0	, # 32
+kdegy1   	=	0	, # 33
+kdegy2   	=	0	, # 34
+ksynz1   	=	0	, # 35
+kdegz1   	=	0	, # 36
+kdegz2   	=	0	, # 37
+k111     	=	0	, # 38
+k112     	=	0	, # 39
+k12      	=	0	, # 40
+k131     	=	0	, # 41
+k132     	=	0	, # 42
+k14      	=	0	, # 43
+a_tox_Cxy	=	0	, # 44
+a_Cxy    	=	0	, # 45
+a_toy_Cxy	=	0	, # 46
+a_toy_Cyz	=	0	, # 47
+a_Cyz    	=	0	, # 48
+a_toz_Cyz	=	0	  # 49 
+)
 
 pars_0 <- pars <- log(pars+.Machine$double.eps) %>% set_names(names(pars_0))
 ```
@@ -216,8 +260,8 @@ r_kept_0
 
 Evaluate the objective function to demonstrate how it works.
 ```{r}
-pars_opt <- rep(0,2) %>% set_names(c("loga_Cxy", "loga_Cyz"))
-obj_alpha(pars_opt, fixed = NULL, perturbation_prediction = perturbation_prediction, r_kept = r_kept_0, obs_fun = g, p_fun = (p_log * p_pert), mypars = pars_0)
+# pars_opt <- rep(0,2) %>% set_names(c("loga_Cxy", "loga_Cyz"))
+# obj_alpha(pars_opt, fixed = NULL, perturbation_prediction = perturbation_prediction, r_kept = r_kept_0, obs_fun = g, p_fun = (p_log * p_pert), mypars = pars_0)
 ```
 
 Optimize the objective function with trust region optimizer starting from multiple random starting points in our parameter space and take a look at the fits.
@@ -234,6 +278,117 @@ Look at the resulting local response matrix, when the parameter values of the be
 best_fit <- myfits %>% as.parframe() %>% as.parvec()
 r_alpha_fun(pars_opt = unclass(best_fit), pars = pars, perturbation_prediction = perturbation_prediction) %>% round(2)
 ```
+
+# Run analaysis for different parameters
+
+```{r}
+names(pars_inner)
+```
+
+
+```{r}
+myframe <- dMod.frame("1", g, x, p_log, NULL, NULL, p_pert = list(p_pert), xs = list(xs), pars = list(pars))
+
+pp_x <- c("x1", "k1", "v1", "k2", "v2", "k31", "k32", "k4") %>% paste0("log", .)
+pp_y <- c("y1", "k5", "v5", "k31", "k32", "k4", "k61", "k62", "k7") %>% paste0("log", .)
+pp_z <- c("z1", "k8", "v8", "k61", "k62", "k7") %>% paste0("log", .)
+
+mygrid <- expand.grid(pp_x, pp_y, pp_z, stringsAsFactors = F) 
+pp_list <- map(1:nrow(mygrid), function(i) {
+  mynames <- mygrid[i,] %>% unlist() %>% unname() %>% unique()
+  if(length(mynames)<3) return(NULL)
+  mynames %>% are_names_of(log(0.9))
+}) %>% 
+  .[!map_lgl(., is.null)]
+```
+
+```{r eval=FALSE}
+alpha <- 0
+
+results <- map(pp_list, function(pp) {
+  p_pert <- p_pert_fun(pp, pars = pars, modelname = NULL)
+  
+  myframe <- dMod.frame("1", g, x, p_log, NULL, NULL, p_pert = list(p_pert), xs = list(xs), pars = list(pars))
+  
+  g <- myframe$g[[1]]
+  p_pert <- myframe$p_pert[[1]]
+  p <- myframe$p[[1]]
+  xs <- myframe$xs[[1]]
+  pars <- myframe$pars[[1]]
+  
+  # browser()
+      perturbation_prediction <- (xs*p*p_pert)(c(0,Inf), pars, deriv = F)
+      
+      try({r0 <- R_fun(pars_opt = pars_opt,
+                perturbation_prediction = perturbation_prediction,
+                obs_fun = g,
+                p_fun = (p*p_pert),
+                pars = pars) %>% local_response_matrix_eq10()})
+      if(inherits(r0, "try-error")) return(NULL)
+      
+      algo <- function(which_pars_opt, prefix = NULL) {
+      rkept <- r_kept_fun(pars_opt = pars_opt[which_pars_opt],
+                                 perturbation_prediction = perturbation_prediction,
+                                 obs_fun = g,
+                                 p_fun = (p * p_pert),
+                                 pars = pars,
+                                 alpha =
+                                   -log(.Machine$double.eps) + alpha)
+      myfits <- mstrust(obj_alpha,
+                        center =  structure(rep(0, length(which_pars_opt)), names = which_pars_opt),
+                        studyname = "Fits",
+                        cores = 3,
+                        fits = 3,
+                        sd = 1,
+                        mypars = pars,
+                        perturbation_prediction = perturbation_prediction,
+                        r_kept = rkept,
+                        p_fun = (p * p_pert),
+                        obs_fun = g)
+
+      try(myfits %>% as.parframe()) %>%
+      {e <- .; if (inherits(e, "try-error")) print(myfits)}
+
+
+      ropt <- r_alpha_fun(pars_opt = myfits %>% as.parframe() %>% as.parvec() %>% unclass() ,
+                         pars = pars,
+                         perturbation_prediction = perturbation_prediction,
+                         p_fun = (p*p_pert))
+      
+      out <- list(rkept, myfits %>% as.parframe,ropt %>% round(2))
+      names(out) <- paste0(prefix, "r_kept", "parframes", "ropt")
+      return(out)
+      }
+      
+      to_upstream_module <- algo(c("loga_tox_Cxy", "loga_toy_Cyz"), "upstream")
+      to_both_modules <- algo(c("loga_Cxy", "loga_Cyz"), "both")
+      
+      out <- c(list(r0 = r0 %>% round(2)), to_upstream_module, to_both_modules)
+
+})
+# saveRDS(results, "test_different_perturbations.R")
+```
+
+```{r}
+results[[1]] %>% names
+
+ropt_upstream <- results %>% map(4) 
+
+mygrid_2 <-
+  pp_list %>% map(names) %>% 
+  do.call(rbind,.) %>% 
+  as.tibble() %>% 
+  cbind(., ind = 1:nrow(.)) %>% 
+  filter(!str_detect(V1, "(k3)|(k4)")) %>% 
+  filter(!str_detect(V2, "(k6)|(k7)"))
+
+map(mygrid_2$ind, function(i) {
+  pp_list[[i]] %>% names %>% print
+  print(ropt_upstream[[i]])
+})
+```
+
+
 
 
 # Plots for main text
@@ -276,27 +431,27 @@ dr_list <- lapply(seq_along(par_opt_settings), function(i) {
 
 ```{r, eval=FALSE}
 # computations for Figure 5
-pars <- c(100,0,0,100,0,0,100,0,0,
-          100,1.5,100,1,     0.002,0.4,0.05,
-          100,5,            0.005,0.4,0.05,
-          100,1,
-          100,100,1,1,
-          0,0,0,0,0,0,00,0,0,0,0,0,
-          rep(0, length(pars_opt_0))) %>% set_names(names(pars_inner_0))
-pars_0 <- pars <- log(pars+.Machine$double.eps) %>% set_names(names(pars_0))
-
-dr_list2 <- lapply(seq_along(par_opt_settings), function(i) {
-  r_opt_dose_response(which_par = "loggainlf",
-                      dosages = sort(unique(c(seq(-3,3,by = 0.05)))),
-                      pars = pars,
-                      alpha_scan_range = seq(-3,3,by = 0.2),
-                      pars_opt = pars_opt_0[par_opt_settings[[i]]],
-                      pars_opt_default_value = 0)
-})
+# pars <- c(100,0,0,100,0,0,100,0,0,
+#           100,1.5,100,1,     0.002,0.4,0.05,
+#           100,5,            0.005,0.4,0.05,
+#           100,1,
+#           100,100,1,1,
+#           0,0,0,0,0,0,00,0,0,0,0,0,
+#           rep(0, length(pars_opt_0))) %>% set_names(names(pars_inner_0))
+# pars_0 <- pars <- log(pars+.Machine$double.eps) %>% set_names(names(pars_0))
+# 
+# dr_list2 <- lapply(seq_along(par_opt_settings), function(i) {
+#   r_opt_dose_response(which_par = "loggainlf",
+#                       dosages = sort(unique(c(seq(-3,3,by = 0.05)))),
+#                       pars = pars,
+#                       alpha_scan_range = seq(-3,3,by = 0.2),
+#                       pars_opt = pars_opt_0[par_opt_settings[[i]]],
+#                       pars_opt_default_value = 0)
+# })
 ```
 
 ```{r, eval=FALSE}
-save(dr_list,dr_list2, file = "Output/datasets_for_plotting.RData")
+# save(dr_list,dr_list2, file = "Output/datasets_for_plotting.RData")
 ```
 
 
