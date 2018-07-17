@@ -1,0 +1,650 @@
+---
+title: "Ras"
+author: "Daniel Lill"
+output:
+  pdf_document:
+    keep_tex: yes
+---
+
+# Load libraries and define some useful paths
+
+```{r Libraries, results='hide', echo=FALSE, message=FALSE}
+# rm(list = ls())
+library(MRAr)
+library(scales)
+library(xtable)
+library(magrittr)
+path <- paste0(getwd(), "/")
+pathout <- paste0(path, "Output/")
+```
+
+```{r Names for Fit storage of different initial conditions}
+fit_name <- "Ras"
+```
+
+
+```{r Call render without overwriting any previous documents, echo=FALSE, eval=FALSE, message=FALSE}
+mytime <- format(Sys.time(), "%Y%m%d-%H%M")
+
+rmarkdown::render("Ras.Rmd", output_file = paste0(pathout, fit_name, mytime, ".pdf"))
+beepr::beep("~/Promotion/Software/rimshot.mp3")
+```
+# Ras
+
+## Setup Model 
+This is the setup of the ODE model.
+
+### Prediction function
+odemodel writes a C-function, which is executed in x and xs.
+x is a regular prediction function while xs only finds and returns the steady states.
+If the odemodel has been calculated already, it can be loaded with "load".
+```{r Prediction function Ras, results='asis'}
+modelpath <- paste0(path, "Models/Ras/")
+modelname   <- "Ras"
+mymodel     <- as.eqnlist(read.csv(paste0(modelpath, modelname, ".csv")))
+
+# myodemodel <- odemodel(mymodel, modelname = paste0(modelname), deriv = T)
+# save(myodemodel, file = paste0(modelpath, "odemodel",modelname, ".RData"))
+load(paste0(modelpath, "odemodel",modelname, ".RData"))
+
+# Prediction function
+x <- Xs(odemodel = myodemodel)
+# Prediction function for steady states
+xs <- Xs_steady(myodemodel) # When computing steady states, set deriv = F
+# print(mymodel)
+# mymodel %>% as.eqnvec() %>% print(pander = T)
+myodemodel[[1]] %>% attr("eq")
+```
+
+
+
+
+
+
+### Modules, their observables and the observation function
+Observation function which depends also on the optimization parameters. With their help, the complexes can smoothly be switched on in the observation.
+
+
+```{r Observation function with Cx2z2 in x-module}
+# modules <- modules0 <- c("x2","y2", "z2")
+# 
+# obs <- obs0 <- c("x2+a_1*Cx2y1",
+#           "y2+a_2*Cy2z1",
+#           "z2+a_3*Cx2z2")
+# g <- g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), mymodel, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
+```
+
+
+```{r Most general observation function}
+modules <- modules0 <- c("Ras","RalGEF", "RalGTP", "Raf", "MEK")
+
+complexes <- c("RalGEF_Ras", 
+               "aRalGEF_Ras", 
+               "aRalGEF_Ras_RalGDP", 
+               "aRalGEF_RalGDP", 
+               "Raf_Ras", 
+               "aRaf_Ras",  
+               "aRaf_Ras_MEK", 
+               "aRaf_MEK")
+pars_opt_names <- paste0("a", c(1:4, 1:4), rep(c("l", "r"), each = 4))
+adding_complexes <- paste0(" + ", pars_opt_names, " * ", complexes)
+
+obs <- obs0 <- c(paste0(c("RasGTP", adding_complexes[c(1:3,5:7)]), collapse = ""), 
+                 paste0(c("aRalGEF", adding_complexes[c(2:4)]), collapse = ""), 
+                 "RalGTP", 
+                 paste0(c("aRaf", adding_complexes[c(6:8)]), collapse = ""), 
+                 "ppMEK")
+# obs <- obs0 <- paste(obs,
+#                      c("",
+#                        " + a3l_to_RalGEF * aRalGEF_Ras_RalGDP",
+#                        "",
+#                        " + a3r_toRaf * aRaf_Ras_MEK",
+#                        ""
+#                        ))
+
+g <- g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), mymodel, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
+```
+
+
+### Inner parameters
+Load all parameters and format them for further use.
+```{r Parameters Ras}
+
+pars_raw <- read.csv(paste0(modelpath, "pars.csv"), header = FALSE)  # dynamical parameters
+pars_raw <- structure(pars_raw$V2, names = as.character(pars_raw$V1))
+ic_raw <- read.csv(paste0(modelpath, "IC.csv"), header = F)          # initial conditions
+ic_raw <- structure(ic_raw$V2, names = as.character(ic_raw$V1))
+# sort ics like they appear in x, so it can be used in stode()
+vars_x <- attr(x, "parameters")[attr(x, "parameters") %in% names(ic_raw)]
+ic_raw <- ic_raw[vars_x]
+
+pars_inner_opt_0 <- setdiff(attr(g, "parameters"),names(c(pars_raw,ic_raw)))
+pars_inner_opt_0 <- structure(rep(0, length(pars_inner_opt_0)), 
+                              names = pars_inner_opt_0)
+
+pars_inner_0 <- pars_inner <- c(ic_raw, pars_raw, pars_inner_opt_0)
+
+
+# check if all parameters are assigned a value. Both lines should evaluate to the same number.
+x_pars <- unique(union((g) %>% attr("parameters"),(xs) %>% attr("parameters")))
+# names(pars_inner) %in% x_pars %>% sum()
+# x_pars %in% names(pars_inner) %>% sum()
+```
+
+
+### General log transformation and setting some pars to zero
+It's better to do a logtransformation for all Fitting purposes and work with the log-Parameters.
+The way to implement is this, is
+log_pars %>% p_log %>% p_other %>% p_other_2 %>% ...
+```{r}
+# Logtrafo of all pars
+logtrafo <- structure(paste0("exp( log", names(pars_inner_0), ")"), 
+                             names = names(pars_inner_0))
+
+zero_at_start <- c("RasGTP", "aRalGEF", "RalGEF_Ras", "aRalGEF_Ras", "RalGTP", "aRaf", "Raf_Ras", "aRaf_Ras", "ppMEK", "aRalGEF_Ras_RalGDP", "aRaf_Ras_MEK", "aRalGEF_RalGDP", "aRaf_MEK"  )
+logtrafo[zero_at_start] <- "0"
+
+p_log <- P(trafo = logtrafo,
+           # compile = TRUE,
+           modelname = "p_log")
+           
+
+
+pars_inner
+# pars_0
+# p_log(pars_0, deriv = F)
+```
+# Simulate the system to explore the behavior and get good parameters.
+
+```{r Find good pars}
+pars <- pars_inner_0
+pars["k7f"] <- 1
+pars["k7r"] <- 600
+pars["k8"] <- 100 
+
+pars["k9f"] <- 1e-4 # activation of MEK via aRaf_Ras
+pars["k9r"] <- 1
+pars["k9cat"] <- 1
+
+pars["k16f"] <- 1e-4 # activation of MEK via aRaf
+pars["k16r"] <- 1
+pars["k16cat"] <- 1
+
+pars["k13"] <- 5
+pars["k14"] <- 200 # deactivation of aRaf
+
+
+pars["k10m"] <- 1e2
+pars["v10"] <- 5e0
+Raf_path <- names(ic_raw)[str_detect(names(ic_raw), "Raf")|str_detect(names(ic_raw), "MEK")]
+
+
+pars["k3f"] <- 1
+pars["k3r"] <- 400
+pars["k4"] <- 10
+
+pars["k5f"] <- 1e-3 # activation of RalGDP by complex
+pars["k5r"] <- 1
+pars["k5cat"] <- 1
+
+pars["k15f"] <- 1e-3 # activation of RalGDP by aRalGEF
+pars["k15r"] <- 1
+pars["k15cat"] <- 1
+
+pars["k12"] <- 200 # deactivation of aRalGEF
+
+
+pars["v6"] <- 1e3 # deactivation aRalGDP
+pars["km6"] <- 10000
+
+RalGEF_path <- names(ic_raw)[str_detect(names(ic_raw), "Ral")]
+
+pred <- (x)(10^(seq(0,4, length.out = 1000)), pars = pars, deriv = FALSE) %>% set_names("c1")
+predplot <- plotPrediction(pred)#, ! name %in% Raf_path)
+predplot + scale_x_log10()
+# plotly::ggplotly(predplot)
+
+```
+
+Take parameter values from the previous chunk to continue
+```{r}
+pars_inner <- pars
+pars_inner <- pars_inner[!names(pars_inner)%in%zero_at_start]
+
+
+pars_0 <- pars <- log(pars_inner) %>% set_names(paste0("log", names(pars_inner))) 
+
+pars_opt_0 <- pars_opt <- structure(log(pars_inner_opt_0+.Machine$double.eps), names = paste0("log", names(pars_inner_opt_0)))
+pars[names(pars_opt_0)] <- -750
+# pars_opt_0 <- NULL
+
+pars_inner
+```
+
+
+
+## Show the code
+### Perturb modules
+Now the module can be simulated to generate perturbation data.
+
+### Parameter trafos for convenient perturbation data
+Just to show the code...
+Set up the perturbations
+```{r}
+# Which pars shall be perturbed?
+pars_perturbed_0 <- pars_perturbed <- c("logRasGDP" = log(0.9), 
+                                        "logRalGEF" = log(0.9), 
+                                        "logRalGDP" = log(0.9),
+                                        "logRaf" = log(0.9),
+                                        "logMEK" = log(0.9)
+                                        )
+# pars_perturbed_0 <- pars_perturbed <- c("logx1" = log(0.8), "logy1" = log(0.8), "logz1" = log(0.8))
+
+
+
+# pars_perturbed
+p_pert <- p_pert_fun(pars_perturbed = pars_perturbed, pars = pars)
+
+
+perturbation_prediction_0 <- perturbation_prediction <-  (xs*p_log*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
+
+# mytime <- 2000
+# (x*p_log*p_pert)(times = seq(0,2000, length.out = 50), pars = pars) %>% 
+#   getDerivs() %>% 
+#   extract2(1) %>%
+#   apply_expression({x[,c(str_detect(colnames(x), "(Cx2y1\\.)|time"))]}) %>% prdlist() %>% set_names("blas") %>% 
+#   plotPrediction()
+
+
+
+# perturbation_prediction %>% lapply(round,1)
+# R_fun() %>% 
+#   local_response_matrix_eq10()  %>% 
+#   round(2) %>% 
+#   # plot_r_graph(modules = modules0, inhibitors = attr(p_pert, "co")[-1]) %>% 
+#   apply_expression(x)
+
+
+```
+
+
+
+
+```{r compare r0 r1 ropt}
+
+r_kept_0 <- r_kept_fun(pars_opt = pars_opt,
+                       perturbation_prediction = perturbation_prediction,
+                       obs_fun = g,
+                       p_fun = (p_log * p_pert),
+                       pars = pars,
+                       alpha = -log(0+.Machine$double.eps))
+r_kept_0 %>% as.numeric() %>% matrix(ncol = 5)
+
+# r_kept_0 <- c(F,F,T,T,F,F,F,T,F) %>% matrix(ncol = 3)
+
+r_0 <-   R_fun(pars_opt = pars_opt,
+               perturbation_prediction = perturbation_prediction,
+               obs_fun = g,
+               p_fun = (p_log*p_pert),
+               pars = pars) %>% local_response_matrix_eq10()
+r_0%>% round(2)
+
+r_1 <-   R_fun(pars_opt = rep(0, length(pars_opt)) %>% set_names(names(pars_opt)),
+               perturbation_prediction = perturbation_prediction,
+               obs_fun = g,
+               p_fun = (p_log*p_pert),
+               pars = pars) %>% local_response_matrix_eq10()
+r_1 %>% round(2)
+
+# r_kept <- matrix(F, nrow = 5, ncol = 5)
+# r_kept[c(6,9)] <- T
+
+myfits <- mstrust(obj_alpha, center =  rep(0, length(pars_opt)) %>% set_names(names(pars_opt)), studyname = "Fits", cores = 3, fits = 6, sd = 1, mypars = pars, perturbation_prediction = perturbation_prediction_0, r_kept = r_kept_0)
+# myfits %>% as.parframe() 
+best_fit <- myfits %>% as.parframe() %>% as.parvec()
+myfits %>% as.parframe()
+
+# ropt <- r_alpha_fun(pars_opt = unclass(best_fit), pars = pars, perturbation_prediction = perturbation_prediction) %>% round(2) %>% set_colnames(paste0(modules, "*")) %>% set_rownames(paste0(modules, "*")) %>% xtable()
+# print.xtable(ropt)
+ r_alpha_fun(pars_opt = unclass(best_fit), pars = pars, perturbation_prediction = perturbation_prediction) %>% round(2)
+```
+
+
+```{r}
+best_fit
+```
+
+
+```{r}
+pars_opt <- best_fit
+mypars_opt <- best_fit
+
+myplot <- sapply(seq(-5,3,by = 0.1), function(i) {
+  mypars_opt[6] <<- i
+  R_fun(pars_opt = mypars_opt,
+               perturbation_prediction = perturbation_prediction,
+               obs_fun = g,
+               p_fun = (p_log*p_pert),
+               pars = pars) %>% local_response_matrix_eq10()
+  }) %>% cbind(matrix(r_wup, ncol = 1)) %>% t %>% as.data.frame() %>% set_names(letters[1:25][matrix(1:25, ncol=5) %>% t %>% as.numeric()]) %>% cbind(alpha= c(seq(-5,3,by = 0.1), 4)) %>% 
+  gather(key = "key", "value", 1:25) %>% mutate(zero = 0) %>% 
+  ggplot(aes(x= zero, y = value, frame = alpha, color = key)) +
+  geom_point()+
+  theme_dMod()+
+  facet_wrap(~key)+
+    geom_abline(slope = 0,intercept = 0, linetype = 3) #+
+
+plotly::ggplotly(myplot)
+
+# r_wup%>% round(2)
+# r_1 %>% round(2)
+```
+
+
+
+# Dose response plots
+```{r, eval=FALSE}
+par_opt_names <- pars_opt_0 %>% names %>% sort
+
+par_opt_settings <- list(par_opt_names)
+
+dr_list <- lapply(par_opt_settings, function(i) {
+  r_opt_dose_response(which_par = "logRasGDP", 
+                      dosages = pars["logRasGDP"]+seq(-2,0,by = 2),
+                      pars_opt = pars_opt_0[i],
+                      alpha_scan_range = sort(unique(seq(-9,1,by = .1))),
+                      pars = pars
+  )
+})
+saveRDS(dr_list, file = "Output/dr_list Ras each complex has its own par_opt.rds")
+
+# dr_list <- lapply(seq_along(par_opt_settings), function(i) {
+# 
+#   scan_grid(which_par = "logk111",
+#             dosages = sort(c(unique(seq(-16,0,by = 0.5)))),
+#             pars = pars,
+#             alpha_scan_range = c(-9,seq(-3,2,by = 0.1)),
+#             pars_opt = pars_opt_0[par_opt_settings[[i]]],
+#             grid_points_raw = c(-9,-3,0,2))
+# 
+# })
+
+```
+
+
+# General plotting functions
+Plot as dos-response with alpha as facets
+```{r Plot generation, eval=FALSE}
+# dr_list <- readRDS("Output/dr_list Ras.rds")
+myplot <- c(dr_list) %>% 
+  combine_dr_list() %>%
+  filter(! (r_element %in% paste0("r", c(11,22,33,44,55)))) %>%
+  # filter(near(dose, pars["logRasGDP"]+seq(-2,0,by = 1)[1])) %>%
+  # filter(par_opt_setting == 1) %>% 
+  # filter(alpha %in% 0) %>% 
+  # filter(matrix != "r_kept") %>%
+  apply_expression({
+    x$matrix[x$matrix == "r_alpha"] <- "r(a_i = 1)"
+    x$matrix[x$matrix == "r_opt"] <- "r(a = a_opt)"
+    x$matrix <- x$matrix %>% factor(levels = c("r(a_i = 1)", "r(a = a_opt)", "r_kept"))
+    x
+  }) %>% 
+  mutate(Element = r_element) %>% 
+  ggplot(mapping = aes(x = alpha, y = value, color = Element, linetype = Element, frame = dose)) +
+  geom_line() +
+  theme_dMod() +
+  # scale_color_dMod() +
+  geom_abline(slope = 0,intercept = 0, linetype = 3) +
+  facet_grid(matrix~., scales = "free") #+
+  # xlab("log(gu)")
+# myplot
+plotly::ggplotly(myplot)
+# ggsave(plot = myplot,
+#        filename = paste0("~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/plots/", "gu large sequestration",".png"),
+#        width = 10,
+#        height = 10,
+#        units = "cm",
+#        device = "png")
+
+```
+
+# Plot the matrix as facet_wrap with frame = alpha to see the effect of certain sign flips.
+
+```{r, eval=FALSE}
+# dr_list <- readRDS("Output/dr_list Ras.rds")
+myplot <-
+  c(dr_list) %>% 
+  combine_dr_list() %>%
+  # filter(! (r_element %in% paste0("r", c(11,22,33,44,55)))) %>% 
+  apply_expression({
+    myelements <- paste0("r", outer(1:5,1:5, paste0))
+    element_names  <- outer(modules, modules, paste, sep = " by " ) 
+    for ( i in 1:25 ) {
+      x$r_element[x$r_element==myelements[i]] <- element_names[i]
+    }
+    element_names <- element_names %>% matrix(ncol = 5) %>% t %>% as.character() # transpose here, because in facet_wrap, "dir" doesn't work
+    x$r_element <- x$r_element %>% factor(levels = element_names)
+    x
+  }) %>% 
+  filter(near(dose, pars["logRasGDP"]+seq(-2,0,by = 2)[1])) %>%
+  # filter(par_opt_setting == 1) %>% 
+  # filter(alpha %in% 0) %>% 
+  filter(matrix %in% c("r_opt", "r_kept")) %>%
+  apply_expression({
+    x$matrix[x$matrix == "r_alpha"] <- "r(a_i = 1)"
+    x$matrix[x$matrix == "r_opt"] <- "r(a = a_opt)"
+    x$matrix <- x$matrix %>% factor(levels = c("r(a_i = 1)", "r(a = a_opt)", "r_kept"))
+    x
+  }) %>% 
+  mutate(Element = r_element) %>% 
+  mutate(value = ifelse(matrix == "r_kept", value * 4, value)) %>% 
+  apply_expression({
+    x$value[abs(x$value)>10] <- NA
+    x
+  }) %>% 
+  mutate(zero = 0) %>% 
+  select(c(1,5,6,10,11)) %>% 
+  unique() %>% 
+  filter(alpha < 1) %>% 
+  ggplot(mapping = aes(x = zero, y = value, color = Element, shape = matrix, frame = alpha)) +
+  geom_point() +
+  theme_dMod() +
+  # scale_color_dMod() +
+  geom_abline(slope = 0,intercept = 0, linetype = 3) +
+  facet_wrap(~Element, scales = "fixed") #+
+  # xlab("log(gu)")
+# myplot
+plotly::ggplotly(myplot)
+# ggsave(plot = myplot,
+#        filename = paste0("~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/plots/", "blablabalbalablablablabal",".png"),
+#        width = 10,
+#        height = 10,
+#        units = "cm",
+#        device = "png")
+
+```
+
+It seems as if mainly r12 and r14 affect the outcome.
+```{r compare r0 r1 ropt with given rkept}
+
+# r_kept_0 <- r_kept_fun(pars_opt = pars_opt,
+#                        perturbation_prediction = perturbation_prediction,
+#                        obs_fun = g,
+#                        p_fun = (p_log * p_pert),
+#                        pars = pars,
+#                        alpha = -log(0+.Machine$double.eps))
+r_kept_0 <- matrix(F, nrow = 5, ncol = 5)
+r_kept_0[1,c(2,4)] <- T
+r_kept_0[4,2] <- r_kept_0[2,4] <- T
+r_kept_0
+
+# r_kept_0 <- c(F,F,T,T,F,F,F,T,F) %>% matrix(ncol = 3)
+
+r_0 <-   R_fun(pars_opt = pars_opt,
+               perturbation_prediction = perturbation_prediction,
+               obs_fun = g,
+               p_fun = (p_log*p_pert),
+               pars = pars) %>% local_response_matrix_eq10()
+r_0%>% round(2)
+
+r_1 <-   R_fun(pars_opt = rep(0, length(pars_opt)) %>% set_names(names(pars_opt)),
+               perturbation_prediction = perturbation_prediction,
+               obs_fun = g,
+               p_fun = (p_log*p_pert),
+               pars = pars) %>% local_response_matrix_eq10()
+r_1 %>% round(2)
+
+# r_kept <- matrix(F, nrow = 5, ncol = 5)
+# r_kept[c(6,9)] <- T
+
+myfits <- mstrust(obj_alpha, center =  rep(0, length(pars_opt)) %>% set_names(names(pars_opt)), studyname = "Fits", cores = 3, fits = 50, sd = 1, mypars = pars, perturbation_prediction = perturbation_prediction_0, r_kept = r_kept_0)
+# myfits %>% as.parframe() 
+best_fit <- myfits %>% as.parframe() %>% as.parvec()
+myfits %>% as.parframe()
+r_alpha_fun(pars_opt = unclass(best_fit), pars = pars, perturbation_prediction = perturbation_prediction) %>% round(2)
+```
+
+```{r compare r0 r1 ropt with given rkept}
+
+# r_kept_0 <- r_kept_fun(pars_opt = pars_opt,
+#                        perturbation_prediction = perturbation_prediction,
+#                        obs_fun = g,
+#                        p_fun = (p_log * p_pert),
+#                        pars = pars,
+#                        alpha = -log(0+.Machine$double.eps))
+r_kept_0 <- matrix(F, nrow = 5, ncol = 5)
+# r_kept_0[1,c(2,4)] <- T
+r_kept_0[4,2] <- r_kept_0[2,4] <- T
+r_kept_0
+
+# r_kept_0 <- c(F,F,T,T,F,F,F,T,F) %>% matrix(ncol = 3)
+
+r_0 <-   R_fun(pars_opt = pars_opt,
+               perturbation_prediction = perturbation_prediction,
+               obs_fun = g,
+               p_fun = (p_log*p_pert),
+               pars = pars) %>% local_response_matrix_eq10()
+r_0%>% round(2)
+
+r_1 <-   R_fun(pars_opt = rep(0, length(pars_opt)) %>% set_names(names(pars_opt)),
+               perturbation_prediction = perturbation_prediction,
+               obs_fun = g,
+               p_fun = (p_log*p_pert),
+               pars = pars) %>% local_response_matrix_eq10()
+r_1 %>% round(2)
+
+# r_kept <- matrix(F, nrow = 5, ncol = 5)
+# r_kept[c(6,9)] <- T
+
+myfits <- mstrust(obj_alpha, center =  rep(0, length(pars_opt)) %>% set_names(names(pars_opt)), studyname = "Fits", cores = 3, fits = 6, sd = 1, mypars = pars, perturbation_prediction = perturbation_prediction_0, r_kept = r_kept_0)
+# myfits %>% as.parframe() 
+best_fit <- myfits %>% as.parframe() %>% as.parvec()
+myfits %>% as.parframe()
+r_alpha_fun(pars_opt = unclass(best_fit), pars = pars, perturbation_prediction = perturbation_prediction) %>% round(2)
+```
+
+
+```{r compare r0 r1 ropt with given rkept}
+
+# r_kept_0 <- r_kept_fun(pars_opt = pars_opt,
+#                        perturbation_prediction = perturbation_prediction,
+#                        obs_fun = g,
+#                        p_fun = (p_log * p_pert),
+#                        pars = pars,
+#                        alpha = -log(0+.Machine$double.eps))
+r_kept_0 <- matrix(F, nrow = 5, ncol = 5)
+r_kept_0[1,c(2,4)] <- T
+# r_kept_0[4,2] <- r_kept_0[2,4] <- T
+r_kept_0
+
+# r_kept_0 <- c(F,F,T,T,F,F,F,T,F) %>% matrix(ncol = 3)
+
+r_0 <-   R_fun(pars_opt = pars_opt,
+               perturbation_prediction = perturbation_prediction,
+               obs_fun = g,
+               p_fun = (p_log*p_pert),
+               pars = pars) %>% local_response_matrix_eq10()
+r_0%>% round(2)
+
+r_1 <-   R_fun(pars_opt = rep(0, length(pars_opt)) %>% set_names(names(pars_opt)),
+               perturbation_prediction = perturbation_prediction,
+               obs_fun = g,
+               p_fun = (p_log*p_pert),
+               pars = pars) %>% local_response_matrix_eq10()
+r_1 %>% round(2)
+
+# r_kept <- matrix(F, nrow = 5, ncol = 5)
+# r_kept[c(6,9)] <- T
+
+myfits <- mstrust(obj_alpha, center =  rep(0, length(pars_opt)) %>% set_names(names(pars_opt)), studyname = "Fits", cores = 3, fits = 6, sd = 1, mypars = pars, perturbation_prediction = perturbation_prediction_0, r_kept = r_kept_0)
+# myfits %>% as.parframe() 
+best_fit <- myfits %>% as.parframe() %>% as.parvec()
+myfits %>% as.parframe()
+r_alpha_fun(pars_opt = unclass(best_fit), pars = pars, perturbation_prediction = perturbation_prediction) %>% round(2)
+```
+
+# ############################################
+
+
+```{r}
+scan_grid <- function(which_par,
+                      dosages,
+                      alpha_scan_range = seq(-9,9,by = 2),
+                      pars_opt = pars_opt_0,
+                      obs_fun = g,
+                      p_fun = (p_log * p_pert),
+                      pars = pars_0,
+                      grid_points_fine = alpha_scan_range,
+                      grid_points_raw = c(-9, 0, 2)) {
+
+  grid_raw <- lapply(1:(length(pars_opt)-1), function(x) return(grid_points_raw)) %>%
+    do.call(expand.grid,.)
+
+
+  permutations <- sapply(1:length(pars_opt), function(i) {
+    rep(1:length(pars_opt),2)[i:(i+length(pars_opt)-1)]
+  })
+
+
+  apply(permutations, 1, function(i) {
+    which_par_opt <- names(pars_opt)[i==1]
+    not_which_par_opt <- names(pars_opt)[i!=1]
+
+    one_dim <- apply(grid_raw, 1, function(j) {
+      pars_opt[not_which_par_opt] <- j
+      mydose <- r_opt_dose_response_separate_scanning(which_par = which_par,
+                                                      dosages = dosages,
+                                                      alpha_scan_range = alpha_scan_range,
+                                                      which_par_opt = which_par_opt,
+                                                      pars_opt = pars_opt,
+                                                      obs_fun = obs_fun,
+                                                      p_fun = p_fun,
+                                                      pars = pars)
+
+      pars_opt_df <- data.frame(mydose[["alpha"]], data.frame(t(pars_opt[not_which_par_opt]))) %>%
+        set_names(c(which_par_opt, not_which_par_opt))
+
+      mydose %>%
+        select(-alpha) %>% cbind(pars_opt_df)
+    }) %>% do.call(rbind,.)
+
+  }) %>% do.call(rbind,.)
+
+}
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+

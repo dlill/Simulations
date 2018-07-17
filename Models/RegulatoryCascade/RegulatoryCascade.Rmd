@@ -1,0 +1,541 @@
+---
+title: "Regulatory Cascade full recovery"
+author: "Daniel Lill"
+output:
+  pdf_document:
+    keep_tex: yes
+---
+
+# Load libraries and define some useful paths
+
+```{r Libraries, results='hide', echo=FALSE, message=FALSE}
+library(MRAr)
+library(scales)
+library(xtable)
+path <- paste0(getwd(), "/")
+pathout <- paste0(path, "Output/")
+```
+
+```{r Names for Fit storage of different initial Conditions}
+fit_name <- "Cascade-x2z2-mass-action"
+```
+
+
+```{r Call render without overwriting any previous documents, echo=FALSE, eval=FALSE, message=FALSE}
+mytime <- format(Sys.time(), "%Y%m%d-%H%M")
+
+rmarkdown::render("RegulatoryCascade.Rmd", output_file = paste0(pathout, fit_name, mytime, ".pdf"))
+beepr::beep("~/Promotion/Software/rimshot.mp3")
+```
+# Cascade
+
+## Setup Model 
+This is the setup of the ODE model.
+
+### Prediction function
+odemodel writes a C-function, which is executed in x and xs.
+x is a regular prediction function while xs only finds and returns the steady states.
+If the odemodel has been calculated already, it can be loaded with "load".
+```{r Prediction function Cascade, results='asis'}
+modelpath <- paste0(path, "Models/RegulatoryCascade/")
+modelname   <- "RegulatoryCascade"
+mymodel     <- as.eqnlist(read.csv(paste0(modelpath, modelname, ".csv")))
+
+# myodemodel <- odemodel(mymodel, modelname = paste0(modelname), deriv = T)
+# save(myodemodel, file = paste0(modelpath, "odemodel",modelname, ".RData"))
+load(paste0(modelpath, "odemodel",modelname, ".RData"))
+
+# Prediction function
+x <- Xs(odemodel = myodemodel)
+# Prediction function for steady states
+xs <- Xs_steady(myodemodel) # When computing steady states, set deriv = F
+print(mymodel)
+# mymodel %>% as.eqnvec() %>% print(pander = T)
+```
+
+### Modules, their observables and the observation function
+Observation function which depends also on the optimization parameters. With their help, the complexes can smoothly be switched on in the observation.
+```{r Observation function with Cx2z2 in x-module}
+modules0 <- c("x2","y2", "z2")
+
+obs0 <- c("x2",
+          "y2",
+          "z2")
+g <- g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), mymodel, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
+```
+
+
+### Parameters
+Load all parameters and format them for further use.
+```{r Parameters Cascade}
+
+pars_raw <- read.csv(paste0(modelpath, "pars.csv"), header = FALSE)  # dynamical parameters
+pars_raw <- structure(pars_raw$V2, names = as.character(pars_raw$V1))
+ic_raw <- read.csv(paste0(modelpath, "IC.csv"), header = F)          # initial conditions
+ic_raw <- structure(ic_raw$V2, names = as.character(ic_raw$V1))
+# sort ics like they appear in x, so it can be used in stode()
+vars_x <- attr(x, "parameters")[attr(x, "parameters") %in% names(ic_raw)]
+ic_raw <- ic_raw[vars_x]
+
+pars_opt_0 <- setdiff((g) %>% attr("parameters"),names(c(pars_raw,ic_raw)))
+pars_opt_0 <- structure(rep(0, length(pars_opt_0)), names = pars_opt_0)
+
+pars_0 <- pars <- c(ic_raw, pars_raw, pars_opt_0)
+
+# check if all parameters are assigned a value. Both lines should evaluate to the same number.
+# x_pars <- unique(union((g) %>% attr("parameters"),(xs) %>% attr("parameters")))
+# names(pars) %in% x_pars %>% sum()
+# x_pars %in% names(pars) %>% sum()
+```
+
+
+
+
+## Find good parameter values by fitting parameters to chosen datapoints.
+
+```{r Parameter trafo for parameter finding}
+# Parameter trafo to exclude synthesis and degradation and to set the gains to 1.
+
+# 1. Do a logtrafo of all parameters. 
+  # The logtrafos of the pars to be replaced will be omitted in the next steps
+myp <- structure(paste0("exp(log", names(pars_0),")"), names = names(pars_0))
+
+# 3. Set the gains to 1 and the kinetic constants k9 and k10 to 100
+gains <- c("gainuf" = 1, 
+           "gainlf" = 1,  
+           k9 = 10, 
+           k10 = 10, 
+           gainyf = 1, 
+           k11 = 10)
+
+# 4. Incorporate these changes
+myp[names(gains)] <- gains
+
+# 5. Create the parameter trafo function
+p_nosyndeg <- P(myp)
+
+# 6. Create a vector of pouter. This means: apply the logtrafo to all pars except the fix ones.
+  # This is not the most elegant way, since now there is a mixture of log-transformed and not log-transformed parameters, but I want the syn&deg-parameters to be exactly zero
+  # Also, I add +1e-8 to the original parameters to avoid infinities when pars are originally zero.
+pars_wosyndeg <- pars_0[ ! names(pars_0) %in% c(names(nosyndeg), names(gains)) ]
+pouter_0 <- c(structure(log(pars_wosyndeg+1e-8), names= paste0("log", names(pars_wosyndeg))),
+              nosyndeg,
+              gains)
+# 7. Test the parameter trafo function
+# p_nosyndeg(pouter_0)
+
+
+
+# Data generation
+newsteadystate <- function(x2,y2,z2, xT=100,yT=100,zT=100) {
+  newss <- c(
+    xT-x2,
+    x2,
+    yT-y2,
+    y2,
+    zT-z2,
+    z2)
+  if(any(newss < 0)) stop("negative values")
+  return(newss)
+}
+
+
+data_fun <- function(x2,y2,z2, xT=100,yT=100,zT=100) {
+  data.frame(name = rep(mymodel$states, 5),
+                   time = rep(c(0.001,1000,2000,3000,4000), each = length(mymodel$states)),
+                   value = c(c(100,0,100,0,100,0),  #initial values
+                             rep(newsteadystate(x2,y2,z2, xT,yT,zT),4) #final values
+                   ),
+                   sigma = rep(c(0.01,0.1,0.001,0.0001,0.00001), each = length(mymodel$states)),
+                   condition = "one", 
+                   
+                   stringsAsFactors = F) %>% as.datalist()
+}
+
+
+```
+
+
+
+
+Define the wanted steady states and fit the model to them in order to find pars.
+```{r Fit model to generated data to find pars, eval=FALSE}
+data <- data_fun(50,40,60)
+obj <- normL2(data,(x*p_nosyndeg))
+myfit <- mstrust(obj, pouter_0, cores = 3, fits = 3, studyname = "FindPars", resultPath = ".Findpars")
+# pars <- myfit$argument %>% p_nosyndeg() %>% extract2(1) 
+pars <- myfit %>% as.parframe() %>% as.parvec() %>% p_nosyndeg() %>% extract2(1)  
+
+plot((x)(seq(0,1000,length.out = 50), pars))
+
+```
+
+
+
+
+## Show the code
+### Perturb modules
+
+```{r  which pars are perturbed  Cascade, echo=FALSE}
+# Which pars shall be perturbed?
+pars_perturbed <- c("x1" = 0.8, "y1" = 0.8, "z1" = 0.8)
+
+
+feedbacks <- c(gainlf = 2,
+               gainuf = 10,
+               gainyf = 0)
+
+pars[names(feedbacks)] <- feedbacks
+
+p_pert <- p_pert_fun(pars_perturbed = pars_perturbed,
+                     pars = pars_0)
+perturbation_prediction <-  (xs*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
+
+
+
+plot((x)(seq(0,1000,length.out = 50), pars))
+
+R_0 <- R_fun(perturbation_prediction = perturbation_prediction,
+      p_fun = (p_pert),
+      pars = pars)
+r_0 <- R_0 %>% local_response_matrix_eq10()
+```
+
+
+# Recover the local responses from partial data
+I will only use the first two columns of the global responses, assuming I haven't measured.
+I want to simulate what we want to do later with Laura's data.
+
+```{r}
+R_0 <- R_fun(perturbation_prediction = perturbation_prediction,
+      p_fun = (p_pert),
+      pars = pars)
+r_0 <- R_0 %>% local_response_matrix_eq10()
+r_0
+```
+
+Solve the sub-system for which we have full data.
+```{r}
+R <- R_0[,-3]
+
+R_sub <- R[-3,]
+r_sub <- R_sub %>% local_response_matrix_eq10()
+r_sub
+```
+Solve for line 3.
+```{r}
+myinv <- R_sub %>% 
+  t %>% 
+  svdinv
+
+r_row3 <- myinv%*%R[3,]
+r_row3
+```
+
+```{r}
+r_recovered <- matrix(NA, nrow = 3, ncol = 3)
+r_recovered[1:2,1:2] <- r_sub
+r_recovered[3,1:2] <- r_row3
+r_recovered[3,3] <- -1
+r_recovered
+```
+
+Now, exploit the formulas a bit more. The regression form can maybe also recover r13 and r23, if I insert previously found r_ij
+```{r}
+(R[1,2]-R[2,2]*r_recovered[1,2])/R[3,2] #r13
+(R[2,1]-R[1,1]*r_recovered[2,1])/R[3,1] #r23
+```
+Clearly, no information about r13 and r31 is contained.
+
+
+
+
+# Create lists for different settings
+
+### Initialize the setting lists
+```{r Initialize lists}
+pars_perturbed_list <- vector("list", 6)
+ic_list_list <- vector("list", 6)
+pars_list <- vector("list", 6)
+obs_fun_list <- vector("list", 6)
+setting_description <- outer(
+  paste0("Cx2z2 added to ", c("x-module", "z-module", "both modules"), ", "), 
+  c("Small complex concentrations",
+    "Large complex concentrations"), 
+    paste0)
+```
+
+## Many settings
+```{r All settings}
+obs_fun_list <- rep(list(g0,g1,g2),2)
+
+pars_perturbed_list <- lapply(1:6, function(i) c("x1" = 0.5, "y1" = 0.5, "z1" = 0.5))
+
+data <- data_fun(50,2,50,2,30,2)
+obj <- normL2(data,(x*p_nosyndeg))
+myfit <- mstrust(obj, pouter_0, cores = 3, fits = 3, studyname = "FindPars", resultPath = ".Findpars")
+pars_list[[1]] <-pars_list[[2]] <-pars_list[[3]] <- pars <- (myfit %>% 
+                                                               as.parframe() %>% 
+                                                               as.parvec() %>% 
+                                                               p_nosyndeg() %>% 
+                                                               extract2(1))
+
+data <- data_fun(30,30,30,30,30,30)
+obj <- normL2(data,(x*p_nosyndeg))
+myfit <- mstrust(obj, pouter_0, cores = 3, fits = 3, studyname = "FindPars", resultPath = ".Findpars")
+pars_list[[4]] <-pars_list[[5]] <-pars_list[[6]] <- pars <- (myfit %>% 
+                                                               as.parframe() %>% 
+                                                               as.parvec() %>% 
+                                                               p_nosyndeg() %>% 
+                                                               extract2(1))
+
+ic_list_list <- lapply(1:6, function(i) {
+  list(k111 = signif(outer(pars_list[[i]]["k111"], exp(c(0,-2,-1,1,2)), "*"),2),
+       k12 = signif(outer(pars_list[[i]]["k12"], c(0,exp(c(0,-2,-1,1,2))), "*"),2),
+       gainlf = c(1,0,0.3,0.7,0.9))
+})
+
+ic_list <- ic_list_list[[1]]
+p_ic <- p_ic_fun(reduce_ic_list(ic_list)[[1]])
+# plot((x)(times = seq(0,2000, length.out = 50), pars_list[[1]])) + xkcd::theme_xkcd()
+# plot((x)(times = seq(0,2000, length.out = 50), pars_list[[4]])) + xkcd::theme_xkcd()
+# pars_list[[i]][names(reduce_ic_list(ic_list)[[2]])] <- reduce_ic_list(ic_list)[[2]]
+```
+
+
+
+# Simulations without noise
+
+Run this only once before knitting and knit the document with the loaded dataset.
+```{r Fit multiple conditions Cascade, eval=FALSE}
+machine <- "localhost"
+fit_job1<- runbg({
+  myfits <- mclapply(seq_along(pars_list), function(i) {
+    # cat("Setting ", i, " of ", length(pars_list), " \n")
+    run_simulations(ic_list = ic_list_list[[i]],
+                    nfits = 12,
+                    cores = 3,
+                    pars = pars_list[[i]],
+                    pars_perturbed = pars_perturbed_list[[i]],
+                    obs_fun = obs_fun_list[[i]]
+                    )
+    
+
+  }, mc.cores = 1)
+  names(myfits) <- paste0("Setting", seq_along(pars_list))
+  myfits
+}, machine = machine, filename = "fit_job1")
+save.image()
+```
+
+```{r Get the fit Cascade, eval=FALSE, message=FALSE, results='hide'}
+# mytime <- 0
+while(!fit_job1$check()) {
+  Sys.sleep(10)
+  # mytime <- mytime + 5
+}
+beepr::beep(2)
+multiple_fits <- fit_job1$get()
+multiple_fits <- multiple_fits[[machine]]
+# multiple_fits
+save(list = c("multiple_fits", "pars_list"), file = paste0(pathout,fit_name,".RData"))
+# fit_job1$purge()
+```
+
+
+
+## Rendering
+<!-- This is now to be run when pressing "render" -->
+```{r Load the fits}
+# Load the multiple fits
+load(paste0(pathout,fit_name, ".RData"))
+```
+
+```{r Analyze Fits to knitr-Document Cascade, results='asis', out.width='45%'}
+lapply(seq_along(pars_list), function(setting) {
+  
+  cat("\\newpage
+# Fit setting: ", setting, ": ", setting_description[setting], "
+\n
+### Standard pars of the following fits \n")
+  print(xtable(as.matrix(pars_list[[setting]], nrow = 1), digits = 3), comment = F, floating = F)
+    
+  
+  
+  # multiple_fits <- lapply(seq_along(multiple_fits), function(j) {
+  #   if(is.null(multiple_fits[[j]]$condition)) multiple_fits[[j]]$condition <- names(multiple_fits)[j]
+  #   return(multiple_fits[[j]])
+  # })
+  output <- lapply(multiple_fits[[setting]], function(cond) {
+    if(length(cond) == 1) return()
+    cat("\\newpage
+      # Condition: ",(cond$condition %>% str_split("_") %>% extract2(1) %>% paste(collapse = ", ") %>% str_replace_all("=", " = ")), "\n" )
+    cat("\\textbf{Perturbed Parameters}: ", cond$pars_perturbed, "\n" )
+    
+    # Plot the result of the mstrust()
+    print(plotValues(cond$all_fits) )
+    print(plot(cond$prediction))
+    
+    cat(" \n Local response matrices before and after optimization. \n \n")
+    cat(" Left is the local response matrix of free species, right is the matrix with complexes. \n")
+    print(xtable(cbind(cond$r_0, rep(0, nrow(cond$r_0)), cond$r_alpha), digits = 5), comment = F, floating = F)
+    cat(" ")
+    print(xtable(cond$r_kept, digits = 5), comment = F, floating = F)
+    cat(" ")
+    print(xtable(cond$r_best_fit, digits = 5), comment = F, floating = F)
+    
+    cat("\n Best fit with reasonable parameter: \n")
+    print(cond$best_fit %>% unclass %>%  matrix(.,nrow = 1, dimnames = list(NULL, names(.))) %>% xtable(digits = 3), comment = F, floating = F)
+    
+    cat("\n Steady state: \n")
+    print(xtable(as.matrix(cond$steady_states[[1]])), comment = F, floating = F)
+    
+    cat("\n All fits: \n")
+    print(xtable(cond$all_fits, digits = 4), comment = F, floating = F)
+    return()
+  })
+})
+```
+
+
+## Explore simulations that behaved weirdly
+This part is mainly about the simulations in Cascade-x2z2-mass-action20170418-1434. 
+There, sometimes r_kept is not in accordance with the two matrices above. See page 40 of the pdf for example.
+The problem however is that I don't have the parameters anymore, since some of them seem non-identifiable, so the pars that I get from fitting them to the steady state levels are different everytime I let the document run. 
+This poses a problem, because I earlier didn't need to consider this and didn't save the parameters themselves.
+
+
+
+# Noisy simulations
+
+Run this only once before knitting and knit the document with the loaded dataset.
+```{r Fit multiple conditions noisy, eval=FALSE}
+machine <- "tesla"
+fit_job1<- runbg({
+  myfits <- mclapply(seq_along(pars_list), function(i) {
+    # cat("Setting ", i, " of ", length(pars_list), " \n")
+    run_simulations_with_noise(ic_list = ic_list_list[[i]],
+                    n_samples = 500,
+                    sdlog = sdlog_list[[i]],
+                    cores = 24,
+                    pars = pars_list[[i]],
+                    pars_perturbed = pars_perturbed_list[[i]],
+                    obs_fun = obs_fun_list[[i]]
+                    )
+    
+  }, mc.cores = 1)
+  names(myfits) <- paste0("Setting", seq_along(pars_list))
+  myfits
+}, machine = machine, filename = "fit_job1")
+save.image()
+```
+
+
+```{r Get the fit noisy, eval=FALSE, message=FALSE, results='hide'}
+mytime <- 0
+while(capture.output(fit_job1$check())[[1]] == "Not ready!") {
+  Sys.sleep(5)
+  mytime <- mytime + 5
+}
+beepr::beep(2)
+multiple_fits <- fit_job1$get()
+multiple_fits <- multiple_fits[[machine]]
+# multiple_fits
+save(multiple_fits, file = paste0(pathout,fit_name,".RData"))
+fit_job1$purge()
+```
+
+
+
+## Analyze the fits
+<!-- This is now to be run when pressing "render" -->
+```{r Load the fits noisy, eval=FALSE}
+# Load the multiple fits
+load(paste0(pathout,fit_name, ".RData"))
+```
+
+```{r Analyze Fits to knitr-Document noisy, results='asis', out.width='45%', warning=FALSE, message=FALSE, eval=FALSE}
+library(tidyr)
+library(dplyr)
+wup <- lapply(seq_along(pars_list), function(setting) {
+  
+  cat("\\newpage")
+cat("\n
+# Fit setting ", setting, ": ", setting_description[setting])
+cat("\n
+### Standard pars of the following fits \n")
+  print(xtable(as.matrix(pars_list[[setting]], nrow = 1), digits = 3), comment = F, floating = F)
+  
+  
+  # multiple_fits <- lapply(seq_along(multiple_fits), function(j) {
+  #   if(is.null(multiple_fits[[j]]$condition)) multiple_fits[[j]]$condition <- names(multiple_fits)[j]
+  #   return(multiple_fits[[j]])
+  # })
+  output <- lapply(multiple_fits[[setting]], function(cond) {
+    
+cat("\\newpage \n
+## Condition: ",(cond$condition %>% str_split("_") %>% extract2(1) %>% paste(collapse = ", ") %>% str_replace_all("=", " = ")), " \n" )
+cat("\\textbf{Perturbed Parameters}: ", cond$pars_perturbed, "\n" )
+cat("\\textbf{Standard deviation of Log-Normal distribution}: ", cond$sdlog, "\n" )
+
+    
+    # Plot the resulting local response matrices as histograms.
+    # The failed simulations have to be removed first. They are recognizable by all elements equalling zero in r_ij
+    failed <- cond$r_0$r11 == 0
+    cat("\
+        Number of failed fits: ", sum(failed) , "\n")
+    cat("\n
+        Distributions before and after optimization: 
+        \n")
+    if(sum(!failed) == 0) return()
+    
+    r_0 <- cond$r_0[!failed,] %>% tidyr::gather(key = element, value = value, everything())
+    r_best_fit <- cond$r_best_fit[!failed,] %>% tidyr::gather(key = element, value = value, everything())
+    
+    # Join the two data.frames together. Since they have the exact same structure, I can just use cbind.
+    r <- cbind(r_0, r_best_fit$value)
+    names(r) <- c("element", "0", "optimized")
+    r <- tidyr::gather_(r, key_col = "alpha", value_col = "value", gather_cols = c("0", "optimized"))
+    
+    
+    print(ggplot(data = r, mapping = aes(x=alpha, y = value, fill = alpha)) + 
+            geom_boxplot() + 
+            facet_wrap(~element, scales = "free") + 
+            theme_dMod() + 
+       scale_y_continuous(breaks = scales::pretty_breaks(n = 3)) +
+         geom_hline(aes(yintercept = 0))
+      )
+      
+    cat("\n
+        Which elements were kept in the optimization procedure? 
+        \n")
+    
+     print(ggplot(data = cond$r_kept[!failed,] %>% tidyr::gather(key = element, value = value, everything()),
+                 mapping = aes(x=value)) + 
+            geom_histogram(stat = "count") + 
+            facet_wrap(~element, scales = "free_y") + 
+            theme_dMod())
+    
+    # Plot the prediction
+    print(plot(cond$prediction))
+
+    
+    return()
+  })
+})
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
