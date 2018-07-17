@@ -59,8 +59,8 @@ This is the naive modularization used in the Directcomplexfeedback Paper, desreg
 ```{r Naive observation function}
 modules <- modules0 <- c("X","Y")
 
-obs <- obs0 <- c("x2+a*Cx2y1+a_1*Cx2y1 + a2*Cx2y2+a2_1*Cx2y2",
-                 "y2+a*Cx2y1+a_2*Cx2y1 + a2*Cx2y2+a2_2*Cx2y2")
+obs <- obs0 <- c("x2+a_toxy_x2y1*Cx2y1+a_tox_x2y1*Cx2y1 + a_toxy_x1y2*Cx2y2+a_tox_x1y2*Cx2y2",
+                 "y2+a_toxy_x2y1*Cx2y1+a_toy_x2y1*Cx2y1 + a_toxy_x1y2+a_toy_x1y2*Cx2y2")
 g <- g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), mymodel, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
 ```
 
@@ -140,12 +140,19 @@ p_pert <- p_pert_fun(pars_perturbed = pars_perturbed_0,
 # pars["logk4"] <- -10
 # pars["logk31"] <- -5
 # pars["logk32"] <- 1
-
+compile(p_pert)
+loadDLL(p_pert)
 
 perturbation_prediction <- perturbation_prediction_0 <-  (xs*p_log*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
 perturbation_prediction
-r_kept_0 <- r_kept_fun(pars_opt = pars_opt_0[c("loga", "loga2")], obs_fun = g, p_fun = (p_log*p_pert))
 
+r_kept_0 <- r_kept_fun(pars_opt = pars_opt_0[c(
+  "loga_tox_x2y1"
+  # ,
+  # "loga_toy_x1y2"
+)], 
+obs_fun = g, p_fun = (p_log*p_pert), alpha = -log(0 +  .Machine$double.eps))
+r_kept_0
 
 # perturbation_prediction_0 <-  (xs*p_pert)(times = c(0,Inf), pars = pars_0, deriv = F)
 
@@ -164,6 +171,7 @@ myfits <- mstrust(obj_alpha,
                   sd = 3, mypars = pars)
 # myfits %>% as.parframe() %>% plotValues()
 
+
 (best_fit <- myfits %>% as.parframe() %>% as.parvec())
 r_alpha_fun(best_fit, pars = pars) %>% round(3)
 
@@ -172,8 +180,13 @@ r_alpha_fun(best_fit, pars = pars) %>% round(3)
 
 # Dose response plot
 
+```{r}
+obs
+```
+
+
 ```{r, warning=FALSE}
-par_opt_settings <- list("loga", "loga_1", "loga_2", c("loga_1", "loga_2")) %>% set_names(1:4)
+par_opt_settings <- list("loga_1", "loga_1", "loga_2", c("loga_1", "loga_2")) %>% set_names(1:4)
 
 dr_list <- lapply(par_opt_settings, function(i) {
   r_opt_dose_response(which_par = "logk1", 
@@ -188,28 +201,31 @@ dr_list <- lapply(par_opt_settings, function(i) {
 
 # Plot as alpha-response with doses as facets
 ```{r}
-myplot <- dr_list %>%   
+# myplot <- 
+  dr_list %>%   
   # extract2(1) %>%
   combine_dr_list() %>% 
-  filter(par_opt_setting ==1) %>%
-  filter(near(dose,log(0.1))) %>%
+  filter(par_opt_setting ==4) %>%
+  filter(near(dose,0)) %>%
   filter(! (r_element %in% paste0("r", c(11,22,33)))) %>% 
   # filter(alpha >-5, alpha <3) %>% 
   filter(matrix == "r_alpha") %>%
-  apply_expression({
+  {x <- .
     x$matrix[x$matrix == "r_alpha"] <- "r"
     x$matrix[x$matrix == "r_opt"] <- "r(a = a_opt)"
     x$matrix <- x$matrix %>% factor(levels = c("r", "r(a = a_opt)", "r_kept"))
     x
-  }) %>% 
+  } %>%
   mutate(Element = r_element) %>% 
   mutate(points = value) %>% 
-  apply_expression({
+  {x <- .
     nears <- seq(-10,10,by=0.1)[apply(sapply(c(-9,-0.7,3.2), function(i) near(seq(-10,10,by=0.1),i)),1,any)]
     x[!(x$alpha %in% nears),"points"] <- NA
     x[x$alpha < (-6),"value"] <- NA
     filter(x, alpha >= (-9))
-  }) %>% 
+  } %>%
+  
+  # select(dose) %>% unique()
   
   ggplot(mapping = aes(x = alpha, y = value, color = Element, linetype = Element)) +
   # ggplot(mapping = aes(x = alpha, y = value, color = Element, linetype = Element, frame = dose)) +
@@ -221,15 +237,17 @@ myplot <- dr_list %>%
   geom_point(aes(y = points), size = 3)+
   # facet_grid(.~par_opt_setting, scales = "free")+
   # facet_grid(matrix~par_opt_setting, scales = "free")+
-  xlab("log(a)")
+  xlab("log(a)") +
+  coord_cartesian(ylim = c(-1,1))
+  # myplot
+
 # plotly::ggplotly(myplot)
-  myplot
-ggsave(plot = myplot,
-       filename = paste0("~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/plots/Directcomplexfeedback ", "par_opt_setting 1",".png"),
-       width = 20,
-       height = 10,
-       units = "cm",
-       device = "png")
+# ggsave(plot = myplot,
+#        filename = paste0("~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/plots/Directcomplexfeedback ", "par_opt_setting 1",".png"),
+#        width = 20,
+#        height = 10,
+#        units = "cm",
+#        device = "png")
 #   
 ```
 

@@ -283,6 +283,7 @@ r_alpha_fun(pars_opt = unclass(best_fit), pars = pars, perturbation_prediction =
 
 ```{r}
 names(pars_inner)
+remove_c_and_o()
 ```
 
 
@@ -366,7 +367,7 @@ results <- map(pp_list, function(pp) {
       out <- c(list(r0 = r0 %>% round(2)), to_upstream_module, to_both_modules)
 
 })
-# saveRDS(results, "test_different_perturbations.R")
+# saveRDS(results, "test_different_perturbations.rds")
 ```
 
 ```{r}

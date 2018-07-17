@@ -206,7 +206,7 @@ myframe <- dMod.frame("1", g,x, p, data = NULL, e = NULL, p_pert = list(p_pert),
 
 Start an interactive interface, where you can choose alpha-values and the optimization parameters
 ```{r}
-source('../../gadget.R', echo=TRUE)
+# source('../../gadget.R', echo=TRUE)
 ropt_gadget(pars_opt %>% names, myframe)
 ```
 
@@ -386,7 +386,7 @@ Combinations
 6. a_tox_Cx2y1, -----------, -----------, -----------, -----------, a_tox_Cy2x2, a_toy_Cz2y2
 
 
-## Parameter set 3
+## Parameter set 3, compare different ways of global responses
 
 This parameter set decreases the intrinsic deactivation of x2 and y2 in comparison to parameter set 1. 
 Furthermore, the complex Cz2y2 association rate kzy1 is increased while the dissociation rate kzy2 is decreased, 
@@ -503,13 +503,20 @@ perturbation_prediction <- (xs*p*p_pert)(c(0,Inf), pars, deriv = F)
 
 diag_xi <- (g*xs*p*p_pert)(c(0,Inf), pars, conditions = "Ctr", deriv = F) %>% .[[1]] %>% .[-1] #%>% diag()
 
+# (x*p*p_pert)(seq(0,20000,length.out = 100), pars, conditions = "Ctr") %>% 
+  # .[[1]]
+
 
 cat("sensitivities\n")
-r_sens <- conveniencefunctions::extract_derivs((g* xs*p*p_pert)(c(0,Inf), pars, conditions = "Ctr"), modules0, paste0(letters[24:26], "1")) %>%
+r_sens <- 
+  conveniencefunctions::extract_derivs((g* xs*p*p_pert)(c(0,Inf), pars, conditions = "Ctr"), modules0, paste0(letters[24:26], "1")) %>%
+  # conveniencefunctions::extract_derivs((g*x*p*p_pert)(seq(0,20000,length.out = 100), pars, conditions = "Ctr"), modules0, paste0(letters[24:26], "1")) %>%
+    # conveniencefunctions::extract_derivs((x*p*p_pert)(seq(0,20000,length.out = 100), pars, conditions = "Ctr"), NULL, paste0(letters[24:26], "1")) %>%
+
   .[[1]] %>%
   .[-1] %>%
   matrix(ncol = 3) %>%
-  {. %*% diag((1/diag_xi))} %>%
+  {diag((1/diag_xi)) %*% .} %>%
   
   round(2) %>% 
   # sign %>% 
@@ -522,11 +529,49 @@ r_sens <- conveniencefunctions::extract_derivs((g* xs*p*p_pert)(c(0,Inf), pars, 
 
 perturbation_prediction <- (xs*p*p_pert)(c(0,Inf), pars, deriv = F)
 
+cat("\n\n 1.001 fold perturbation\n\n")
+
+# R_fd: Finite differences
+R_fd <- function(pars_opt = pars_opt_0,
+                  perturbation_prediction = perturbation_prediction,
+                  obs_fun = g,
+                  p_fun = (p*p_pert),
+                  pars = pars_0) {
+  mypars <- pars
+  mypars[names(pars_opt)] <- pars_opt
+  mypars <- p_fun(mypars, deriv = F)
+
+  my_perturbation_prediction <- lapply(1:length(perturbation_prediction),
+                                       function(i) obs_fun(out = perturbation_prediction[[i]],
+                                                           pars = mypars[[i]],
+                                                           deriv = F)) %>% do.call(c,.)
+  names(my_perturbation_prediction) <- attr(p_fun, "conditions")
+
+  # R
+  sapply(2:length(my_perturbation_prediction), function(i) {
+    dp <- (mypars[[i]]-mypars[[1]]) %>% {.[abs(.)>0]} %>% {attributes(.) <- NULL;.}
+    Ctr <- my_perturbation_prediction[[1]][,-1]
+    perturbed <- my_perturbation_prediction[[i]][,-1]
+    return((log(perturbed)-log(Ctr))/dp)
+  })
+}
+
+cat("R_fd\n")
+bla <- R_fd(pars_opt = pars_opt,
+            perturbation_prediction = perturbation_prediction,
+            obs_fun = g,
+            p_fun = (p*p_pert),
+            pars = pars) %>% 
+  {.} %T>% {round(.,3) %>% print} %>%
+  local_response_matrix_eq10() %>% 
+  {.} %T>% {round(.,2) %>% print} %>%
+  {.}
+
 # R_2: Just the log-foldchange: log(y(x+dx)/y(x))
 R_2 <- function(pars_opt = pars_opt_0,
                   perturbation_prediction = perturbation_prediction,
                   obs_fun = g,
-                  p_fun = (p_log*p_pert),
+                  p_fun = (p*p_pert),
                   pars = pars_0) {
   mypars <- pars
   mypars[names(pars_opt)] <- pars_opt
@@ -573,15 +618,28 @@ r0 <- R_fun(pars_opt = pars_opt,
   {.} %T>% {round(.,2) %>% print} %>%
   {.}
 
+cat("\n\n1.1 fold perturbation\n\n")
+
 # generate functions for the different experimental conditions
 pars_perturbed_0 <- pars_perturbed <- c("x1" = log(1.1), "y1" = log(1.1), "z1" = log(1.1))
 p_pert <- p_pert_fun(pars_perturbed = pars_perturbed, pars = pars)
 
 compile(p, p_pert, output = "Cascade_trafos")
 loadDLL((g*x*p*p_pert), xs)
-cat("\n\n1.1 fold perturbation\n\n")
 
 perturbation_prediction <- (xs*p*p_pert)(c(0,Inf), pars, deriv = F)
+
+cat("R_fd\n")
+bla <- R_fd(pars_opt = pars_opt,
+            perturbation_prediction = perturbation_prediction,
+            obs_fun = g,
+            p_fun = (p*p_pert),
+            pars = pars) %>% 
+  {.} %T>% {round(.,3) %>% print} %>%
+  local_response_matrix_eq10() %>% 
+  {.} %T>% {round(.,2) %>% print} %>%
+  {.}
+
 cat("R2\n")
 bla <- R_2(pars_opt = pars_opt,
             perturbation_prediction = perturbation_prediction,
@@ -606,6 +664,9 @@ r0 <- R_fun(pars_opt = pars_opt,
   {.} %T>% {round(.,2) %>% print} %>%
   {.}
 
+
+cat("\n\n2 fold perturbation\n\n")
+
 # generate functions for the different experimental conditions
 pars_perturbed_0 <- pars_perturbed <- c("x1" = log(2), "y1" = log(2), "z1" = log(2))
 p_pert <- p_pert_fun(pars_perturbed = pars_perturbed, pars = pars)
@@ -615,7 +676,19 @@ loadDLL((g*x*p*p_pert), xs)
 
 perturbation_prediction <- (xs*p*p_pert)(c(0,Inf), pars, deriv = F)
 
-cat("\n\n2 fold perturbation\n\n")
+cat("R_fd\n")
+bla <- R_fd(pars_opt = pars_opt,
+            perturbation_prediction = perturbation_prediction,
+            obs_fun = g,
+            p_fun = (p*p_pert),
+            pars = pars) %>% 
+  {.} %T>% {round(.,3) %>% print} %>%
+  local_response_matrix_eq10() %>% 
+  {.} %T>% {round(.,2) %>% print} %>%
+  {.}
+
+
+
 cat("R2\n")
 bla <- R_2(pars_opt = pars_opt,
             perturbation_prediction = perturbation_prediction,
@@ -641,6 +714,61 @@ r0 <- R_fun(pars_opt = pars_opt,
   {.}
 getEquations(p_pert)
 ```
+
+## what the fuck, sensitivities?
+```{r}
+steady_state <- perturbation_prediction[[1]][,-1]
+steady_state <- steady_state[steady_state!=0]
+states <- names(steady_state) %>% setNames(.,.)
+p <- trafo %>% 
+  define("x~x", x= states) %>% insert("x~exp(x)", x= states) %>% 
+  define("x~0", x = str_subset(getSymbols(mytrafo[[i]]), "^a")) %>% 
+  define("x~0", x = c("Cz2y2","Cy2x2","Cz2x2","Cz2x1")) %>% 
+  P
+
+(g*x*p)(seq(0,20000,length.out = 100), log(steady_state))
+```
+
+
+```{r}
+getParameters(x) %>% length()
+pinner %>% length()
+
+inits <- compare(names(pinner), getParameters(x)) %>% .[11:19,] %>% unlist() %>% as.character() %>% are_names_of(0)
+
+mypars <- c(pinner, inits)
+mypars[names(states)] <- steady_state
+
+glog <- Y(c(X = "log(x2)", "Y" = "log(y2)", "Z" = "log(z2)"),x)
+
+
+# (glog*x)(seq(0,20000,length.out = 100), mypars) %>%
+#   extract_derivs(which_pars = outer(letters[24:26], 1:2, paste0) %>% .[T]
+#                  # , which_states = outer(letters[24:26], 1:2, paste0) %>% .[T]
+#                  ) %>% 
+# .[[1]] %>% .[100,]
+r_sens_richtig <- (glog*x*p)(seq(0,20000,length.out = 100), log(steady_state)) %>%
+  extract_derivs(which_pars = outer(letters[24:26], 1, paste0) %>% .[T]
+                 # , which_states = outer(letters[24:26], 1:2, paste0) %>% .[T]
+                 , which_states = modules0
+                 ) %>% 
+.[[1]] %>% .[100,-1] %>% 
+  matrix(ncol = 3) %>%
+  
+  round(2) %>% 
+  # sign %>% 
+  magrittr::set_rownames(modules0) %>%
+  magrittr::set_colnames(paste0(letters[24:26], "1")) %>%
+  {.} %T>% print %>%
+  local_response_matrix_eq10() %>% 
+  {.} %T>% {round(.,2) %>% print} %>%
+  {.}
+
+```
+
+
+
+
 
 ### Results of the interactive exploration
 
