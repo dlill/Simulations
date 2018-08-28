@@ -294,8 +294,9 @@ myplot <- plot_data %>%
                        # , alpha = par_opt_setting
                        )) +
 
-    geom_rect(aes(xmin = alpha - 0.09, xmax = alpha + 0.09, ymin = minval - 0.07, ymax = maxval + 0.07), alpha = 1, fill = "#E9E9E9", color = "grey") + 
-  geom_text(aes(label = label), data = text_data, color = "black", size = 6) +
+
+  geom_rect(aes(xmin = alpha - 0.17, xmax = alpha + 0.17, ymin = minval - 0.07, ymax = maxval + 0.07), alpha = 1, fill = "#E9E9E9", color = "black", size = 0.3) + 
+  geom_text(aes(label = label), data = text_data, color = "black", size = 5, fontface = "bold") +
 
   geom_line() +
   theme_dMod() +
@@ -362,8 +363,9 @@ myplot <- plot_data %>%
                        # , alpha = par_opt_setting
                        )) +
   
-  geom_rect(aes(xmin = alpha - 0.09, xmax = alpha + 0.09, ymin = minval - 0.07, ymax = maxval + 0.07), alpha = 1, fill = "#E9E9E9", color = "grey") + 
-  geom_text(aes(label = label), data = text_data, color = "black", size = 6) +
+
+  geom_rect(aes(xmin = alpha - 0.17, xmax = alpha + 0.17, ymin = minval - 0.07, ymax = maxval + 0.07), alpha = 1, fill = "#E9E9E9", color = "black", size = 0.3) + 
+  geom_text(aes(label = label), data = text_data, color = "black", size = 5, fontface = "bold") +
 
   geom_line() +
   theme_dMod() +
