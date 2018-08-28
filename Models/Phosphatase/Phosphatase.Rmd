@@ -339,6 +339,19 @@ plot_data <-
   assign_point_locations %>% 
   {.}
 
+geom_rect_data <- plot_data %>% 
+  filter(alpha %in% point_locations) %>% 
+  group_by(alpha) %>% 
+  summarise(maxval = max(value), minval = min(value))
+
+text_data <- geom_rect_data %>% 
+  mutate(label=rank(alpha)) %>% 
+  group_by(alpha) %>% 
+  mutate(value = c(minval-0.12, maxval+0.12)[which.min(abs(c(minval, maxval)))]) %>% 
+  ungroup
+
+plot_data <- plot_data %>% left_join(geom_rect_data)
+
 
 
 # print_matrices_at_point_locations(point_locations, plot_data)
@@ -348,6 +361,10 @@ myplot <- plot_data %>%
                        # uncomment for one par_opt_setting only
                        # , alpha = par_opt_setting
                        )) +
+  
+  geom_rect(aes(xmin = alpha - 0.09, xmax = alpha + 0.09, ymin = minval - 0.07, ymax = maxval + 0.07), alpha = 1, fill = "#E9E9E9", color = "grey") + 
+  geom_text(aes(label = label), data = text_data, color = "black", size = 6) +
+
   geom_line() +
   theme_dMod() +
   scale_colour_manual(values = c("blue", "red", "green")) +
@@ -392,6 +409,20 @@ plot_data <-
   {.}
 
 
+geom_rect_data <- plot_data %>% 
+  filter(alpha %in% point_locations) %>% 
+  group_by(alpha) %>% 
+  summarise(maxval = max(value), minval = min(value))
+
+text_data <- geom_rect_data %>% 
+  mutate(label=rank(alpha)) %>% 
+  group_by(alpha) %>% 
+  mutate(value = c(minval-0.12, maxval+0.12)[which.min(abs(c(minval, maxval)))]) %>% 
+  ungroup
+
+plot_data <- plot_data %>% left_join(geom_rect_data)
+
+
 
 # print_matrices_at_point_locations(point_locations, plot_data)
 
@@ -400,6 +431,10 @@ myplot <- plot_data %>%
                        # uncomment for one par_opt_setting only
                        # , alpha = par_opt_setting
                        )) +
+
+  geom_rect(aes(xmin = alpha - 0.09, xmax = alpha + 0.09, ymin = minval - 0.07, ymax = maxval + 0.07), alpha = 1, fill = "#E9E9E9", color = "grey") + 
+  geom_text(aes(label = label), data = text_data, color = "black", size = 6) +
+
   geom_line() +
   theme_dMod() +
   scale_colour_manual(values = c("blue", "red", "green")) +
