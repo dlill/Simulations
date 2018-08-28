@@ -224,8 +224,8 @@ fancify_labels <- . %>%
   {
     .$par_opt_setting[.$par_opt_setting == 1] <- "X* and Y*"
     .$par_opt_setting[.$par_opt_setting == 2] <- "X*"
-    .$par_opt_setting[.$par_opt_setting == 2] <- "Y*"
-    .$par_opt_setting[.$par_opt_setting == 2] <- "X* and Y* independently"
+    .$par_opt_setting[.$par_opt_setting == 3] <- "Y*"
+    .$par_opt_setting[.$par_opt_setting == 4] <- "X* and Y* independently"
     .$par_opt_setting <- .$par_opt_setting %>% factor(levels = c("X* and Y*","X*", "Y*","X* and Y* independently"))
     .}
 
