@@ -305,7 +305,7 @@ ggshave(plot = myplot,
 
 ```
 
-```{r plot complex to both}
+```{r plot complex to upstream}
 plot_data <-
   dr_list %>%   
   combine_dr_list() %>% 
@@ -357,6 +357,57 @@ ggshave(plot = myplot,
 
 ```
 
+```{r plot complex to downstream}
+plot_data <-
+  dr_list %>%   
+  combine_dr_list() %>% 
+  filter(!is.na(value)) %>%
+  remove_diags %>% 
+
+  filter(near(dose,2.220446e-16)) %>%
+  filter(matrix == "r_alpha") %>%
+
+  mutate(alpha = exp(alpha)) %>%
+  filter(alpha<5) %>% #.$alpha
+  
+  fancify_labels %>%
+  filter(par_opt_setting %in% "Y*") %>%
+
+  assign_point_locations %>% 
+  {.}
+
+
+
+# print_matrices_at_point_locations(point_locations, plot_data)
+
+myplot <- plot_data %>%   
+  ggplot(mapping = aes(x = alpha, y = value, color = Element
+                       # uncomment for one par_opt_setting only
+                       # , alpha = par_opt_setting
+                       )) +
+  geom_line() +
+  theme_dMod() +
+  scale_colour_manual(values = c("blue", "red", "green")) +
+  geom_abline(slope = 0,intercept = 0, linetype = 3) +
+  geom_point(aes(y = points), size = 3)+
+  scale_alpha_discrete(name = "Complex \nadded to", range = c(0.3,1)) +
+  xlab("\tFree parameter a") +
+  ylab("Connection coefficient")
+myplot
+
+
+
+ggshave(plot = myplot,
+       filename = paste0("~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/phosphatase_complex_to_downstream.png"),
+       width = 10,
+       height = 8,
+       units = "cm",
+       device = "png",
+       check_overwrite = F
+       , commit_script = "Phosphatase, complex to upstream"
+       )
+
+```
 
 
 
