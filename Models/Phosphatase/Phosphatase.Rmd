@@ -253,7 +253,7 @@ print_matrices_at_point_locations <- function(point_locations, plot_data) {
 ```
 
 
-```{r plot}
+```{r plot complex to both}
 plot_data <-
   dr_list %>%   
   combine_dr_list() %>% 
