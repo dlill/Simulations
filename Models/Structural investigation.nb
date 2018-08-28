@@ -1,4 +1,7 @@
 Notebook[{
+Cell["Simple Cascade without feedback", "Text",
+ CellChangeTimes->{{3.737282682552823*^9, 3.737282692424714*^9}}],
+
 Cell[BoxData[
  RowBox[{"(*", 
   RowBox[{"States", ",", " ", "rates", ",", " ", "N"}], "*)"}]], "Input",

@@ -8,26 +8,16 @@ output:
 
 # Load libraries and define some useful paths
 
-```{r Libraries, results='hide', echo=FALSE, message=FALSE}
+```{r setup, results='hide', echo=FALSE, message=FALSE}
 rm(list = ls())
 library(MRAr)
 library(scales)
 library(xtable)
+library(parallel)
 path <- paste0(getwd(), "/")
 pathout <- paste0(path, "Output/")
 ```
 
-```{r Names for Fit storage of different initial conditions}
-fit_name <- "Cascade most general obsfun"
-```
-
-
-```{r Call render without overwriting any previous documents, echo=FALSE, eval=FALSE, message=FALSE}
-mytime <- format(Sys.time(), "%Y%m%d-%H%M")
-
-rmarkdown::render("Cascade.Rmd", output_file = paste0(pathout, fit_name, mytime, ".pdf"))
-beepr::beep("~/Promotion/Software/rimshot.mp3")
-```
 # Cascade
 
 ## Setup Model 
@@ -38,19 +28,19 @@ odemodel writes a C-function, which is executed in x and xs.
 x is a regular prediction function while xs only finds and returns the steady states.
 If the odemodel has been calculated already, it can be loaded with "load".
 ```{r Prediction function Cascade, results='asis'}
-modelpath <- paste0(path, "Models/Cascade/")
 modelname   <- "Cascade"
-mymodel     <- as.eqnlist(read.csv(paste0(modelpath, modelname, ".csv")))
+mymodel     <- as.eqnlist(read.csv(paste0( modelname, ".csv")))
 
 # myodemodel <- odemodel(mymodel, modelname = paste0(modelname), deriv = T)
-# save(myodemodel, file = paste0(modelpath, "odemodel",modelname, ".RData"))
-load(paste0(modelpath, "odemodel",modelname, ".RData"))
+# save(myodemodel, file = paste0( "odemodel",modelname, ".RData"))
+load(paste0( "odemodel",modelname, ".RData"))
 
 # Prediction function
 x <- Xs(odemodel = myodemodel)
 # Prediction function for steady states
 xs <- Xs_steady(myodemodel) # When computing steady states, set deriv = F
-print(mymodel)
+loadDLL(x)
+# print(mymodel)
 # mymodel %>% as.eqnvec() %>% print(pander = T)
 # myodemodel[[1]] %>% attr("eq")
 ```
@@ -80,6 +70,7 @@ modules <- modules0 <- c("X","Y", "Z")
 mypars_opt <- paste0("a_", outer(paste0("to", c("x","y","z"), "_C"), c("xy","yz","zx"), paste0)) %>% matrix(ncol=3)
 mypars_opt[c(3,4,8)] <- "0"
 
+
 mycomplexes <- matrix(c("Cx2y1", "Cy2z1", "Cx2z2"), ncol = 1)
 
 samepars_opt <- paste0("a_", outer(rep("C",3), c("xy","yz","zx"), paste0)) %>% matrix(ncol=3)
@@ -89,16 +80,16 @@ obs <- obs0 <- paste(c("x2", "y2", "z2"), "+", prodSymb(mypars_opt, mycomplexes)
 
 
 g <- g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), mymodel, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
+
 ```
 
 
 ### Inner parameters
 Load all parameters and format them for further use.
 ```{r Parameters Cascade}
-
-pars_raw <- read.csv(paste0(modelpath, "pars.csv"), header = FALSE)  # dynamical parameters
+pars_raw <- read.csv(paste0( "pars.csv"), header = FALSE)  # dynamical parameters
 pars_raw <- structure(pars_raw$V2, names = as.character(pars_raw$V1))
-ic_raw <- read.csv(paste0(modelpath, "IC.csv"), header = F)          # initial conditions
+ic_raw <- read.csv(paste0( "IC.csv"), header = F)          # initial conditions
 ic_raw <- structure(ic_raw$V2, names = as.character(ic_raw$V1))
 # sort ics like they appear in x, so it can be used in stode()
 vars_x <- attr(x, "parameters")[attr(x, "parameters") %in% names(ic_raw)]
@@ -109,12 +100,6 @@ pars_inner_opt_0 <- structure(rep(0, length(pars_inner_opt_0)),
                               names = pars_inner_opt_0)
 
 pars_inner_0 <- pars_inner <- c(ic_raw, pars_raw, pars_inner_opt_0)
-
-
-# check if all parameters are assigned a value. Both lines should evaluate to the same number.
-# x_pars <- unique(union((g) %>% attr("parameters"),(xs) %>% attr("parameters")))
-# names(pars) %in% x_pars %>% sum()
-# x_pars %in% names(pars) %>% sum()
 ```
 
 
@@ -123,36 +108,256 @@ It's better to do a logtransformation for all Fitting purposes and work with the
 The way to implement is this, is
 log_pars %>% p_log %>% p_other %>% p_other_2 %>% ...
 ```{r}
-# Logtrafo of all pars
-logtrafo <- structure(paste0("exp( log", names(pars_inner_0), ")"), 
-                             names = names(pars_inner_0))
-# Kill Synthesis and degradation
-syn_deg <- c(outer(c("ksyn", "kdeg"), c("x1","y1","z1"), FUN = paste0), 
-              paste0("kdeg", c("x","y", "z"), "2"))
-syn_deg <- structure(rep(0, length(syn_deg)), names = syn_deg)
-logtrafo[names(syn_deg)] <- syn_deg
+trafo <- getParameters(x,g) %>% 
+  setNames(.,.) %>% 
+  insert("x~0", x = getSymbols(mytrafo[[i]]) %>% str_subset("deg|syn")) %>% # set synthesis and degradations to zero
+  insert("x~0", x = getSymbols(mytrafo[[i]]) %>% str_subset("^C*[xyz](2|1.2)")) %>% # set inits to zero
+  insert("x~0", x = c("k131", "k132", "k14")) %>% 
+  insert("x~exp(x)", x = getSymbols(mytrafo[[i]])) %>%
+  # {.} %T>% print %>% 
+  {.} 
 
-# Kill xz-feedback
-# xz_fb <- c("Cy2z1", "k111", "k112", "k12")
-# xz_fb <- structure(rep(0, length(xz_fb)), names = xz_fb)
-# logtrafo[names(xz_fb)] <- xz_fb
+p_log <- P(trafo = trafo,
+           modelname = "p_log",
+           compile = T)
 
-# initial values
-logtrafo[c("x2", "Cx2y1", "y2", "Cy2z1", "z2", "Cx2z2")] <- 0
+pars <- getParameters(p_log) %>% are_names_of(0) %>% sort_by_name()
+pars_opt <- names(pars_inner_opt_0) %>% are_names_of(.Machine$double.eps) %>% log
+```
+
+
+```{r}
+pars <- c(
+a_Cxy    	=	.Machine$double.eps	, # 1
+a_Cyz    	=	.Machine$double.eps	, # 2
+a_Czx    	=	.Machine$double.eps	, # 3
+a_tox_Cxy	=	.Machine$double.eps	, # 4
+a_tox_Czx	=	.Machine$double.eps	, # 5
+a_toy_Cxy	=	.Machine$double.eps	, # 6
+a_toy_Cyz	=	.Machine$double.eps	, # 7
+a_toz_Cyz	=	.Machine$double.eps	, # 8
+a_toz_Czx	=	.Machine$double.eps	, # 9
+
+gainlf   	=	1	, # 10
+gainuf   	=	1	, # 11
+k9       	=	100	, # 29
+k10      	=	100	, # 13
+
+k1       	=	100	, # 12
+v1       	=	1.5	, # 30
+k2       	=	100	, # 20
+v2       	=	1	, # 31
+
+k31      	=	0.002	, # 21
+k32      	=	0.4	, # 22
+k4       	=	0.05	, # 23
+k5       	=	100	, # 24
+v5       	=	5	, # 32
+
+k61      	=	0.005	, # 25
+k62      	=	0.4	, # 26
+k7       	=	0.05	, # 27
+k8       	=	100	, # 28
+v8       	=	1	, # 33
+
+k111     	=	0.002	, # 14
+k112     	=	0.4	, # 15
+k12      	=	0.05	, # 16
+
+x1       	=	100	, # 34
+y1       	=	100	, # 35
+z1       	=	100	  # 36 
+) %>% 
+  log
+
+```
 
 
 
-p_log <- P(trafo = logtrafo,
-           # compile = TRUE,
-           modelname = "p_log")
-           
 
-pars_0 <- pars <- structure(log(pars_inner_0+.Machine$double.eps), names = paste0("log", names(pars_inner_0))) 
+# Apply different perturbations
+```{r}
+pp_x <- c("x1", "k1", "v1", "k2", "v2", "k111", "k112", "k12") 
+pp_y <- c("y1", "k5", "v5", "k31", "k32", "k4") 
+pp_z <- c("z1", "k8", "v8", "k61", "k62", "k7", "k111", "k112", "k12")
 
-pars_opt_0 <- pars_opt <- structure(log(pars_inner_opt_0+.Machine$double.eps), names = paste0("log", names(pars_inner_opt_0)))
+mygrid <- expand.grid(pp_x, pp_y, pp_z, stringsAsFactors = F) 
+pp_list <- map(1:nrow(mygrid), function(i) {
+  mynames <- mygrid[i,] %>% unlist() %>% unname() %>% unique()
+  if(length(mynames)<3) return(NULL)
+  mynames %>% are_names_of(log(0.9))
+}) %>% 
+  .[!map_lgl(., is.null)]
+alpha <- 0
 
-# pars_0
-# p_log(pars_0, deriv = F)
+myrunbg_job <- runbg({
+  cores <- detectFreeCores()
+  result <- mclapply(pp_list, function(pp) {
+    p_pert <- p_pert_fun(pp, pars = pars, modelname = NULL)
+
+    myframe <- dMod.frame("1", g, x, p_log, NULL, NULL, p_pert = list(p_pert), xs = list(xs), pars = list(pars))
+
+    g <- myframe$g[[1]]
+    p_pert <- myframe$p_pert[[1]]
+    p <- myframe$p[[1]]
+    xs <- myframe$xs[[1]]
+    pars <- myframe$pars[[1]]
+
+    # browser()
+    perturbation_prediction <- (xs*p*p_pert)(c(0,Inf), pars, deriv = F)
+
+    try({r0 <- R_fun(pars_opt = pars_opt,
+                     perturbation_prediction = perturbation_prediction,
+                     obs_fun = g,
+                     p_fun = (p*p_pert),
+                     pars = pars) %>% local_response_matrix_eq10()})
+    if(inherits(r0, "try-error")) return(NULL)
+
+    algo <- function(which_pars_opt, prefix = NULL) {
+      rkept <- r_kept_fun(pars_opt = pars_opt[which_pars_opt],
+                          perturbation_prediction = perturbation_prediction,
+                          obs_fun = g,
+                          p_fun = (p * p_pert),
+                          pars = pars,
+                          alpha =
+                            -log(.Machine$double.eps) + alpha)
+      myfits <- mstrust(obj_alpha,
+                        center =  structure(rep(0, length(which_pars_opt)), names = which_pars_opt),
+                        studyname = "Fits",
+                        cores = 3,
+                        fits = 3,
+                        sd = 1,
+                        mypars = pars,
+                        perturbation_prediction = perturbation_prediction,
+                        r_kept = rkept,
+                        p_fun = (p * p_pert),
+                        obs_fun = g)
+
+      try(myfits %>% as.parframe()) %>%
+      {e <- .; if (inherits(e, "try-error")) return(NULL)}
+
+
+      ropt <- r_alpha_fun(pars_opt = myfits %>% as.parframe() %>% as.parvec() %>% unclass() ,
+                          pars = pars,
+                          perturbation_prediction = perturbation_prediction,
+                          p_fun = (p*p_pert))
+
+      out <- list(rkept, myfits %>% as.parframe,ropt %>% round(2))
+      names(out) <- paste0(prefix, "r_kept", "parframes", "ropt")
+      return(out)
+    }
+
+    to_upstream_module <- algo(c("a_tox_Cxy", "a_toy_Cyz", "a_toz_Czx"), "upstream")
+    to_both_modules <- algo(c("a_Cxy", "a_Cyz", "a_Czx"), "both")
+
+    out <- c(list(r0 = r0 %>% round(2)), to_upstream_module, to_both_modules)
+
+  }, mc.cores = cores)
+  result
+}, machine = c("fermi"), input = ls(pos=.GlobalEnv), filename = "2018_07_17_16_10_myrunbg_job"
+  # , recover = T
+)
+# myrunbg_job$check()
+# runbg(wait_for_runbg(myrunbg_job), filename = "wait", input = "myrunbg_job")
+myrunbg <- myrunbg_job$get()$fermi
+saveRDS(myrunbg, file = "myrunbg.rds")
+results <- readRDS("myrunbg.rds")
+# myrunbg_job$purge()
+
+# saveRDS(results, "test_different_perturbations.rds")
+```
+
+
+
+```{r Debug, eval=FALSE}
+pp <- pp_list[[1]]
+result <- map(pp_list[1], function(pp) {
+    p_pert <- p_pert_fun(pp, pars = pars, modelname = NULL)
+
+    myframe <- dMod.frame("1", g, x, p_log, NULL, NULL, p_pert = list(p_pert), xs = list(xs), pars = list(pars))
+
+    g <- myframe$g[[1]]
+    p_pert <- myframe$p_pert[[1]]
+    p <- myframe$p[[1]]
+    xs <- myframe$xs[[1]]
+    pars <- myframe$pars[[1]]
+
+    # browser()
+    perturbation_prediction <- (xs*p*p_pert)(c(0,Inf), pars, deriv = F)
+
+    try({r0 <- R_fun(pars_opt = pars_opt,
+                     perturbation_prediction = perturbation_prediction,
+                     obs_fun = g,
+                     p_fun = (p*p_pert),
+                     pars = pars) %>% local_response_matrix_eq10()})
+    if(inherits(r0, "try-error")) return(NULL)
+
+    algo <- function(which_pars_opt, prefix = NULL) {
+      rkept <- r_kept_fun(pars_opt = pars_opt[which_pars_opt],
+                          perturbation_prediction = perturbation_prediction,
+                          obs_fun = g,
+                          p_fun = (p * p_pert),
+                          pars = pars,
+                          alpha =
+                            -log(.Machine$double.eps) + alpha)
+      myfits <- mstrust(obj_alpha,
+                        center =  structure(rep(0, length(which_pars_opt)), names = which_pars_opt),
+                        studyname = "Fits",
+                        cores = 3,
+                        fits = 3,
+                        sd = 1,
+                        mypars = pars,
+                        perturbation_prediction = perturbation_prediction,
+                        r_kept = rkept,
+                        p_fun = (p * p_pert),
+                        obs_fun = g)
+
+      try(myfits %>% as.parframe()) %>%
+      {e <- .; if (inherits(e, "try-error")) return(NULL)}
+
+
+      ropt <- r_alpha_fun(pars_opt = myfits %>% as.parframe() %>% as.parvec() %>% unclass() ,
+                          pars = pars,
+                          perturbation_prediction = perturbation_prediction,
+                          p_fun = (p*p_pert))
+
+      out <- list(rkept, myfits %>% as.parframe,ropt %>% round(2))
+      names(out) <- paste0(prefix, "r_kept", "parframes", "ropt")
+      return(out)
+    }
+
+    to_upstream_module <- algo(which_pars_opt = c("a_tox_Cxy", "a_toy_Cyz", "a_toz_Czx"), "upstream")
+    to_both_modules <- algo(which_pars_opt = c("a_Cxy", "a_Cyz", "a_Czx"), "both")
+
+    out <- c(list(r0 = r0 %>% round(2)), to_upstream_module, to_both_modules)
+
+  })
+```
+
+
+```{r analyse results}
+# results %>% str1
+
+ropt_upstream <- results %>% map(5) 
+
+mygrid_2 <-
+  pp_list %>% map(names) %>% 
+  do.call(rbind,.) %>% 
+  as.tibble() %>% 
+  cbind(., ind = 1:nrow(.)) %>% 
+  filter(!str_detect(V1, "(k3)|(k4)")) %>% 
+  filter(!str_detect(V2, "(k6)|(k7)")) %>% 
+  filter(str_detect(V2,"5")) %>% 
+  {.}
+
+map(mygrid_2$ind, function(i) {
+  not_equal_to_conc_perturbation <- map_lgl(1:9, function(j) !near(ropt_upstream[[i]][j], ropt_upstream[[1]][j], tol = 0.02)) %>% sum()
+  
+  # if(not_equal_to_conc_perturbation == 0) return(NULL)
+  print(c(i, not_equal_to_conc_perturbation))
+  pp_list[[i]] %>% names %>% print
+  print(ropt_upstream[[i]])
+})
 ```
 
 
@@ -165,7 +370,7 @@ Just to show the code...
 Set up the perturbations
 ```{r}
 # Which pars shall be perturbed?
-pars_perturbed_0 <- pars_perturbed <- c("logx1" = log(0.8), "logy1" = log(0.8), "logz1" = log(0.8))
+pars_perturbed_0 <- pars_perturbed <- c("x1" = log(0.8), "y1" = log(0.8), "z1" = log(0.8))
 
 p_pert <- p_pert_fun(pars_perturbed = pars_perturbed, pars = pars)
 # ```

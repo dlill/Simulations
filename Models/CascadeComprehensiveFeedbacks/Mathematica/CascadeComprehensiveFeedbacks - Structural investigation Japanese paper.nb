@@ -773,8 +773,8 @@ Cell[BoxData[
    3.724421881266913*^9}]
 }, Open  ]]
 },
-WindowSize->{1920, 1056},
-WindowMargins->{{0, Automatic}, {0, Automatic}},
+WindowSize->{1280, 1028},
+WindowMargins->{{640, Automatic}, {0, Automatic}},
 FrontEndVersion->"11.0 for Linux x86 (64-bit) (September 21, 2016)",
 StyleDefinitions->"Default.nb"
 ]

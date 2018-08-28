@@ -48,13 +48,12 @@ g(x(t, p(p_outer))) = g*x*p(t, p_outer)
 ## Prediction function
 odemodel() writes the function f as a C-function, which is called by x and xs.
 ```{r Prediction function Cascade, results='asis'}
-modelpath <- paste0("Models/Hub/")
 modelname   <- "Hub"
-mymodel     <- as.eqnlist(read.csv(paste0(modelpath, modelname, ".csv")))
+mymodel     <- as.eqnlist(read.csv(paste0(modelname, ".csv")))
 
-# myodemodel <- odemodel(mymodel, modelname = paste0(modelname), deriv = T)
-# save(myodemodel, file = paste0(modelpath, "odemodel",modelname, ".RData"))
-load(paste0(modelpath, "odemodel",modelname, ".RData"))
+myodemodel <- odemodel(mymodel, modelname = paste0(modelname), deriv = T)
+save(myodemodel, file = paste0("odemodel",modelname, ".RData"))
+load(paste0("odemodel",modelname, ".RData"))
 
 # Prediction function
 x <- Xs(odemodel = myodemodel)
@@ -72,7 +71,7 @@ We chose to call them pars_opt, since they will be used to optimize the objectiv
 ```{r Observation function with Cx2z2 in x-module}
 modules <- modules0 <- c("x2","y2", "z2")
 
-obs <- obs0 <- c("x2 + a_1 * Cx2y1 + a_2 * Cx2z1",
+obs <- obs0 <- c("x2 + a_1 * Cx2y1 + a_2 * Cx2z1 + a_tox_Cxy * Cx2y1 + a_tox_Cxz * Cx2z1",
           "y2 + a_1 * Cx2y1 + a_3 * Cx2z1",
           "z2 + a_2 * Cx2z1 + a_4 * Cx2y1 ")
 g <-  g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), mymodel, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
@@ -82,9 +81,9 @@ g <-  g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), mymodel, compile = T
 Load all parameters and format them for further use.
 ```{r Parameters Cascade}
 
-pars_raw <- read.csv(paste0(modelpath, "pars.csv"), header = FALSE)  # dynamical parameters
+pars_raw <- read.csv(paste0("pars.csv"), header = FALSE)  # dynamical parameters
 pars_raw <- structure(pars_raw$V2, names = as.character(pars_raw$V1))
-ic_raw <- read.csv(paste0(modelpath, "IC.csv"), header = F)          # initial conditions
+ic_raw <- read.csv(paste0("IC.csv"), header = F)          # initial conditions
 ic_raw <- structure(ic_raw$V2, names = as.character(ic_raw$V1))
 # sort ics like they appear in x, so it can be used in stode()
 vars_x <- attr(x, "parameters")[attr(x, "parameters") %in% names(ic_raw)]
@@ -144,7 +143,7 @@ pars_perturbed_0 <- pars_perturbed <- c("logx1" = log(0.8), "logy1" = log(0.8), 
 
 
 # pars_perturbed
-p_pert <- p_pert_fun(pars_perturbed = pars_perturbed, pars = pars)
+p_pert <- p_pert_fun(pars_perturbed = pars_perturbed, pars = pars, modelname = NULL)
 
 ```
 
@@ -152,15 +151,97 @@ p_pert <- p_pert_fun(pars_perturbed = pars_perturbed, pars = pars)
 
 Parameters for Figure 6
 ```{r}
-pars <- c(100,0,0,100,0,0,100,0, 
-          100,1.5,100,1,     0.01,0.4,0.05,
-          100,5,            0.05,0.4,0.008,
-          100,1,
-          rep(0, length(pars_opt_0))) %>%
-  set_names(names(pars_inner_0)) # as in cascade
+# pars <- c(100,0,0,100,0,0,100,0, 
+#           100,1.5,100,1,     0.01,0.4,0.05,
+#           100,5,            0.05,0.4,0.008,
+#           100,1,
+#           rep(0, length(pars_opt_0))) %>%
+#   set_names(names(pars_inner_0)) # as in cascade
+pars <- c(
+x1       	=	100	, # 1
+x2       	=	0	, # 2
+Cx2y1    	=	0	, # 3
+y1       	=	100	, # 4
+y2       	=	0	, # 5
+Cx2z1    	=	0	, # 6
+z1       	=	100	, # 7
+z2       	=	0	, # 8
+k1       	=	100	, # 9
+v1       	=	1.5	, # 10
+k2       	=	100	, # 11
+v2       	=	1	, # 12
+k31      	=	0.01	, # 13
+k32      	=	0.4	, # 14
+k4       	=	0.05	, # 15
+k5       	=	100	, # 16
+v5       	=	5	, # 17
+k61      	=	0.05	, # 18
+k62      	=	0.4	, # 19
+k7       	=	0.008	, # 20
+k8       	=	100	, # 21
+v8       	=	1	, # 22
+a_1      	=	0	, # 23
+a_2      	=	0	, # 24
+a_tox_Cxy	=	0	, # 25
+a_tox_Cxz	=	0	, # 26
+a_3      	=	0	, # 27
+a_4      	=	0	  # 28 
+)
 
 pars_0 <- pars <- log(pars+.Machine$double.eps) %>% set_names(names(pars_0))
 ```
+
+
+```{r Parameters which imbalance the effects of y and z}
+# # pars <- c(100,0,0,100,0,0,100,0,
+# #           100,1.5,100,1,     0.01,0.4,0.05,
+# #           100,5,            0.05,0.4,0.008,
+# #           100,1,
+# #           rep(0, length(pars_opt_0))) %>%
+# #   set_names(names(pars_inner_0)) # as in cascade
+# pars <- c(
+# x1       	=	100	, # 1
+# x2       	=	0	, # 2
+# Cx2y1    	=	0	, # 3
+# y1       	=	100	, # 4
+# y2       	=	0	, # 5
+# Cx2z1    	=	0	, # 6
+# z1       	=	100	, # 7
+# z2       	=	0	, # 8
+# k1       	=	100	, # 9
+# v1       	=	1.5	, # 10
+# k2       	=	100	, # 11
+# v2       	=	1	, # 12
+# k31      	=	0.01	, # 13
+# k32      	=	0.4	, # 14
+# k4       	=	0.05	, # 15
+# k5       	=	100	, # 16
+# v5       	=	5	, # 17
+# k61      	=	0.05	, # 18
+# k62      	=	0.4	, # 19
+# k7       	=	0.05	, # 20
+# k8       	=	100	, # 21
+# v8       	=	5	, # 22
+# a_1      	=	0	, # 23
+# a_2      	=	0	, # 24
+# a_tox_Cxy	=	0	, # 25
+# a_tox_Cxz	=	0	, # 26
+# a_3      	=	0	, # 27
+# a_4      	=	0	  # 28 
+# )
+# 
+# pars_0 <- pars <- log(pars+.Machine$double.eps) %>% set_names(names(pars_0))
+```
+
+
+
+```{r try to run the gadget}
+myframe <- dMod.frame("1", g,x,p_log, NULL, NULL, xs = list(xs), p_pert = list(p_pert), pars = list(pars))
+which_pars_opt <- c("loga_tox_Cxy", "loga_tox_Cxz", "loga_1","loga_2", "loga_3", "loga_4")
+ropt_gadget(which_pars_opt = which_pars_opt, myframe)
+```
+
+
 
 ## Generate the perturbation data
 ```{r}
@@ -169,14 +250,14 @@ perturbation_prediction_0 <- perturbation_prediction <-  (xs*p_log*p_pert)(times
 (x*p_log*p_pert)(times = seq(0,2000, length.out = 50), pars = pars) %>%
   plotPrediction()
 
-perturbation_prediction %>% lapply(round,1)
+# perturbation_prediction %>% lapply(round,1)
 ```
 
 # Apply the algorithm as an example
 This is an example of how the algorithm is applied.
 ```{r}
-# which_pars_opt <- c("loga_Cxy", "loga_Cyz")
-which_pars_opt <- names(pars_opt_0)
+which_pars_opt <- c("loga_tox_Cxy", "loga_tox_Cxz", "loga_1","loga_2", "loga_3", "loga_4")[1:2]
+# which_pars_opt <- names(pars_opt_0)
 
 r_kept_0 <- r_kept_fun(pars_opt = pars_opt[which_pars_opt],
                        perturbation_prediction = perturbation_prediction, 

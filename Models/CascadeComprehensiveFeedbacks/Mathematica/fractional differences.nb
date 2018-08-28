@@ -1,0 +1,54 @@
+Notebook[{
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"y", " ", "=", " ", 
+   RowBox[{"x", "^", "2"}]}], ";"}]], "Input",
+ CellChangeTimes->{{3.738756494337883*^9, 3.738756499941352*^9}}],
+
+Cell[CellGroupData[{
+
+Cell[BoxData[
+ RowBox[{"dlogydlogx", " ", "=", " ", 
+  RowBox[{
+   RowBox[{"x", "/", 
+    RowBox[{"(", "y", ")"}]}], "*", 
+   RowBox[{"D", "[", 
+    RowBox[{"y", ",", "x"}], "]"}]}]}]], "Input",
+ CellChangeTimes->{{3.7387565266575127`*^9, 3.7387565329642344`*^9}, {
+  3.738756590945228*^9, 3.738756631184712*^9}}],
+
+Cell[BoxData["2"], "Output",
+ CellChangeTimes->{3.7387566330832644`*^9}]
+}, Open  ]],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{
+   RowBox[{"yfun", " ", "[", "x_", "]"}], ":=", 
+   RowBox[{"x", "^", "2"}]}], ";"}]], "Input",
+ CellChangeTimes->{{3.738756679413698*^9, 3.738756711118062*^9}}],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"fracderiv", "[", 
+   RowBox[{"x_", ",", "del_"}], "]"}], ":=", 
+  RowBox[{"2", "*", 
+   RowBox[{
+    RowBox[{"(", 
+     RowBox[{
+      RowBox[{"yfun", "[", 
+       RowBox[{"x", "+", "del"}], "]"}], "-", 
+      RowBox[{"yfun", "[", "x", "]"}]}], ")"}], "/", 
+    RowBox[{"(", 
+     RowBox[{
+      RowBox[{"yfun", "[", 
+       RowBox[{"x", "+", "del"}], "]"}], "+", 
+      RowBox[{"yfun", "[", "x", "]"}]}], ")"}]}]}]}]], "Input",
+ CellChangeTimes->{{3.738756720436864*^9, 3.738756780314014*^9}}]
+},
+WindowSize->{808, 911},
+WindowMargins->{{556, Automatic}, {57, Automatic}},
+FrontEndVersion->"11.0 for Linux x86 (64-bit) (September 21, 2016)",
+StyleDefinitions->"Default.nb"
+]
+

@@ -1,0 +1,349 @@
+---
+title: "Feed forward model"
+author: "Daniel Lill"
+output:
+  pdf_document:
+    keep_tex: yes
+---
+
+Load libraries and define some useful paths
+
+```{r Libraries, results='hide', echo=FALSE, message=FALSE}
+rm(list = ls())
+library(MRAr)
+library(scales)
+library(xtable)
+```
+
+# Setup Model 
+This is the setup of the ODE model.
+
+Our (internal) states x are described by the odemodel which is turned into a prediction via the prediction function x():
+
+dx/dt = f(x,p_dyn)
+x = x(t, p_dyn, x_ini)
+
+p_dyn are dynamical parameters like rate constants etc, x_ini are initial values for all states.
+The prediction function xs() runs the stimulation until it reaches a steady state.
+
+
+Then, these states are linked to observables y via the observation function g(). In our case the observables will be the communicating species:
+
+y = g(x, p_obs)
+
+p_obs are observation parameters like scaling factors.
+
+
+Since all parameters are positive, it is beneficial to use log-parameters, therefore all parameters are transformed to the log-scale. These we call "outer parameters", p_outer. To feed them into our original model, we transform them back to the linear scale ("p_inner") by a parameter transformation function p(). This way, all our calculations can be made in log-space:
+
+p_inner = p(p_outer) = p(log(p_obs), log(p_dyn), log(x_ini))
+
+
+These three types of functions can be concatenated by the "*"-operator.
+g(x(t, p(p_outer))) = g*x*p(t, p_outer)
+
+
+## Prediction function
+odemodel() writes the function f as a C-function, which is called by x and xs.
+```{r Prediction function Cascade, results='asis'}
+modelname   <- "model"
+mymodel     <- as.eqnlist(read.csv(paste0(modelname, ".csv"))) # Basically the hub model
+
+mymodel     <- mymodel %>% 
+  addReaction("z1 + y2", "Cy2z1", rate = "k91*z1*y2")%>% # add mechanistic activation of z via y. 
+  addReaction("Cy2z1", "z1 + y2", rate = "k92*Cy2z1")%>%
+  addReaction("Cy2z1", "z2 + y2", rate = "k10 * Cy2z1")
+
+myodemodel <- odemodel(mymodel, modelname = paste0(modelname), deriv = T)
+save(myodemodel, file = paste0("odemodel",modelname, ".RData"))
+load(paste0("odemodel",modelname, ".RData"))
+
+# Prediction function
+x <- Xs(odemodel = myodemodel)
+# Prediction function for steady states
+xs <- Xs_steady(myodemodel) # When computing steady states, set deriv = F
+# print(mymodel)
+# mymodel %>% as.eqnvec() %>% print(pander = T)
+myodemodel[[1]] %>% attr("eq")
+```
+
+## Observation function
+Observation function which returns our communicating species. 
+The free parameters a_ij are introduced here to perform the linear combination of states which we wish to observe.
+We chose to call them pars_opt, since they will be used to optimize the objective function later on.
+```{r Observation function with Cx2z2 in x-module}
+modules <- modules0 <- c("x2","y2", "z2")
+
+obs <- obs0 <- c("x2 + a_1 * Cx2y1 + a_2 * Cx2z1 + a_tox_Cxy * Cx2y1 + a_tox_Cxz * Cx2z1",
+          "y2 + a_1 * Cx2y1 + a_3 * Cx2z1 + a_toy_Cyz * Cy2z1 + a_Cyz * Cy2z1",
+          "z2 + a_2 * Cx2z1 + a_4 * Cx2y1 + a_Cyz * Cy2z1")
+g <-  g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), mymodel, compile = F, modelname = NULL, attach.input = FALSE)
+```
+
+## Inner parameters
+Load all parameters and format them for further use.
+```{r Parameters Cascade}
+
+pars_raw <- read.csv(paste0("pars.csv"), header = FALSE)  # dynamical parameters
+pars_raw <- structure(pars_raw$V2, names = as.character(pars_raw$V1))
+ic_raw <- read.csv(paste0("IC.csv"), header = F)          # initial conditions
+ic_raw <- structure(ic_raw$V2, names = as.character(ic_raw$V1))
+# sort ics like they appear in x, so it can be used in stode()
+vars_x <- attr(x, "parameters")[attr(x, "parameters") %in% names(ic_raw)]
+ic_raw <- ic_raw[vars_x]
+
+pars_raw <- c(pars_raw, "k91" = 0.005, "k92" = 0.4, k10 = 0.008)
+
+
+pars_inner_opt_0 <- setdiff(attr(g, "parameters"),names(c(pars_raw,ic_raw)))
+pars_inner_opt_0 <- structure(rep(0, length(pars_inner_opt_0)), 
+                              names = pars_inner_opt_0)
+
+pars_inner_0 <- pars_inner <- c(ic_raw, pars_raw, pars_inner_opt_0)
+
+
+# check if all parameters are assigned a value. Both lines should evaluate to the same number.
+# x_pars <- unique(union((g) %>% attr("parameters"),(xs) %>% attr("parameters")))
+# names(pars) %in% x_pars %>% sum()
+# x_pars %in% names(pars) %>% sum()
+```
+
+
+## Parameter transformation function
+```{r}
+# Logtrafo of all pars
+logtrafo <- structure(paste0("exp( log", names(pars_inner_0), ")"), 
+                             names = names(pars_inner_0))
+
+
+# initial values
+logtrafo[c("x2", "Cx2y1", "y2", "Cx2z1", "z2", "Cy2z1")] <- 0
+
+
+p_log <- P(trafo = logtrafo,
+           compile = FALSE,
+           modelname = NULL)
+           
+
+pars_0 <- pars <- structure(log(pars_inner_0+.Machine$double.eps), names = paste0("log", names(pars_inner_0))) 
+
+pars_opt_0 <- pars_opt <- structure(log(pars_inner_opt_0+.Machine$double.eps), names = paste0("log", names(pars_inner_opt_0)))
+
+
+# compare(getParameters(x), p_log(pars)[[1]] %>% names)
+
+# print_r.named_vector(pars)
+remove_c_and_o()
+# pars_opt_0 <- pars_opt <- pars_opt_0[c("loga_1", "loga_2")]
+# pars_0
+# p_log(pars_0, deriv = F)
+```
+
+# Simulate perturbation data
+
+For the perturbation experiments we use another parameter transformation to scale some parameters.
+p_pert_fun automatically generates a parameter transformation function, which returns different sets of parameters for different conditions and a control condition.
+Eg. if we have pars_perturbed = c("logx1" = log(0.9)), p_pert_fun(pars_perturbed) will return a parameter transformation with the control condition with unchanged parameters and one condition in which logx' = logx + log(0.9)
+
+"log(0.9)" corresponds to a ~10% reduction of the original parameter value.
+```{r}
+# Which pars shall be perturbed?
+# pars_perturbed_0 <- pars_perturbed <- c("logx1" = log(0.9), "logy1" = log(0.9), "logz1" = log(0.9))
+pars_perturbed_0 <- pars_perturbed <- c("logx1" = log(0.8), "logy1" = log(0.8), "logz1" = log(0.8))
+
+
+
+# pars_perturbed
+p_pert <- p_pert_fun(pars_perturbed = pars_perturbed, pars = pars, modelname = NULL)
+
+```
+
+## Final parameter values for different Figures
+
+Parameters for Figure 6
+```{r}
+# pars <- c(100,0,0,100,0,0,100,0, 
+#           100,1.5,100,1,     0.01,0.4,0.05,
+#           100,5,            0.05,0.4,0.008,
+#           100,1,
+#           rep(0, length(pars_opt_0))) %>%
+#   set_names(names(pars_inner_0)) # as in cascade
+pars <- c(
+x1       	=	100	, # 1
+x2       	=	0	, # 2
+Cx2y1    	=	0	, # 3
+y1       	=	100	, # 4
+y2       	=	0	, # 5
+Cx2z1    	=	0	, # 6
+z1       	=	100	, # 7
+z2       	=	0	, # 8
+k1       	=	100	, # 9
+v1       	=	1.5	, # 10
+k2       	=	100	, # 11
+v2       	=	1	, # 12
+k31      	=	0.01	, # 13
+k32      	=	0.4	, # 14
+k4       	=	0.05	, # 15
+k5       	=	100	, # 16
+v5       	=	5	, # 17
+k61      	=	0.05	, # 18
+k62      	=	0.4	, # 19
+k7       	=	0.008	, # 20
+k8       	=	100	, # 21
+v8       	=	1	, # 22
+"k91" = 0.005, 
+"k92" = 0.4, 
+"k10" = 0.008,
+a_1      	=	0	, # 23
+a_2      	=	0	, # 24
+a_tox_Cxy	=	0	, # 25
+a_tox_Cxz	=	0	, # 26
+a_3      	=	0	, # 27
+a_4      	=	0	,  # 28 
+loga_toy_Cyz	=	0	, # 31
+loga_Cyz    	=	0	 # 32
+)
+
+pars_0 <- pars <- log(pars+.Machine$double.eps) %>% set_names(names(pars_0))
+
+
+# plotFluxes(pars, (x*p_log), 1:1000, c(mymodel$rates[4], "(y2 * kcat *  z1) / (KM + z1)"))
+
+```
+
+
+
+
+```{r try to run the gadget}
+names(pars_opt_0)
+myframe <- dMod.frame("1", g,x,p_log, NULL, NULL, xs = list(xs), p_pert = list(p_pert), pars = list(pars))
+which_pars_opt <- c("loga_tox_Cxy", "loga_tox_Cxz", "loga_1","loga_2", "loga_3", "loga_4", "loga_toy_Cyz", "loga_Cyz")[c(1,2,8)]
+ropt_gadget(which_pars_opt = which_pars_opt, myframe)
+```
+
+
+
+## Generate the perturbation data
+```{r}
+perturbation_prediction_0 <- perturbation_prediction <-  (xs*p_log*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
+
+(x*p_log*p_pert)(times = seq(0,2000, length.out = 50), pars = pars) %>%
+  plotPrediction()
+
+
+# perturbation_prediction %>% lapply(round,1)
+```
+
+# Apply the algorithm as an example
+This is an example of how the algorithm is applied.
+```{r}
+which_pars_opt <- c("loga_tox_Cxy", "loga_tox_Cxz", "loga_1","loga_2", "loga_3", "loga_4")[-c(3:4)]
+# which_pars_opt <- names(pars_opt_0)
+
+r_kept_0 <- r_kept_fun(pars_opt = pars_opt[which_pars_opt],
+                       perturbation_prediction = perturbation_prediction, 
+                       obs_fun = g,
+                       p_fun = (p_log * p_pert), 
+                       pars = pars,
+                       alpha = -log(0+.Machine$double.eps))
+# r_kept_0[7]<- F
+r_kept_0
+
+# r_kept_0 <- c(F,F,T,T,F,F,F,T,F) %>% matrix(ncol = 3)
+
+r_0 <-   R_fun(pars_opt = pars_opt[which_pars_opt],
+               perturbation_prediction = perturbation_prediction,
+               obs_fun = g,
+               p_fun = (p_log*p_pert),
+               pars = pars) %>% local_response_matrix_eq10()
+r_0%>% round(2)
+
+r_1 <-   R_fun(pars_opt = structure(rep(0, length(which_pars_opt)), names = which_pars_opt),
+               perturbation_prediction = perturbation_prediction,
+               obs_fun = g,
+               p_fun = (p_log*p_pert),
+               pars = pars) %>% local_response_matrix_eq10()
+r_1 %>% round(2)
+r_kept_0 <- c(F,F,F, T,F,T, T,T,F)
+# r_kept_0 <- c(F,F,F, T,F,F, T,F,F)
+# matrix(c(F,F,F,T,F,F,F,T,F), ncol = 3)
+myfits <- mstrust(obj_alpha, center =  structure(rep(0, length(which_pars_opt)), names = which_pars_opt), studyname = "Fits", cores = 3, fits = 3, sd = 1, mypars = pars, perturbation_prediction = perturbation_prediction_0, r_kept = r_kept_0)
+# myfits %>% as.parframe()
+best_fit <- myfits %>% as.parframe() %>% as.parvec()
+exp(best_fit)
+r_alpha_fun(pars_opt = unclass(best_fit), pars = pars, perturbation_prediction = perturbation_prediction) %>% round(2)
+# pars
+```
+
+
+# Plots for main text
+Run the algorithm for different values of the parameters which control the feedback.
+Do this for the two different options of defining communicating species (adding them to both modules or only the upstream module).
+Also, scan the pars_opt in a finer grid than in the section above.
+```{r, eval=FALSE}
+par_opt_names <- pars_opt_0 %>% names %>% sort
+
+par_opt_settings <- list(par_opt_names[c(1,3,2)]
+                         , par_opt_names[c(1,2)]
+                         )
+dr_list <- lapply(seq_along(par_opt_settings), function(i) {
+  # list(
+  r_opt_dose_response(which_par = "logk31",
+                      dosages = sort(unique(c(seq(-6,-3,by = 0.5)))),
+                      pars = pars,
+                      alpha_scan_range = seq(-5,5,by = 0.1),
+                      pars_opt = pars_opt_0[par_opt_settings[[i]]])
+  # )
+})
+
+```
+
+
+# General plotting functions
+```{r Plot generation}
+myplot <- c(dr_list) %>% 
+  combine_dr_list() %>%
+  filter(! (r_element %in% paste0("r", c(11,22,33)))) %>% 
+  # filter(dose >= -2, dose <= 2.5) %>%
+  filter(par_opt_setting == 2) %>% 
+  filter(alpha %in% 0) %>%
+  # filter(matrix != "r_kept") %>%
+  apply_expression({
+    x$matrix[x$matrix == "r_alpha"] <- "r(a_i = 1)"
+    x$matrix[x$matrix == "r_opt"] <- "r(a = a_opt)"
+    x$matrix <- x$matrix %>% factor(levels = c("r(a_i = 1)", "r(a = a_opt)", "r_kept"))
+    x
+  }) %>% 
+  mutate(Element = r_element) %>% 
+  ggplot(mapping = aes(x = dose, y = value, color = Element, linetype = Element)) +
+  geom_line() +
+  theme_dMod() +
+  scale_color_dMod() +
+  geom_abline(slope = 0,intercept = 0, linetype = 3) +
+  geom_vline(xintercept = 0, linetype = 3, size = 0.1) +
+  facet_grid(matrix~., scales = "free")+
+  xlab("alpha")
+
+myplot
+# plotly::ggplotly(myplot)
+
+# ggsave(plot = myplot,
+#        filename = paste0("hub",".png"),
+#        width = 10,
+#        height = 10,
+#        units = "cm",
+#        device = "png")
+
+```
+
+
+
+
+
+
+
+
+
+
+
+

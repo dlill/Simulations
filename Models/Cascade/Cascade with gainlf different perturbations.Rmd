@@ -190,15 +190,15 @@ pp_list <- map(1:nrow(mygrid), function(i) {
 # alpha <- 0
 
 myrunbg_job <- runbg({
-  cores <- 11
+  cores <- detectFreeCores()
   pars0 <- pars
   
-  gainlfs <- seq(-10,10,0.5)
+  gainlfs <- seq(-10,10,5) %>% c(seq(-2,2,0.5)) %>% unique() %>% sort
   map(gainlfs, function(gainlf) {
     pars <- pars0
-    pars["gainlf"] <- gainlf
+    pars["gainlf"] <- c(gainlf = gainlf)
     
-    alphas <- seq(-0.5,3,0.25)
+    alphas <- seq(-1,2,0.5)
     map(alphas, function(alpha) {
       
       mclapply(pp_list, function(pp) {
@@ -215,21 +215,26 @@ myrunbg_job <- runbg({
         # browser()
         perturbation_prediction <- (xs*p*p_pert)(c(0,Inf), pars, deriv = F)
         
-        try({r0 <- R_fun(pars_opt = pars_opt,
+        try({r_0 <- R_fun(pars_opt = pars_opt,
                          perturbation_prediction = perturbation_prediction,
                          obs_fun = g,
                          p_fun = (p*p_pert),
                          pars = pars) %>% local_response_matrix_eq10()})
-        if(inherits(r0, "try-error")) return(NULL)
+        if(inherits(r_0, "try-error")) return(NULL)
         
         algo <- function(which_pars_opt, prefix = NULL) {
-          rkept <- r_kept_fun(pars_opt = pars_opt[which_pars_opt],
+          
+          out <- tibble(r_kept = list(NULL), parframes = list(NULL), r_opt = list(NULL))
+
+          r_kept <- r_kept_fun(pars_opt = pars_opt[which_pars_opt],
                               perturbation_prediction = perturbation_prediction,
                               obs_fun = g,
                               p_fun = (p * p_pert),
                               pars = pars,
                               alpha =
                                 -log(.Machine$double.eps) + alpha)
+          out$r_kept <- list(r_kept)
+          
           myfits <- mstrust(obj_alpha,
                             center =  structure(rep(0, length(which_pars_opt)), names = which_pars_opt),
                             studyname = "Fits",
@@ -238,28 +243,28 @@ myrunbg_job <- runbg({
                             sd = 1,
                             mypars = pars,
                             perturbation_prediction = perturbation_prediction,
-                            r_kept = rkept,
+                            r_kept = r_kept,
                             p_fun = (p * p_pert),
                             obs_fun = g)
+          myparframe <- try(myfits %>% as.parframe())
+          out$parframes <- list(myparframe)
+          if (inherits(myparframe, "try-error")) {
+            out$parframes <- list(myfits)
+            return(out)
+            }
           
-          try(myfits %>% as.parframe()) %>%
-          {e <- .; if (inherits(e, "try-error")) return(NULL)}
-          
-          
-          ropt <- r_alpha_fun(pars_opt = myfits %>% as.parframe() %>% as.parvec() %>% unclass() ,
+          r_opt <- r_alpha_fun(pars_opt = myfits %>% as.parframe() %>% as.parvec() %>% unclass() ,
                               pars = pars,
                               perturbation_prediction = perturbation_prediction,
                               p_fun = (p*p_pert))
-          
-          out <- tibble(list(rkept), list(myfits %>% as.parframe),list(ropt %>% round(2)))
-          names(out) <- paste0(prefix, c("r_kept", "parframes", "ropt"))
+          out$r_opt <- list(r_opt)
           return(out)
         }
         
         to_upstream_module <- algo(c("a_tox_Cxy", "a_toy_Cyz", "a_toz_Czx"), "upstream")
         to_both_modules <- algo(c("a_Cxy", "a_Cyz", "a_Czx"), "both")
         
-        bind_cols(tibble(r0 = list(r0 %>% round(2)), pars_perturbed = list(pp), alpha = alpha, gainlf = gainlf), to_upstream_module, to_both_modules)
+        bind_cols(tibble(r_0 = list(r_0 %>% round(2)), pars_perturbed = list(pp), alpha = alpha, gainlf = gainlf), to_upstream_module, to_both_modules)
       }, mc.cores = cores) %>% 
         do.call(rbind,.) 
     }) %>% 
@@ -267,107 +272,126 @@ myrunbg_job <- runbg({
   }) %>% 
     do.call(rbind,.)
   
-}, machine = c("knecht6"), input = ls(pos=.GlobalEnv), filename = "2018_07_18_33_10_gainlf"
-# , recover = T
+}, machine = c("fermi"), input = ls(pos=.GlobalEnv), filename = "2018_07_18_33_10_gainlf"
+, recover = T
 )
 # myrunbg_job$check()
 # runbg(wait_for_runbg(myrunbg_job), filename = "wait", input = "myrunbg_job")
 # myrunbg <- myrunbg_job$get()$fermi
-# saveRDS(myrunbg, file = "myrunbg.rds")
-# results <- readRDS("myrunbg.rds")
+# saveRDS(myrunbg, file = "2018_07_18_33_10_gainlfmyrunbg.rds")
+results <- readRDS("2018_07_18_33_10_gainlfmyrunbg.rds")
 # myrunbg_job$purge()
 
 # saveRDS(results, "test_different_perturbations.rds")
 ```
 
+```{r}
+results %>% 
+  # head(1)
+  str1
+```
+```{r}
+results$gainlf %>% unique()
+cat("\n")
+results$alpha %>% unique()
+```
 
 
-```{r Debug, eval=FALSE}
-pp <- pp_list[[1]]
-result <- map(pp_list[1], function(pp) {
-  p_pert <- p_pert_fun(pp, pars = pars, modelname = NULL)
+```{r}
+
+bla <- results %>% 
+  filter(alpha == 0) %>% 
+  filter(gainlf == 0) %>% 
+  filter(map_lgl(pars_perturbed,. %>% names %>% str_detect_any("k1[12]") %>% `!`)) %>% 
+  # filter(map_lgl(pars_perturbed, . %>% names %>% str_detect_any("[kv][45]"))) %>%
+with({
   
-  myframe <- dMod.frame("1", g, x, p_log, NULL, NULL, p_pert = list(p_pert), xs = list(xs), pars = list(pars))
-  
-  g <- myframe$g[[1]]
-  p_pert <- myframe$p_pert[[1]]
-  p <- myframe$p[[1]]
-  xs <- myframe$xs[[1]]
-  pars <- myframe$pars[[1]]
-  
-  # browser()
-  perturbation_prediction <- (xs*p*p_pert)(c(0,Inf), pars, deriv = F)
-  
-  try({r0 <- R_fun(pars_opt = pars_opt,
-                   perturbation_prediction = perturbation_prediction,
-                   obs_fun = g,
-                   p_fun = (p*p_pert),
-                   pars = pars) %>% local_response_matrix_eq10()})
-  if(inherits(r0, "try-error")) return(NULL)
-  
-  algo <- function(which_pars_opt, prefix = NULL) {
-    rkept <- r_kept_fun(pars_opt = pars_opt[which_pars_opt],
-                        perturbation_prediction = perturbation_prediction,
-                        obs_fun = g,
-                        p_fun = (p * p_pert),
-                        pars = pars,
-                        alpha =
-                          -log(.Machine$double.eps) + alpha)
-    myfits <- mstrust(obj_alpha,
-                      center =  structure(rep(0, length(which_pars_opt)), names = which_pars_opt),
-                      studyname = "Fits",
-                      cores = 3,
-                      fits = 3,
-                      sd = 1,
-                      mypars = pars,
-                      perturbation_prediction = perturbation_prediction,
-                      r_kept = rkept,
-                      p_fun = (p * p_pert),
-                      obs_fun = g)
+  map(1:length(r_0), function(i) {
     
-    try(myfits %>% as.parframe()) %>%
-    {e <- .; if (inherits(e, "try-error")) return(NULL)}
+    cat(names(pars_perturbed[[i]]), "\t", "alpha = ", alpha[i],  "\t", "gainlf = ", gainlf[i], "\n")
+    # print(upstreamr_kept[[i]])
+    # cat("\n")
+    # print(r_kept[[i]]) # r_kept = upstream, r_kept1 = both
+    print(r_kept1[[i]]) # r_kept = upstream, r_kept1 = both
+    # print(r_opt[[i]] %>% round(2)) # r_kept = upstream, r_kept1 = both
+    print(r_opt1[[i]] %>% round(2)) # r_kept = upstream, r_kept1 = both
+    cat("\n\n")
     
-    
-    ropt <- r_alpha_fun(pars_opt = myfits %>% as.parframe() %>% as.parvec() %>% unclass() ,
-                        pars = pars,
-                        perturbation_prediction = perturbation_prediction,
-                        p_fun = (p*p_pert))
-    
-    out <- list(rkept, myfits %>% as.parframe,ropt %>% round(2))
-    names(out) <- paste0(prefix, "r_kept", "parframes", "ropt")
-    return(out)
-  }
-  
-  to_upstream_module <- algo(which_pars_opt = c("a_tox_Cxy", "a_toy_Cyz", "a_toz_Czx"), "upstream")
-  to_both_modules <- algo(which_pars_opt = c("a_Cxy", "a_Cyz", "a_Czx"), "both")
-  
-  out <- c(list(r0 = r0 %>% round(2)), to_upstream_module, to_both_modules)
+  })
   
 })
 ```
 
 
-```{r analyse results}
-# results %>% str1
-
-ropt_upstream <- results %>% map(7) 
-
-mygrid_2 <-
-  pp_list %>% map(names) %>% 
-  do.call(rbind,.) %>% 
-  as.tibble() %>% 
-  cbind(., ind = 1:nrow(.)) %>% 
-  filter(!str_detect(V1, "(k3)|(k4)")) %>% 
-  filter(!str_detect(V2, "(k6)|(k7)"))
-
-map(mygrid_2$ind, function(i) {
-  not_equal_to_conc_perturbation <- map_lgl(1:9, function(j) !near(ropt_upstream[[i]][j], ropt_upstream[[1]][j], tol = 0.02)) %>% sum()
+```{r}
+# comp to upstream
+r_kept_0 <- matrix(c(0,0,0,1,0,0,0,1,0) %>% as.logical, 3)  # %>% `rownames<-`(LETTERS[24:26]) %>% `colnames<-`(LETTERS[24:26])
+wup <- 
+  results %>% 
+  filter(alpha == 2) %>% 
+  filter(gainlf == .5) %>% 
+  filter(map_lgl(r_kept, . %>% identical(r_kept_0))) %>% # r_kept = upstream
+  .[["pars_perturbed"]] %>% 
+  map(names) %>% 
+  do.call(rbind,.)
   
-  # if(not_equal_to_conc_perturbation == 0) return(NULL)
-  print(c(i, not_equal_to_conc_perturbation))
-  pp_list[[i]] %>% names %>% print
-  print(ropt_upstream[[i]])
-})
+  wup
 ```
+
+
+```{r}
+# comp to both
+r_kept_0 <- matrix(c(0,0,0,1,0,0,0,1,0) %>% as.logical, 3)  # %>% `rownames<-`(LETTERS[24:26]) %>% `colnames<-`(LETTERS[24:26])
+wup <- 
+  results %>% 
+  filter(alpha == 2) %>% 
+  filter(gainlf == 0.5) %>% 
+  filter(map_lgl(r_kept1, . %>% identical(r_kept_0))) %>% # r_kept1 = both
+  # filter(map_lgl(r_kept1, 8)) %>% #take those whose 8th element of rkept is true, ie where r23 is in the optimization
+  .[["pars_perturbed"]] %>% 
+  map(names) %>% 
+  do.call(rbind,.)
+  
+  wup
+
+```
+
+
+
+# Results
+gainlf = c(0.5, 2), alpha = 2:
+    * comp to upstream führen die z-perturbations k7 k8 v8 noch zu r23 in der optimierung (nicht gut)
+    * comp to both, alle perturbations haben r23 nicht in der optimization (auskommentierte zeile mit map_lgl(...,8)
+
+
+gainlf = 0.5, alpha = 0
+    * k7 k8 v8 führen in beiden communicating species zu r23 in der optimierung
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

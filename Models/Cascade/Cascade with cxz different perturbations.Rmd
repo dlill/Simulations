@@ -259,13 +259,13 @@ myrunbg_job <- runbg({
     do.call(rbind,.)  
   
 }, machine = c("fermi"), input = ls(pos=.GlobalEnv), filename = "2018_07_17_16_10_myrunbg_job"
-  # , recover = T
+  , recover = T
 )
 # myrunbg_job$check()
 # runbg(wait_for_runbg(myrunbg_job), filename = "wait", input = "myrunbg_job")
 # myrunbg <- myrunbg_job$get()$fermi
 # saveRDS(myrunbg, file = "myrunbg.rds")
-# results <- readRDS("myrunbg.rds")
+results <- readRDS("myrunbg.rds")
 # myrunbg_job$purge()
 
 # saveRDS(results, "test_different_perturbations.rds")
@@ -273,92 +273,77 @@ myrunbg_job <- runbg({
 
 
 
-```{r Debug, eval=FALSE}
-pp <- pp_list[[1]]
-result <- map(pp_list[1], function(pp) {
-    p_pert <- p_pert_fun(pp, pars = pars, modelname = NULL)
+```{r}
 
-    myframe <- dMod.frame("1", g, x, p_log, NULL, NULL, p_pert = list(p_pert), xs = list(xs), pars = list(pars))
-
-    g <- myframe$g[[1]]
-    p_pert <- myframe$p_pert[[1]]
-    p <- myframe$p[[1]]
-    xs <- myframe$xs[[1]]
-    pars <- myframe$pars[[1]]
-
-    # browser()
-    perturbation_prediction <- (xs*p*p_pert)(c(0,Inf), pars, deriv = F)
-
-    try({r0 <- R_fun(pars_opt = pars_opt,
-                     perturbation_prediction = perturbation_prediction,
-                     obs_fun = g,
-                     p_fun = (p*p_pert),
-                     pars = pars) %>% local_response_matrix_eq10()})
-    if(inherits(r0, "try-error")) return(NULL)
-
-    algo <- function(which_pars_opt, prefix = NULL) {
-      rkept <- r_kept_fun(pars_opt = pars_opt[which_pars_opt],
-                          perturbation_prediction = perturbation_prediction,
-                          obs_fun = g,
-                          p_fun = (p * p_pert),
-                          pars = pars,
-                          alpha =
-                            -log(.Machine$double.eps) + alpha)
-      myfits <- mstrust(obj_alpha,
-                        center =  structure(rep(0, length(which_pars_opt)), names = which_pars_opt),
-                        studyname = "Fits",
-                        cores = 3,
-                        fits = 3,
-                        sd = 1,
-                        mypars = pars,
-                        perturbation_prediction = perturbation_prediction,
-                        r_kept = rkept,
-                        p_fun = (p * p_pert),
-                        obs_fun = g)
-
-      try(myfits %>% as.parframe()) %>%
-      {e <- .; if (inherits(e, "try-error")) return(NULL)}
-
-
-      ropt <- r_alpha_fun(pars_opt = myfits %>% as.parframe() %>% as.parvec() %>% unclass() ,
-                          pars = pars,
-                          perturbation_prediction = perturbation_prediction,
-                          p_fun = (p*p_pert))
-
-      out <- list(rkept, myfits %>% as.parframe,ropt %>% round(2))
-      names(out) <- paste0(prefix, "r_kept", "parframes", "ropt")
-      return(out)
-    }
-
-    to_upstream_module <- algo(which_pars_opt = c("a_tox_Cxy", "a_toy_Cyz", "a_toz_Czx"), "upstream")
-    to_both_modules <- algo(which_pars_opt = c("a_Cxy", "a_Cyz", "a_Czx"), "both")
-
-    out <- c(list(r0 = r0 %>% round(2)), to_upstream_module, to_both_modules)
-
-  })
-```
-
-
-```{r analyse results}
-# results %>% str1
-
-ropt_upstream <- results %>% map(7) 
-
-mygrid_2 <-
-  pp_list %>% map(names) %>% 
-  do.call(rbind,.) %>% 
-  as.tibble() %>% 
-  cbind(., ind = 1:nrow(.)) %>% 
-  filter(!str_detect(V1, "(k3)|(k4)")) %>% 
-  filter(!str_detect(V2, "(k6)|(k7)"))
-
-map(mygrid_2$ind, function(i) {
-  not_equal_to_conc_perturbation <- map_lgl(1:9, function(j) !near(ropt_upstream[[i]][j], ropt_upstream[[1]][j], tol = 0.02)) %>% sum()
+bla <- results %>% 
+  filter(alpha == 0) %>% 
+  # filter(map_lgl(pars_perturbed, . %>% names %>% str_detect_any("[kv][45]"))) %>%
+with({
   
-  # if(not_equal_to_conc_perturbation == 0) return(NULL)
-  print(c(i, not_equal_to_conc_perturbation))
-  pp_list[[i]] %>% names %>% print
-  print(ropt_upstream[[i]])
+  map(1:length(r0), function(i) {
+    
+    cat(names(pars_perturbed[[i]]), "\t", "alpha = ", alpha[i],  "\n")
+    print(upstreamropt[[i]])
+    # print(upstreamr_kept[[i]])
+    # cat("\n")
+    # print(bothr_kept[[i]])
+    print(bothropt[[i]])
+    cat("\n\n")
+    
+  })
+  
 })
 ```
+
+# Description of results
+* Adding complex to upstream works well, perturbations of k*1, k*2 and kcat are eligible for downstream modules
+
+* Adding complex to both doesn't work for the following perturbations: X, Y, Z = 
+    * The following results were for a poorly chosen alpha, alpha = e^0. The algorithm works when alpha = e^0.5, then k4,k5,v5 work again.
+        * egal, k5, z1
+        * egal, v5, z1 (manchmal schon, vllt nur schlechte konvergenz des optimierers)
+        * v1, k4, z1 (manchmal schon, vllt nur schlechte konvergenz des optimierers)
+        * egal, k4|k5|v5, k8 (auch hier manchmal schon, interessanterweise nur für X= k111,k112)
+        * Kurzzusammenfassung: Y=k4|k5|v5 funktioniert nur mit X = k111|k112, dies liegt aber auch evtl an schlecht gewähltem alpha
+    * That alpha has to be different for different perturbations is weird and doesn't fit into our storyline
+
+
+```{r}
+r_kept_0 <- matrix(c(0,0,1,1,0,0,0,1,0) %>% as.logical, 3)  # %>% `rownames<-`(LETTERS[24:26]) %>% `colnames<-`(LETTERS[24:26])
+wup <- 
+  results %>% 
+  filter(alpha == 0.25) %>% 
+  filter(map_lgl(bothr_kept, . %>% identical(r_kept_0))) %>% 
+  .[["pars_perturbed"]] %>% 
+  map(names) %>% 
+  do.call(rbind,.)
+  
+  wup
+```
+
+
+```{r}
+r_kept_0 <- matrix(c(0,0,1,1,0,0,0,1,0) %>% as.logical, 3)  # %>% `rownames<-`(LETTERS[24:26]) %>% `colnames<-`(LETTERS[24:26])
+wup <- 
+  results %>% 
+  filter(alpha == 0.25) %>% 
+  filter(map_lgl(upstreamr_kept, . %>% identical(r_kept_0))) %>% 
+  .[["pars_perturbed"]] %>% 
+  map(names) %>% 
+  do.call(rbind,.)
+  
+  wup
+```
+
+
+
+
+
+
+
+
+
+
+
+
 

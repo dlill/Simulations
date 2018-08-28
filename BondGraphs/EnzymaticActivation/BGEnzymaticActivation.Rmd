@@ -1,0 +1,96 @@
+---
+title: ''
+author: "Daniel Lill"
+date: "6 June 2018"
+output: html_document
+---
+
+```{r setup}
+
+library(dMod)
+library(conveniencefunctions)
+
+```
+
+The Model structure I want to study here is a simple Enzyme kinetics with dephosphorylation.
+All reactions are supposed to be reversible.
+
+The activated x2 activates y1 via a complex
+
+1.) x2+y1 <-> Cx2y1 <-> x2 + y2
+2.) y2 <-> y1
+
+Questions are: 
+a.) Is it possible, that the phosphorylation via the complex 1.) is favored above the simple way 2.)?
+b.) Is it possible that the dephosphorylation favors path 2.)?
+
+
+# Standard dMod way of setting it up
+
+When setting up the model in this manner, you get complete freedom to choose your parameters and can just set the backward cycle to zero by choosing the parameters accordingly.
+
+```{r}
+f <- eqnlist() %>% 
+  addReaction("x2+y1", "Cx2y1", "k31*x2*y1","forward C formation") %>% 
+  addReaction("Cx2y1", "x2+y2","k41*Cx2y1", "forward C decay" ) %>% 
+  addReaction("y2", "y1", "k51*y2","forward dephosphoryation") %>% 
+  addReaction("Cx2y1","x2+y1",  "k32*Cx2y1","backward C formation") %>% 
+  addReaction("x2+y2","Cx2y1", "k42*x2*y2", "backward C decay" ) %>% 
+  addReaction("y1","y2", "k52*y1","backward dephosphoryation")
+x <- f %>% 
+  odemodel() %>% 
+  Xs()
+
+g <- f %>% as.data.frame() %>% {structure(.$Rate, names = .$Description %>% str_replace_all(" ", "_"))} %>% Y(x, attach.input = T)
+p <- getParameters(g,x) %>% {wup <- paste0("exp(",.,")"); setNames(wup,.)} %>% insert("x~0", x = c("Cx2y1", "y2")) %>%  P
+
+dMod.frame("wup", g,x,p, NULL) %>% appendObj(times = list(0:1000)) %>% checkout_hypothesis(1)
+
+pars <- pars %>%  sort_by_name()%>% names %>% are_names_of(c(1,-2,1,-2,1,-2,1,3))
+times <- seq(0,2,.01)
+
+prd(times, pars) %>% setNames("a") %>% plotPrediction()
+plotFluxes(pars, prd, times, getEquations(g)[[1]])
+print(f, pander = T)
+```
+
+# Bond-graph way of setting up the model
+
+The bond-graph way basically leads to the same equations (if the dMod-style model includes all forward and reverse reactions) but constrains the parameters. 
+Therefore, I just have to change the parameter trafo
+
+```{r}
+# trafo <- 
+getParameters(g,x) %>% 
+  setNames(.,.) %>% 
+  define("K_x~K_x", x = str_subset(getSymbols(mytrafo[[i]]), "^[Cxy]")) %>% 
+  {structure(str_replace(.,"k(\\d)(\\d)", "kappa\\1"), names = names(.))} %>% 
+  {.}
+
+
+trafoBG <- f$rates %>% str_replace(.,"k(\\d)(\\d)", "kappa\\1") %>% str_replace_all("\\*", "*K") %>% 
+  setNames(f$rates %>% str_replace("\\*.*$", "")) %>% 
+  c(f$states %>% setNames(.,.)) %>% 
+  insert("x~0", x = c("Cx2y1", "y2"))
+
+pBG <- P(trafoBG)
+getParameters(pBG) %>% sort %>% are_names_of()
+
+
+pars %>% print_mathematica.eqnvec()
+
+pars %>% paste0(names(.), " = ", . , ";\n") %>% paste0(collapse = "") %>% cat
+
+
+as.character(pars) %>% setNames(names(pars))
+trafoBG %>% structure(names(.), names = .) %>% str_replace_all(as.character(pars) %>% setNames(names(pars))) %>% setNames(trafoBG) %>% 
+
+paste0(names(.), " == ", . , ", ") %>% paste0(collapse = "") %>% cat
+
+getParameters(pBG) %>% sort %>% paste0(collapse = ", ")
+```
+
+
+
+
+
