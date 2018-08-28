@@ -1,5 +1,5 @@
 ---
-title: "Phosphatase-Model"
+title: "phosphatase-Model"
 author: "Daniel Lill"
 output: 
   pdf_document:
@@ -18,31 +18,30 @@ pathout <- paste0(path, "Output/")
 ```
 
 ```{r Names for Fit storage of different initial Conditions}
-fit_name <- "Phosphatase"
+fit_name <- "phosphatase"
 ```
 
 ```{r Call render without overwriting any previous documents, echo=FALSE, eval=FALSE, message=FALSE, include=FALSE}
 
-rmarkdown::render("Phosphatase.Rmd", output_file = paste0(pathout, format(Sys.time(), "%Y%m%d-%H%M")
+rmarkdown::render("phosphatase.Rmd", output_file = paste0(pathout, format(Sys.time(), "%Y%m%d-%H%M")
 , " - " , fit_name, ".pdf"))
 beepr::beep("~/Promotion/Software/rimshot.mp3")
 ```
 
-# Phosphatase-Model
+# phosphatase-Model
 
 ### Prediction function.
 odemodel writes a C-function, which is executed in x and xs.
 x is a regular prediction function while xs only finds and returns the steady states.
 If the odemodel has been calculated already, it can be loaded with "load".
 ```{r Prediction function}
-modelpath <- paste0(path, "Models/Phosphatase/")
-modelname   <- "Phosphatase"
-mymodel     <- as.eqnlist(read.csv(paste0(modelpath, modelname, ".csv")))
+modelname   <- "phosphatase"
+mymodel     <- as.eqnlist(read.csv(paste0(modelname, ".csv")))
 # mymodel
 
 myodemodel <- odemodel(mymodel, modelname = modelname, deriv = T)
-save(myodemodel, file = paste0(modelpath, "odemodel",modelname, ".RData"))
-# load(paste0(modelpath, "odemodel",modelname, ".RData"))
+save(myodemodel, file = paste0("odemodel", modelname, ".RData"))
+load(paste0( "odemodel",modelname, ".RData"))
 
 
 # Prediction function
@@ -56,7 +55,7 @@ print(mymodel)
 ### Modules, their observables and the observation function. {#modulesandobsfuns}
 Observation function which depends also on the optimization parameters. With their help, the complexes can smoothly be switched on in the observation.
 
-This is the naive modularization used in the Phosphatase Paper, desregarding, which species are actually the communicating ones. This is fair enough, because usually the "active" forms are consedered to be the communicating species in a non-parametric network reconstruction.
+This is the naive modularization used in the phosphatase Paper, desregarding, which species are actually the communicating ones. This is fair enough, because usually the "active" forms are consedered to be the communicating species in a non-parametric network reconstruction.
 ```{r Naive observation function}
 modules <- modules0 <- c("X","Y")
 
@@ -69,9 +68,9 @@ g <- g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), mymodel, compile = TR
 Load all parameters and format them for further use.
 ```{r Parameters}
 
-pars_raw <- read.csv(paste0(modelpath, "pars.csv"), header = FALSE)  # dynamical parameters
+pars_raw <- read.csv(paste0( "pars.csv"), header = FALSE)  # dynamical parameters
 pars_raw <- structure(pars_raw$V2, names = as.character(pars_raw$V1))
-ic_raw <- read.csv(paste0(modelpath, "IC.csv"), header = F)          # initial conditions
+ic_raw <- read.csv(paste0( "IC.csv"), header = F)          # initial conditions
 ic_raw <- structure(ic_raw$V2, names = as.character(ic_raw$V1))
 # sort ics like they appear in x, so it can be used in stode()
 vars_x <- attr(x, "parameters")[attr(x, "parameters") %in% names(ic_raw)]
@@ -121,11 +120,6 @@ pars_0 <- pars <- structure(log(pars_inner_0+.Machine$double.eps), names = paste
 ```
 
 
-```{r}
-# plot((x*p_log)(0:30, pars_0))
-```
-
-
 ## Example code
 Now the module can be simulated to generate perturbation data.
 
@@ -137,6 +131,7 @@ pars_perturbed_0 <- pars_perturbed <- c(logm1 = log(0.8), loge1 = log(0.8))
 
 p_pert <- p_pert_fun(pars_perturbed = pars_perturbed_0,
                      pars = pars_0)
+compile(p_pert)
 ```
 
 ### Perturbation data generation and elements to keep.
@@ -148,21 +143,6 @@ r_kept_0 <- r_kept_fun(pars_opt = pars_opt_0, obs_fun = g, p_fun = (p_log*p_pert
 ```
 
 
-```{r}
-obj <- function(pars, r_wish) {
-  
-  pars[names(pars_opt_0)] <- pars_opt_0
-  
-  perturbation_prediction <- (xs*p_log*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
-  r_a <- r_alpha_fun(pars_opt = pars_opt_0, perturbation_prediction = perturbation_prediction, pars = pars_0)
-  
-  out <- (r_a-r_wish)^2 %>% sum()
-  return(out)
-}
-
-
-myfit <- optim(pars, obj, r_wish = c(-1,-.3,-0.5,-1))
-```
 
 
 ```{r  which pars are perturbed  Cascade, echo=FALSE}
@@ -217,240 +197,118 @@ r_alpha_fun(pars_opt = unclass(best_fit), pars = pars, perturbation_prediction =
 
 
 
-
-
-# Dose response plot
-
-```{r}
+# Plots
+```{r computations}
 par_opt_settings <- list("loga", "loga_1", "loga_2", c("loga_1", "loga_2")) %>% set_names(1:4)
 
 dr_list <- lapply(par_opt_settings, function(i) {
   r_opt_dose_response(which_par = "logk4", 
-                      dosages = pars["logk4"]+seq(0,10,by = 1),
+                      dosages = pars["logk4"],
                       pars_opt = pars_opt_0[i],
-                      alpha_scan_range = sort(unique(seq(-10,10,by = .2))),
+                      alpha_scan_range = sort(c(log(0.00000000000001), 
+                                                log(seq(0,20,by = .1)[-1]),
+                                                log(seq(20,50,by = 1)[-1]))),
                       pars = pars
   )
 })
 
 ```
 
-
-# Plot as alpha-response with doses as facets
-```{r}
-myplot <- dr_list %>%   
-  # extract2(1) %>%
-  combine_dr_list() %>% 
-  # filter(par_opt_setting ==1) %>% 
-  # filter(near(dose,log(0.1))) %>%
-  filter(! (r_element %in% paste0("r", c(11,22,33)))) %>% 
-  # filter(alpha >-5, alpha <3) %>% 
-  filter(matrix != "r_kept") %>%
-  {
-    .$matrix[.$matrix == "r_alpha"] <- "r"
+```{r plotting helpers}
+fancify_labels <- . %>% 
+  {.$matrix[.$matrix == "r_alpha"] <- "r"
     .$matrix[.$matrix == "r_opt"] <- "r(a = a_opt)"
-    .$matrix <- .$matrix %>% factor(levels = c("r", "r(a = a_opt)"))
-    .
-  } %>% 
+    .$matrix <- .$matrix %>% factor(levels = c("r", "r(a = a_opt)", "r_kept"))
+    .} %>% 
   mutate(Element = r_element) %>% 
-  # ggplot(mapping = aes(x = alpha, y = value, color = Element, linetype = Element)) +
-  ggplot(mapping = aes(x = alpha, y = value, color = Element, linetype = Element, frame = dose)) +
+  {
+    .$par_opt_setting[.$par_opt_setting == 1] <- "X* and Y*"
+    .$par_opt_setting[.$par_opt_setting == 2] <- "X*"
+    .$par_opt_setting[.$par_opt_setting == 2] <- "Y*"
+    .$par_opt_setting[.$par_opt_setting == 2] <- "X* and Y* independently"
+    .$par_opt_setting <- .$par_opt_setting %>% factor(levels = c("X* and Y*","X*", "Y*","X* and Y* independently"))
+    .}
+
+
+assign_point_locations <- . %>% {.} %T>% {assign("point_locations", 
+                                                 c(min(.$alpha), 
+                                                   .$alpha[near(.$value,0,tol = 0.001)], 
+                                                   max(.$alpha)), 
+                                                 envir = .GlobalEnv)} %>% #assign values where points should be to .GlobalEnv
+  mutate(points = replace(value, map_lgl(alpha, . %>% near(point_locations, tol = 1e-6) %>% any %>% `!`), NA))
+
+
+remove_diags <- . %>% filter(! (r_element %in% paste0("r", c(11,22,33))))
+
+
+print_matrices_at_point_locations <- function(point_locations, plot_data) {
+  walk(point_locations, function(i) {
+    plot_data  %>%
+    filter(near(alpha, i, tol = 1e-6)) %>%
+    .$value %>% c(-1, ., -1) %>% matrix(ncol = 2) %>% round(2) %>%
+    xtable() %>% print(tabular.enivronment = "pmatrix", floating = FALSE, hline.after=NULL, include.rownames=FALSE, include.colnames=FALSE) %>%
+    str_replace_all(c("tabular"= "pmatrix", "\\{rr\\}" = "", "\\\\begin" = "$\\\\begin")) %>% paste0(., "$")
+  })
+}
+
+print_matrices_at_point_locations(point_locations, plot_data)
+
+```
+
+
+```{r plot}
+plot_data <-
+  dr_list %>%   
+  combine_dr_list() %>% 
+  filter(!is.na(value)) %>%
+  remove_diags %>% 
+
+  filter(par_opt_setting %in% 1) %>%
+  filter(near(dose,2.220446e-16)) %>%
+  filter(matrix == "r_alpha") %>%
+
+  mutate(alpha = exp(alpha)) %>%
+  filter(alpha<5) %>% #.$alpha
+  
+  fancify_labels %>%
+
+  assign_point_locations %>% 
+  {.}
+
+
+
+print_matrices_at_point_locations(point_locations, plot_data)
+
+myplot <- plot_data %>%   
+  ggplot(mapping = aes(x = alpha, y = value, color = Element
+                       # uncomment for one par_opt_setting only
+                       # , alpha = par_opt_setting
+                       )) +
   geom_line() +
   theme_dMod() +
-  scale_color_dMod() +
+  scale_colour_manual(values = c("blue", "red", "green")) +
   geom_abline(slope = 0,intercept = 0, linetype = 3) +
-  facet_grid(matrix~par_opt_setting, scales = "free")+
-  xlab("log(a)")
-plotly::ggplotly(myplot)
-# ggsave(plot = myplot,
-#        filename = paste0("~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/plots/Phosphatase ", "par_opt_settings",".png"),
+  geom_point(aes(y = points), size = 3)+
+  scale_alpha_discrete(name = "Complex \nadded to", range = c(0.3,1)) +
+  xlab("\tFree parameter a") +
+  ylab("Connection coefficient")
+myplot
+
+
+
+
+# ggshave(plot = myplot,
+#        filename = paste0("~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/Algorithm_linear_axis.png"),
 #        width = 10,
-#        height = 10,
+#        height = 8,
 #        units = "cm",
-#        device = "png")
-#   
-```
+#        device = "png",
+#        check_overwrite = F
+#        , commit_script = "Changed color of r21 to blue"
+#        )
 
 
-
-
-
-
-
-
-# Perturb different parameters
-
-
-```{r Perturb parameter k4}
-# Which pars shall be perturbed?
-pars_perturbed_0 <- pars_perturbed <- c(logm1 = log(0.8), logk1 = log(0.8))
-
-p_pert <- p_pert_fun(pars_perturbed = pars_perturbed_0,
-                     pars = pars_0)
-```
-
-
-
-```{r}
-par_opt_settings <- list("loga", "loga_1", "loga_2", c("loga_1", "loga_2")) %>% set_names(1:4)
-
-dr_list_2 <- lapply(par_opt_settings, function(i) {
-  r_opt_dose_response(which_par = "logk4", 
-                      dosages = pars["logk4"]+seq(0,10,by = 1),
-                      pars_opt = pars_opt_0[i],
-                      alpha_scan_range = sort(unique(seq(-10,10,by = .2))),
-                      pars = pars
-  )
-})
 
 ```
-
-
-# Plot as alpha-response with doses as facets
-```{r}
-myplot <- dr_list_2 %>%   
-  # extract2(1) %>%
-  combine_dr_list() %>% 
-  # filter(par_opt_setting ==1) %>% 
-  # filter(near(dose,log(0.1))) %>%
-  filter(! (r_element %in% paste0("r", c(11,22,33)))) %>% 
-  # filter(alpha >-5, alpha <3) %>%
-  filter(!(dose %in% c(5:10))) %>% 
-  filter(matrix != "r_kept") %>%
-  {
-    .$matrix[.$matrix == "r_alpha"] <- "r"
-    .$matrix[.$matrix == "r_opt"] <- "r(a = a_opt)"
-    .$matrix <- .$matrix %>% factor(levels = c("r", "r(a = a_opt)"))
-    .
-  } %>% 
-  mutate(Element = r_element) %>% 
-  # ggplot(mapping = aes(x = alpha, y = value, color = Element, linetype = Element)) +
-  ggplot(mapping = aes(x = alpha, y = value, color = Element, linetype = Element, frame = dose)) +
-  geom_line() +
-  theme_dMod() +
-  scale_color_dMod() +
-  geom_abline(slope = 0,intercept = 0, linetype = 3) +
-  facet_grid(matrix~par_opt_setting, scales = "free")+
-  xlab("log(a)")
-plotly::ggplotly(myplot)
-# ggsave(plot = myplot,
-#        filename = paste0("~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/plots/Phosphatase ", "par_opt_settings",".png"),
-#        width = 10,
-#        height = 10,
-#        units = "cm",
-#        device = "png")
-#   
-```
-
-
-
-# Analyse model
-
-## Print derivs
-
-```{r}
-get("derivs", envir = environment(get("X2Y", environment(g0))))
-```
-
-```{r}
-myodemodel$extended %>% attr("eq") %>% extract(-(1:5)) %>% names %>% matrix(nrow = 5)
-```
-
-```{r}
-mymodel$smatrix %>% t #%>% extract(c(1,2,3,5,4),)
-
-
-
-myodemodel$extended %>% attr("eq") %>% extract(-(1:5)) %>% matrix(nrow = 5)
-```
-
-
-
-```{r Full observation function}
-modules <- modules1 <- c("m1", "X", "Cm2e2", "e1", "Y")
-
-obs <- obs1 <- c("m1",
-                 "m2+a*Cm2e2+a_1*Cm2e2",
-                 "Cm2e2",
-                 "e1",
-                 "e2+a*Cm2e2+a_2*Cm2e2")
-g <- g1 <- Y(as.eqnvec(structure(obs1, names = modules1)), mymodel, compile = TRUE, modelname = "obsfn1", attach.input = FALSE)
-```
-
-```{r}
-get("derivs", envir = environment(get("X2Y", environment(g1)))) %>%names %>%  matrix(nrow = 5)
-```
-
-```{r}
-get("derivs", envir = environment(get("X2Y", environment(g1)))) %>% matrix(nrow = 5)
-```
-
-
-# Structural sensitivity analysis
-
-
-
-
-
-```{r}
-A11 <- mymodel$rates %>% set_names(paste0("r", 1:6)) %>% cOde::jacobianSymb(variables = mymodel$states ) %>% matrix(nrow = 6)
-
-A21 <- -matrix(c(1,1,1,0,0,
-                0,0,1,1,1), nrow = 2, byrow = T)
-
-
-conservedQuantities(mymodel$smatrix %>% t %>% set_colnames(paste0("r", 1:6)))
-
-A12 <- -c(1,1, rep(0,4),
-         0,0,1,1,0,0,
-         0,0,1,0,1,1) %>% matrix(nrow = 6)
-
-A22 <- matrix(0, nrow = 2, ncol = 3)
-
-
-
-A <- rbind(cbind(A11,A12), cbind(A21,A22))
-
-```
-
-
-```{r, include=FALSE}
-eq <- NULL
-eq <- addReaction(eq, "m1", "m2", "k1*m1")
-eq <- addReaction(eq, "m2", "m1", "k2*m2")
-eq <- addReaction(eq, "e1", "e2", "v3*m2*e1/(km3+e1)")
-# eq <- addReaction(eq, "e1", "e2", "k3*e1*m2")
-eq <- addReaction(eq, "e2", "e1", "k4*e2")
-mymodel <- eq
-```
-
-
-```{r}
-A11 <- mymodel$rates %>% set_names(paste0("r", 1:4)) %>% cOde::jacobianSymb(variables = mymodel$states ) %>% matrix(nrow = 4)
-
-A21 <- -matrix(c(1,1,0,0,
-                0,0,1,1), nrow = 2, byrow = T)
-
-
-conservedQuantities(mymodel$smatrix %>% t %>% set_colnames(paste0("r", 1:4)))
-
-A12 <- -c(1,1,0,0,
-         0,0,1,1) %>% matrix(nrow = 4)
-
-A22 <- -matrix(0, nrow = 2, ncol = 2)
-
-
-
-A <- rbind(cbind(A11,A12), cbind(A21,A22))
-dput(A)
-A
-```
-
-```{r}
-mymodel %>% steadyStates()
-```
-
-
-
 
 
