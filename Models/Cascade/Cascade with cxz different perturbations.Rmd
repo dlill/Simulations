@@ -179,7 +179,7 @@ z1       	=	100	  # 36
 ```{r job}
 pp_x <- c("x1", "k1", "v1", "k2", "v2", "k111", "k112", "k12") 
 pp_y <- c("y1", "k5", "v5", "k31", "k32", "k4") 
-pp_z <- c("z1", "k8", "v8", "k61", "k62", "k7", "k111", "k112", "k12")
+pp_z <- c("z1", "k8", "v8", "k61", "k62", "k7")
 
 mygrid <- expand.grid(pp_x, pp_y, pp_z, stringsAsFactors = F) 
 pp_list <- map(1:nrow(mygrid), function(i) {
@@ -192,7 +192,7 @@ pp_list <- map(1:nrow(mygrid), function(i) {
 
 myrunbg_job <- runbg({
   cores <- detectFreeCores()
-  alphas <- seq(-0.5,3,0.25)
+  alphas <- seq(-0.5,5,0.5)
   map(alphas, function(alpha) {
   mclapply(pp_list, function(pp) {
     p_pert <- p_pert_fun(pp, pars = pars, modelname = NULL)
@@ -258,13 +258,14 @@ myrunbg_job <- runbg({
   }) %>% 
     do.call(rbind,.)  
   
-}, machine = c("fermi"), input = ls(pos=.GlobalEnv), filename = "2018_07_17_16_10_myrunbg_job"
+}, machine = c("knecht1"), input = ls(pos=.GlobalEnv), filename = "2018_07_17_16_10_myrunbg_job"
   , recover = T
 )
 # myrunbg_job$check()
 # runbg(wait_for_runbg(myrunbg_job), filename = "wait", input = "myrunbg_job")
 # myrunbg <- myrunbg_job$get()$fermi
-# saveRDS(myrunbg, file = "myrunbg.rds")
+# saveRDS(myrunbg, file = "myrunbg_new.rds")
+# results <- readRDS("myrunbg_new.rds")
 results <- readRDS("myrunbg.rds")
 # myrunbg_job$purge()
 
@@ -278,12 +279,16 @@ The result of the runbg job is a tibble of lists, which contain the r_opt for di
 To use clustering, I first have to flatten these matrices. This cost me about a day, because I set out to write an unnest-function for lists of matrices. Now I resorted to turning the matrices into a wide data.frame first and then unnesting them. This is quicker
 
 ```{r unnest runbg job}
+# helper functions
 matrix_2_wide_df <- function(mat, nm) {mat %>% 
   `dim<-`(NULL) %>% 
   t %>% 
   as.data.frame %>% 
   `names<-`(nm)}
 
+
+
+# prepare data for clustering
 results_unnested_matrices <-
   results %>%
   filter(map_lgl(upstreamropt, is.double), map_lgl(bothropt, is.double)) %>% 
@@ -291,111 +296,95 @@ results_unnested_matrices <-
   mutate(upstreamropt = map(upstreamropt, matrix_2_wide_df, nm = (paste0("up_r", outer(1:3,1:3, paste0)))),
          bothropt = map(bothropt, . %>% matrix_2_wide_df(paste0("both_r", outer(1:3,1:3, paste0)))),
          pars_perturbed = map(pars_perturbed, . %>% names %>% `names<-`(LETTERS[24:26]) %>% t %>% as.data.frame(stringsAsFactors = F)),
-         perturbed_set = seq_along(alpha)) %>% 
+         perturbed_set = seq_along(alpha),
+         alpha = as.numeric(alpha)) %>% 
   unnest(upstreamropt, bothropt, pars_perturbed)
 
-
-```
-
-
-
-```{r cluster perturbations by similar matrix outcomes}
-cluster_matrices_and_print_perturbations <- function(results_unnested_matrices, alpha, col_start, nclust, which_clust) {
+# clustering and print function
+cluster_matrices_and_print_perturbations <- function(results_unnested_matrices, a, col_start, nclust, not_which_clust) {
   kclusts <- results_unnested_matrices %>% 
-    filter(alpha == alpha) %>% 
+    filter(near(alpha, a)) %>% 
     select(starts_with(col_start)) %>% 
     {.} %T>% {set.seed(1)} %>%
     kmeans(nclust) %>% 
-    {.} %T>% print %>%
+    {.} %T>% print(digits = 2) %>%
     {.}
   
-  augmented <- broom::augment(kclusts, results_unnested_matrices %>% 
-    filter(alpha == alpha))
+  augmented <- broom::augment(kclusts, results_unnested_matrices %>% filter(near(alpha, a)))
   
   augmented %>% 
-    filter(.cluster %in% which_clust) %>% 
-    select(X,Y,Z) %>% 
-    print(n = 1000)
+    filter(! (.cluster %in% not_which_clust)) %>% 
+    select(X,Y,Z) 
 }
 
-
-cluster_matrices_and_print_perturbations(results_unnested_matrices, 0.5, "up_", 5, 1)
-
 ```
 
-
-
-```{r}
-results$upstreamropt[3732]
-```
-
-
-
-```{r}
-
-bla <- results %>% 
-  filter(alpha == 0) %>% 
-  # filter(map_lgl(pars_perturbed, . %>% names %>% str_detect_any("[kv][45]"))) %>%
-with({
-  
-  map(1:length(r0), function(i) {
-    
-    cat(names(pars_perturbed[[i]]), "\t", "alpha = ", alpha[i],  "\n")
-    print(upstreamropt[[i]])
-    # print(upstreamr_kept[[i]])
-    # cat("\n")
-    # print(bothr_kept[[i]])
-    print(bothropt[[i]])
-    cat("\n\n")
-    
-  })
-  
-})
-```
 
 # Description of results
-* Adding complex to upstream works well, perturbations of k*1, k*2 and kcat are eligible for downstream modules
 
-* Adding complex to both doesn't work for the following perturbations: X, Y, Z = 
-    * The following results were for a poorly chosen alpha, alpha = e^0. The algorithm works when alpha = e^0.5, then k4,k5,v5 work again.
-        * egal, k5, z1
-        * egal, v5, z1 (manchmal schon, vllt nur schlechte konvergenz des optimierers)
-        * v1, k4, z1 (manchmal schon, vllt nur schlechte konvergenz des optimierers)
-        * egal, k4|k5|v5, k8 (auch hier manchmal schon, interessanterweise nur für X= k111,k112)
-        * Kurzzusammenfassung: Y=k4|k5|v5 funktioniert nur mit X = k111|k112, dies liegt aber auch evtl an schlecht gewähltem alpha
-    * That alpha has to be different for different perturbations is weird and doesn't fit into our storyline
-
-
+## Upstream:
+* Adding complex to upstream works well, perturbations of k\*1, k\*2 and kcat are eligible for downstream modules, not for upstream modules
 ```{r}
-r_kept_0 <- matrix(c(0,0,1,1,0,0,0,1,0) %>% as.logical, 3)  # %>% `rownames<-`(LETTERS[24:26]) %>% `colnames<-`(LETTERS[24:26])
-wup <- 
-  results %>% 
-  filter(alpha == 0.25) %>% 
-  filter(map_lgl(bothr_kept, . %>% identical(r_kept_0))) %>% 
-  .[["pars_perturbed"]] %>% 
-  map(names) %>% 
-  do.call(rbind,.)
-  
-  wup
+cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, "up_", 10, 1:2)%>% 
+    print(n = 1000)
 ```
 
+## Both
+
+* Adding the complexes to both introduces the need to choose a different alpha, e.g. with alpha = 0, it doesn't work anymore:
+```{r}
+cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, "both_", 20, 1:2)%>% 
+    print(n = 1000)
+```
+
+* with higher alpha, it starts to work a bit better
+```{r}
+cluster_matrices_and_print_perturbations(results_unnested_matrices, 3, "both_", 15, (1:15)[-3])%>% 
+    print(n = 1000)
+cluster_matrices_and_print_perturbations(results_unnested_matrices, 3, "both_", 15, 3)%>% 
+    print(n = 1000)
+```
 
 ```{r}
-r_kept_0 <- matrix(c(0,0,1,1,0,0,0,1,0) %>% as.logical, 3)  # %>% `rownames<-`(LETTERS[24:26]) %>% `colnames<-`(LETTERS[24:26])
-wup <- 
-  results %>% 
-  filter(alpha == 0.25) %>% 
-  filter(map_lgl(upstreamr_kept, . %>% identical(r_kept_0))) %>% 
-  .[["pars_perturbed"]] %>% 
-  map(names) %>% 
-  do.call(rbind,.)
-  
-  wup
+cluster_matrices_and_print_perturbations(results_unnested_matrices, 3, "both_", 20, (1:20)[-3]) %>% 
+  arrange(X,Y,Z) %>% 
+  print(n = 1000)
 ```
 
 
 
 
+### which r_kept are the "correct" ones?
+```{r}
+results_unnested_rkept <- results_unnested_matrices %>% 
+  mutate(bothrkept=map(bothr_kept, matrix_2_wide_df, nm = (paste0("bothrkept_r", outer(1:3,1:3, paste0))))) %>% 
+  unnest(bothrkept)
+```
+
+```{r}
+results_unnested_rkept %>% 
+    filter(near(alpha, 3)) %>% 
+    select(starts_with("bothrkept_r")) %>% 
+  unique() %>% 
+  nrow
+
+kclusts <- results_unnested_rkept %>% 
+    filter(near(alpha, 3)) %>% 
+    select(starts_with("bothrkept_r")) %>% 
+    {.} %T>% {set.seed(1)} %>%
+    kmeans(19) %>% 
+    {.} %T>% print(digits = 2) %>%
+    {.}
+
+
+augmented <- broom::augment(kclusts, results_unnested_matrices %>% filter(near(alpha, 3)))
+  
+augmented %>% 
+  filter((.cluster %in% 11)) %>% 
+  select(X,Y,Z) %>% 
+    print(n = 1000)
+
+```
 
 
 
