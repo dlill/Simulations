@@ -22,7 +22,6 @@ fit_name <- "Inactivebinding"
 ```
 
 ```{r Call render without overwriting any previous documents, echo=FALSE, eval=FALSE, message=FALSE, include=FALSE}
-
 rmarkdown::render("Inactivebinding.Rmd", output_file = paste0(pathout, format(Sys.time(), "%Y%m%d-%H%M")
 , " - " , fit_name, ".pdf"))
 beepr::beep("~/Promotion/Software/rimshot.mp3")
@@ -35,14 +34,13 @@ odemodel writes a C-function, which is executed in x and xs.
 x is a regular prediction function while xs only finds and returns the steady states.
 If the odemodel has been calculated already, it can be loaded with "load".
 ```{r Prediction function}
-modelpath <- paste0(path, "Models/Inactivebinding/")
 modelname   <- "Inactivebinding"
-mymodel     <- as.eqnlist(read.csv(paste0(modelpath, modelname, ".csv")))
+mymodel     <- as.eqnlist(read.csv(paste0(modelname, ".csv")))
 # mymodel
 
-# myodemodel <- odemodel(mymodel, modelname = modelname, deriv = T)
-# save(myodemodel, file = paste0(modelpath, "odemodel",modelname, ".RData"))
-load(paste0(modelpath, "odemodel",modelname, ".RData"))
+myodemodel <- odemodel(mymodel, modelname = modelname, deriv = T)
+save(myodemodel, file = paste0("odemodel",modelname, ".RData"))
+load(paste0("odemodel",modelname, ".RData"))
 
 
 # Prediction function
@@ -52,35 +50,38 @@ xs <- Xs_steady(myodemodel)
 print(mymodel)
 ```
 
+
+
+
 ### Modules, their observables and the observation function. {#modulesandobsfuns}
 Observation function which depends also on the optimization parameters. With their help, the complexes can smoothly be switched on in the observation.
 
 This is the naive modularization used in the Inactivebinding Paper, desregarding, which species are actually the communicating ones. This is fair enough, because usually the "active" forms are consedered to be the communicating species in a non-parametric network reconstruction.
 ```{r Naive observation function}
-modules <- modules0 <- c("X","Y")
+modules <- c("X","Y")
 
-obs <- obs0 <- c("x2+a*Cx1y1+a_1*Cx1y1",
+obs <-  c("x2+a*Cx1y1+a_1*Cx1y1",
                  "y2+a*Cx1y1+a_2*Cx1y1")
-g <- g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), mymodel, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
+g <- Y(as.eqnvec(structure(obs, names = modules)), mymodel, compile = TRUE, modelname = "g", attach.input = FALSE)
 ```
 
 ### Parameters.
 Load all parameters and format them for further use.
 ```{r Parameters}
 
-pars_raw <- read.csv(paste0(modelpath, "pars.csv"), header = FALSE)  # dynamical parameters
+pars_raw <- read.csv(paste0("pars.csv"), header = FALSE)  # dynamical parameters
 pars_raw <- structure(pars_raw$V2, names = as.character(pars_raw$V1))
-ic_raw <- read.csv(paste0(modelpath, "IC.csv"), header = F)          # initial conditions
+ic_raw <- read.csv(paste0("IC.csv"), header = F)          # initial conditions
 ic_raw <- structure(ic_raw$V2, names = as.character(ic_raw$V1))
 # sort ics like they appear in x, so it can be used in stode()
 vars_x <- attr(x, "parameters")[attr(x, "parameters") %in% names(ic_raw)]
 ic_raw <- ic_raw[vars_x]
 
-pars_inner_opt_0 <- setdiff(attr(g, "parameters"),names(c(pars_raw,ic_raw)))
-pars_inner_opt_0 <- structure(rep(0, length(pars_inner_opt_0)), 
-                              names = pars_inner_opt_0)
+pars_inner_opt <- setdiff(attr(g, "parameters"),names(c(pars_raw,ic_raw)))
+pars_inner_opt <- structure(rep(0, length(pars_inner_opt)), 
+                              names = pars_inner_opt)
 
-pars_inner_0 <- pars_inner <- c(ic_raw, pars_raw, pars_inner_opt_0)
+pars_inner <- c(ic_raw, pars_raw, pars_inner_opt)
 
 
 # # check if all parameters are assigned a value. Both lines should evaluate to the same number.
@@ -93,244 +94,205 @@ pars_inner_0 <- pars_inner <- c(ic_raw, pars_raw, pars_inner_opt_0)
 ### General log transformation and setting some pars to zero
 It's better to do a logtransformation for all Fitting purposes and work with the log-Parameters.
 The way to implement is this, is
-log_pars %>% p_log %>% p_other %>% p_other_2 %>% ...
+log_pars %>% p %>% p_other %>% p_other_2 %>% ...
 ```{r}
 # Logtrafo of all pars
-logtrafo <- structure(paste0("exp( log", names(pars_inner_0), ")"), 
-                             names = names(pars_inner_0))
-
+logtrafo <- structure(paste0("exp(", names(pars_inner), ")"), names = names(pars_inner))
 # initial values
 logtrafo[c("x2", "Cx1y1", "y2")] <- 0
 
 
-
-p_log <- P(trafo = logtrafo,
-           compile = TRUE,
-           modelname = "p_log")
+p_log <- P(trafo = logtrafo, modelname = "p_log", compile = T)
            
 
-pars_opt_0 <- pars_opt <- structure(rep(log(0+.Machine$double.eps), length(pars_inner_opt_0)), names = paste0("log", names(pars_inner_opt_0)))
+pars_opt <- structure(rep(log(0+.Machine$double.eps), length(pars_inner_opt)), names = names(pars_inner_opt))
 
-pars_0 <- pars <- structure(log(pars_inner_0+.Machine$double.eps), names = paste0("log", names(pars_inner_0))) 
-pars_0[names(pars_opt_0)] <- log(0+.Machine$double.eps)
+pars <- structure(log(pars_inner+.Machine$double.eps), names = names(pars_inner))
+pars[names(pars_opt)] <- pars_opt
 
-
-# pars_0
-# p_log(pars_0, deriv = F)
 ```
 
-
-```{r}
-pars[6:11] <- 0
-pars[11] <- 3
-
-(x*p_log)(seq(0,10,length.out = 20), pars) %>% plot
-```
-
-
-## Example code
-Now the module can be simulated to generate perturbation data.
 
 ### Parameter trafos for convenient perturbation data.
 Set up the perturbations
 ```{r which pars are perturbed}
 # Which pars shall be perturbed?
-pars[1] <- log(10)
-pars[6] <- 1
-(pars_perturbed_0 <- pars_perturbed <- c(logk1 = 0.8, logk4 = 0.8))
+pars_perturbed <- c(x1 = 0.8, y1 = 0.8)
 
-p_pert <- p_pert_fun(pars_perturbed = pars_perturbed_0,
+p_pert <- p_pert_fun(pars_perturbed = pars_perturbed,
                      pars = pars)
 
-perturbation_prediction <- perturbation_prediction_0 <-  (xs*p_log*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
-(r_kept_0 <- r_kept_fun(pars_opt = pars_opt[c("loga")], obs_fun = g, p_fun = (p_log*p_pert)))
+compile(p_pert, output = "p_pert")
+remove_c_and_o()
 
+```
+
+
+```{r}
+
+
+pars <- log(c(
+  x1   	=	100	, # 1
+  y1   	=	10	, # 4
+  
+  k1   	=	10	, # 6
+  k2   	=	1	, # 7
+  k3   	=	10	, # 8
+  k4   	=	10	, # 9
+  k51  	=	1	, # 10
+  k52  	=	1	, # 11
+  
+  a    	=	.Machine$double.eps	, # 12
+  a_1  	=	.Machine$double.eps	, # 13
+  a_2  	=	.Machine$double.eps	  # 14 
+))
+
+perturbation_prediction <- (xs*p_log*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
+r_kept_0 <- r_kept_fun(pars_opt = pars_opt[c("a")], 
+                       perturbation_prediction,
+                       obs_fun = g, 
+                       p_fun = (p_log*p_pert),
+                       pars = pars)
+r_kept_0
   
 # perturbation_prediction_0 <-  (xs*p_pert)(times = c(0,Inf), pars = pars_0, deriv = F)
 
-r_0 <-   R_fun(pars_opt = pars_opt[c("loga")],
+r_0 <-   R_fun(pars_opt = pars_opt,
                perturbation_prediction = perturbation_prediction,
-               obs_fun = g,
-               p_fun = (p_log*p_pert),
                pars = pars) %>% local_response_matrix_eq10()
 r_0%>% round(2)
 
+r_1 <-   R_fun(pars_opt = 0*pars_opt,
+               perturbation_prediction = perturbation_prediction,
+               pars = pars) %>% local_response_matrix_eq10()
+r_1%>% round(2)
+
+
+
 myfits <- mstrust(obj_alpha,
-                  center =  (pars_opt_0-pars_opt_0)["loga"],
+                  center =  (0*pars_opt)[
+                    # c("a_1", "a_2")
+                    "a"
+                    ],
                   studyname = "Fits",
                   cores = 3,
                   fits = 3,
-                  sd = 3)
+                  sd = 3,
+                  iterlim = 10,
+                  perturbation_prediction = perturbation_prediction,
+                  r_kept = r_kept_0,
+                  mypars = pars
+                  )
 # myfits %>% as.parframe() %>% plotValues()
 
-(best_fit <- myfits %>% as.parframe() %>% as.parvec())
-r_alpha_fun(best_fit) %>% round(3)
+best_fit <- myfits %>% as.parframe() %>% as.parvec()
+r_opt <- r_alpha_fun(best_fit, perturbation_prediction, obs_fun = g,  pars = pars) %>% round(2)
+
+
+
 ```
 
-# Dose response plot
+# write the model to SI
 
-```{r, warning=FALSE, eval=FALSE}
-par_opt_settings <- list("loga", "loga_1", "loga_2", c("loga_1", "loga_2")) %>% set_names(1:4)
+```{r model}
+mypublish <- function(x) {
+  mynames <- x %>% names
+  x %>%
+    replaceSymbols(what = mynames, by = paste0("[",mynames, "]"), x = .) %>%
+    {`names<-`(paste0(" ", ., " "), paste0("d/dt [", names(.), "]"))} %>%
+    tibble(names(.),.) %>%
+    xtable() %>% print(include.rownames = F, include.colnames = F) %>%
+    paste("\\documentclass[10pt,a4paper]{article}
+\\usepackage[latin1]{inputenc}
+\\usepackage{amsmath}
+\\usepackage{amsfonts}
+\\usepackage{amssymb}
+\\usepackage{graphicx}
+\\begin{document}", ., "\\end{document}")  %>%
+    write_lines("odes.tex")
+  system2("pandoc", c("-o odes.docx", "odes.tex"))
+}
 
-dr_list <- lapply(log(c(.1,1,10,100)), function(x1) {
+mypublish(mymodel %>% as.eqnvec())
+```
+
+
+```{r pars}
+mypublish2 <- function(x) {
+  mynames <- x %>% names
+  x %>%
+    # replaceSymbols(what = mynames, by = paste0("[",mynames, "]"), x = .) %>%
+    # {`names<-`(paste0(" ", ., " "), paste0("d/dt[ ", names(.), "]"))} %>%
+    tibble(names(.),.) %>%
+    xtable() %>% print(include.rownames = F, include.colnames = F) %>%
+    paste("\\documentclass[10pt,a4paper]{article}
+\\usepackage[latin1]{inputenc}
+\\usepackage{amsmath}
+\\usepackage{amsfonts}
+\\usepackage{amssymb}
+\\usepackage{graphicx}
+\\begin{document}", ., "\\end{document}")  %>%
+    write_lines("pars.tex")
+  system2("pandoc", c("-o pars.docx", "pars.tex"))
+}
+
+p_log(pars)[[1]] %>% unclass() %>% .[-c(2,3,5,6,12:14)] %>% `attr<-`("deriv", NULL) %>% mypublish2()
+```
+
+
+```{r matrices}
+
+mypublish3 <- function(x) {
+  mynames <- x %>% names
+  x %>%
+    # replaceSymbols(what = mynames, by = paste0("[",mynames, "]"), x = .) %>%
+    # {`names<-`(paste0(" ", ., " "), paste0("d/dt[ ", names(.), "]"))} %>%
+    # tibble(names(.),.) %>%
+    xtable() %>% print(include.rownames = F) %>%
+    paste("\\documentclass[10pt,a4paper]{article}
+\\usepackage[latin1]{inputenc}
+\\usepackage{amsmath}
+\\usepackage{amsfonts}
+\\usepackage{amssymb}
+\\usepackage{graphicx}
+\\begin{document}", ., "\\end{document}") %>%
+    write_lines("matrices.tex")
+  system2("pandoc", c("-o matrices.docx", "matrices.tex"))}
   
-  pars <- pars_0
-  pars[6:11] <- 0
-  pars[11] <- 3
-  pars[1] <- log(10)
-  pars[1] <- x1
   
-  lapply(par_opt_settings, function(i) {
-    r_opt_dose_response(which_par = "logk1", 
-                        dosages = pars["logk1"]+seq(-2,2,by = 2),
-                        pars_opt = pars_opt_0[i],
-                        alpha_scan_range = sort(unique(seq(-10,10,by = .1))),
-                        pars = pars
-    )
-  })
+r_0 %>% rbind(r_1) %>% rbind(r_opt) %>% round(2) %>% as.tibble() %>% bind_cols(aopt = rep("",6), module = rep(LETTERS[24:25],3),.) %>%  mypublish3()
+```
+
+```{r matrices}
+
+mypublish_mat <- function(x,filename) {
   
-})
-
-
-
-```
-
-```{r}
-# dr_list <- dr_list %>% 
-#   lapply(function(i) {
-#     mydf <- combine_dr_list(i)
-#     })
-# dr_list <- do.call(rbind, dr_list)
-# dr_list <- cbind(dr_list, x1 = rep(log(c(.1,1,10,100)), each = nrow(dr_list)/4))
-# saveRDS(dr_list, "Output/dr_list_inactivebinding.rds")
-# dr_list <- readRDS("Output/dr_list_inactivebinding.rds")
-```
-
-
-
-# Plot as alpha-response with doses as facets
-```{r}
-dr_list <- readRDS("Output/dr_list_inactivebinding.rds")
-myplot <- dr_list %>%   
-  # extract2(1) %>%
-  # combine_dr_list() %>% 
-  filter(near(x1, log(10))) %>% 
-  filter(par_opt_setting == 1) %>%
-  # filter(near(dose,0)) %>%
-  filter(! (r_element %in% paste0("r", c(11,22,33)))) %>% 
-  # filter(alpha >-5, alpha <3) %>% 
-  # filter(matrix == "r_alpha") %>%
-  apply_expression({
-    x$matrix[x$matrix == "r_alpha"] <- "r"
-    x$matrix[x$matrix == "r_opt"] <- "r(a = a_opt)"
-    x$matrix <- x$matrix %>% factor(levels = c("r", "r(a = a_opt)", "r_kept"))
-    x
-  }) %>% 
-  mutate(Element = r_element) %>% 
-  # mutate(points = value) %>% 
-  # apply_expression({
-  #   nears <- seq(-10,10,by=0.1)[apply(sapply(c(-9,-0.7,3.2), function(i) near(seq(-10,10,by=0.1),i)),1,any)]
-  #   x[!(x$alpha %in% nears),"points"] <- NA
-  #   x[x$alpha < (-6),"value"] <- NA
-  #   filter(x, alpha >= (-9))
-  # }) %>% 
+  x %>%
+    paste("\\documentclass[10pt,a4paper]{article}
+\\usepackage[latin1]{inputenc}
+\\usepackage{amsmath}
+\\usepackage{amsfonts}
+\\usepackage{amssymb}
+\\usepackage{graphicx}
+\\begin{document}", 
+"\\begin{equation*}",
+filename, " = ", .,
+"\\end{equation*}", 
+"\\end{document}") %>%
+    write_lines(paste0(filename,".tex"))
+  system2("pandoc", c(paste0("-o", filename,".docx"), paste0(filename,".tex")))}
   
-  ggplot(mapping = aes(x = alpha, y = value, color = Element, linetype = Element)) +
-  # ggplot(mapping = aes(x = alpha, y = value, color = Element, linetype = Element, frame = dose)) +
-  geom_line() +
-  theme_dMod() +
-  scale_color_dMod() +
-  geom_abline(slope = 0,intercept = 0, linetype = 3) +
-  # geom_rect(xmin = -0.7, xmax = 3.2, ymin = -10, ymax = 10, alpha = 0.01, size = 0)+
-  # geom_point(aes(y = points), size = 3)+
-  # facet_grid(.~par_opt_setting, scales = "free")+
-  facet_grid(matrix~dose, scales = "free")+
-  xlab("log(a)")
-plotly::ggplotly(myplot)
-  # myplot
-# ggsave(plot = myplot,
-#        filename = paste0("~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/plots/Inactivebinding x1y1_cs", "par_opt_setting 4",".png"),
-#        width = 20,
-#        height = 10,
-#        units = "cm",
-#        device = "png")
 
-```
-
-```{r}
-myplot <- dr_list %>%   
-  # extract2(1) %>%
-  combine_dr_list() %>% 
-  filter(par_opt_setting ==1) %>%
-  # filter(near(dose,log(0.1))) %>%
-  filter(! (r_element %in% paste0("r", c(11,22,33)))) %>% 
-  # filter(alpha >-5, alpha <3) %>% 
-  filter(matrix == "r_alpha") %>%
-  apply_expression({
-    x$matrix[x$matrix == "r_alpha"] <- "r"
-    x$matrix[x$matrix == "r_opt"] <- "r(a = a_opt)"
-    x$matrix <- x$matrix %>% factor(levels = c("r", "r(a = a_opt)", "r_kept"))
-    x
-  }) %>% 
-  mutate(Element = r_element) %>% 
-  # ggplot(mapping = aes(x = alpha, y = value, color = Element, linetype = Element)) +
-  ggplot(mapping = aes(x = dose, y = value, color = Element, linetype = Element, frame = alpha)) +
-  geom_point(shape =1) +
-  theme_dMod() +
-  scale_color_dMod() +
-  geom_abline(slope = 0,intercept = 0, linetype = 3) +
-  # facet_grid(.~par_opt_setting, scales = "free")+
-  # facet_grid(matrix~par_opt_setting, scales = "free")+
-  xlab("log(a)")
-plotly::ggplotly(myplot)
-# ggsave(plot = myplot,
-#        filename = paste0("~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/plots/Inactivebinding ", "par_opt_setting 1",".png"),
-#        width = 10,
-#        height = 10,
-#        units = "cm",
-#        device = "png")
-#   
+list(r_0 = r_0, r_1 = r_1, r_opt = r_opt) %>% imap(~.x %>% round(2) %>% xtable(align = rep("",3)) %>% print(tabular.environment="pmatrix", include.colnames = F, include.rownames = F, floating = F, hline.after = NULL) %>%  mypublish_mat(.y))
 ```
 
 
 
-# Plot the pars_opt as a function of alpha faceted with respect to alpha-combinations
-```{r}
-dr_list %>%   
-  combine_dr_list %>% 
-  filter(! (r_element %in% paste0("r", c(11,22,33)))) %>% 
-  ggplot(mapping = aes(x = alpha, y = par_opt_value, color = par_opt)) +
-  geom_line() +
-  xkcd::theme_xkcd() +
-  scale_color_dMod() +
-  # scale_x_continuous(breaks = -9:12) +
-  # scale_y_continuous(limits = c(-2,5))+
-  geom_hline(yintercept = 0, linetype = 3) +
-  facet_grid(~par_opt_setting, scales = "free")
-# plotly::ggplotly()
-
-
-```
-
-# Profiles
-```{r}
-best_fit <- dr_list %>%   
-  combine_dr_list %>% 
-  filter(alpha == 0, par_opt_setting == 3) %>% 
-  select(par_opt, par_opt_value) %>% 
-  unique() %>% 
-  spread(par_opt, par_opt_value) %>% 
-  unlist()
-
-perturbation_prediction_0
-r_kept_0
 
 
 
-myprof <- profile(obj_alpha, best_fit, names(best_fit), limits = c(-10,10))
-plotProfile(myprof)
 
-```
+
 
 
 
