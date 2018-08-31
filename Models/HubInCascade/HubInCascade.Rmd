@@ -45,19 +45,18 @@ g(x(t, p(p_outer))) = g*x*p(t, p_outer)
 ## Prediction function
 odemodel() writes the function f as a C-function, which is called by x and xs.
 ```{r Prediction function Cascade, results='asis'}
-modelpath <- paste0("Models/HubInCascade/")
 modelname   <- "HubInCascade"
-mymodel     <- as.eqnlist(read.csv(paste0(modelpath, modelname, ".csv")))
+mymodel     <- as.eqnlist(read.csv(paste0(modelname, ".csv")))
 
-# myodemodel <- odemodel(mymodel, modelname = paste0(modelname), deriv = T)
-# save(myodemodel, file = paste0(modelpath, "odemodel",modelname, ".RData"))
-load(paste0(modelpath, "odemodel",modelname, ".RData"))
+myodemodel <- odemodel(mymodel, modelname = paste0(modelname), deriv = T)
+save(myodemodel, file = paste0("odemodel",modelname, ".RData"))
+load(paste0("odemodel",modelname, ".RData"))
 
 # Prediction function
 x <- Xs(odemodel = myodemodel)
 # Prediction function for steady states
 xs <- Xs_steady(myodemodel) # When computing steady states, set deriv = F
-# print(mymodel)
+print(mymodel)
 # mymodel %>% as.eqnvec() %>% print(pander = T)
 
 # write.csv(myodemodel[[1]] %>% attr("eq") %>% data.frame(), "~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/SI/Hub in Cascade model", quote = F)
@@ -92,9 +91,9 @@ g <-  g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), mymodel, compile = T
 Load all parameters and format them for further use.
 ```{r Parameters Cascade}
 
-pars_raw <- read.csv(paste0(modelpath, "pars.csv"), header = FALSE)  # dynamical parameters
+pars_raw <- read.csv(paste0("pars.csv"), header = FALSE)  # dynamical parameters
 pars_raw <- structure(pars_raw$V2, names = as.character(pars_raw$V1))
-ic_raw <- read.csv(paste0(modelpath, "IC.csv"), header = F)          # initial conditions
+ic_raw <- read.csv(paste0("IC.csv"), header = F)          # initial conditions
 ic_raw <- structure(ic_raw$V2, names = as.character(ic_raw$V1))
 # sort ics like they appear in x, so it can be used in stode()
 vars_x <- attr(x, "parameters")[attr(x, "parameters") %in% names(ic_raw)]
@@ -137,6 +136,8 @@ pars_opt_0 <- pars_opt <- structure(log(pars_inner_opt_0+.Machine$double.eps), n
 # pars_opt_0 <- pars_opt <- pars_opt_0[c("loga_1", "loga_2")]
 # pars_0
 # p_log(pars_0, deriv = F)
+
+
 ```
 
 # Simulate perturbation data
@@ -155,6 +156,8 @@ pars_perturbed_0 <- pars_perturbed <- c("logu1" = log(0.9), "logx1" = log(0.9), 
 
 # pars_perturbed
 p_pert <- p_pert_fun(pars_perturbed = pars_perturbed, pars = pars)
+compile(p_pert, cores = 3)
+remove_c_and_o()
 
 ```
 
@@ -267,6 +270,34 @@ best_fit_1 <- myfits_1 %>% as.parframe() %>% as.parvec()
 r_opt_1 <- r_alpha_fun(pars_opt = unclass(best_fit_1), pars = pars, perturbation_prediction = perturbation_prediction) 
 r_opt_1 %>% round(1)
 # pars
+
+
+
+```
+
+```{r}
+
+mypublish_mat <- function(x,filename) {
+  
+  x %>%
+    paste("\\documentclass[10pt,a4paper]{article}
+\\usepackage[latin1]{inputenc}
+\\usepackage{amsmath}
+\\usepackage{amsfonts}
+\\usepackage{amssymb}
+\\usepackage{graphicx}
+\\begin{document}", 
+"\\begin{equation*}",
+filename, " = ", .,
+"\\end{equation*}", 
+"\\end{document}") %>%
+    write_lines(paste0(filename,".tex"))
+  system2("pandoc", c(paste0("-o", filename,".docx"), paste0(filename,".tex")))}
+  
+
+list(r_0 = r_0, r_1 = r_1, r_opt_1 = r_opt_1) %>% imap(~.x %>% round(2) %>% xtable(align = rep("",7)) %>% print(tabular.environment="pmatrix", include.colnames = F, include.rownames = F, floating = F, hline.after = NULL) %>%  mypublish_mat(.y))
+
+
 ```
 
 
@@ -302,7 +333,7 @@ r_1 %>% round(2)
 
 myfits_2 <- mstrust(obj_alpha, center =  structure(rep(0, length(pars_opt_subset)), names = pars_opt_subset), studyname = "Fits", cores = 3, fits = 12, sd = 1, mypars = pars, perturbation_prediction = perturbation_prediction_0, r_kept = r_kept_2)
 myfits_2 %>% as.parframe()
-best_fit_2 <- myfits_2 %>% as.parframe() %>% extract() %>% as.parvec()
+best_fit_2 <- myfits_2 %>% as.parframe() %>% as.parvec()
 # exp(best_fit)
 r_opt_2 <- r_alpha_fun(pars_opt = unclass(best_fit_2), pars = pars, perturbation_prediction = perturbation_prediction) %>% round(2)
 r_opt_2
