@@ -1,0 +1,525 @@
+---
+title: "Cascade - x2z2 mass action feedback"
+author: "Daniel Lill"
+output:
+  pdf_document:
+    keep_tex: yes
+---
+
+# Load libraries and define some useful paths
+
+```{r setup, results='hide', echo=FALSE, message=FALSE}
+# rm(list = ls())
+library(MRAr)
+library(scales)
+library(xtable)
+library(parallel)
+path <- paste0(getwd(), "/")
+pathout <- paste0(path, "Output/")
+```
+
+# Cascade
+
+## Setup Model 
+This is the setup of the ODE model.
+
+### Prediction function
+odemodel writes a C-function, which is executed in x and xs.
+x is a regular prediction function while xs only finds and returns the steady states.
+If the odemodel has been calculated already, it can be loaded with "load".
+```{r Prediction function Cascade, results='asis'}
+modelname   <- "Cascade"
+mymodel     <- as.eqnlist(read.csv(paste0( modelname, ".csv")))
+
+# myodemodel <- odemodel(mymodel, modelname = paste0(modelname), deriv = T)
+# save(myodemodel, file = paste0( "odemodel",modelname, ".RData"))
+load(paste0( "odemodel",modelname, ".RData"))
+
+# Prediction function
+x <- Xs(odemodel = myodemodel)
+# Prediction function for steady states
+xs <- Xs_steady(myodemodel) # When computing steady states, set deriv = F
+loadDLL(x)
+# print(mymodel)
+# mymodel %>% as.eqnvec() %>% print(pander = T)
+# myodemodel[[1]] %>% attr("eq")
+```
+
+### Modules, their observables and the observation function
+Observation function which depends also on the optimization parameters. With their help, the complexes can smoothly be switched on in the observation.
+
+```{r Most general observation function}
+modules <- modules0 <- c("X","Y", "Z")
+
+mypars_opt <- paste0("a_", outer(paste0("to", c("x","y","z"), "_C"), c("xy","yz","zx"), paste0)) %>% matrix(ncol=3)
+mypars_opt[c(3,4,8)] <- "0"
+
+
+mycomplexes <- matrix(c("Cx2y1", "Cy2z1", "Cx2z2"), ncol = 1)
+
+samepars_opt <- paste0("a_", outer(rep("C",3), c("xy","yz","zx"), paste0)) %>% matrix(ncol=3)
+samepars_opt[c(3,4,8)] <- "0"
+
+obs <- obs0 <- paste(c("x2", "y2", "z2"), "+", prodSymb(mypars_opt, mycomplexes), "+", prodSymb(samepars_opt, mycomplexes))
+
+
+g <- g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), mymodel, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
+
+```
+
+
+### Inner parameters
+Load all parameters and format them for further use.
+```{r Parameters Cascade}
+pars_raw <- read.csv(paste0( "pars.csv"), header = FALSE)  # dynamical parameters
+pars_raw <- structure(pars_raw$V2, names = as.character(pars_raw$V1))
+ic_raw <- read.csv(paste0( "IC.csv"), header = F)          # initial conditions
+ic_raw <- structure(ic_raw$V2, names = as.character(ic_raw$V1))
+# sort ics like they appear in x, so it can be used in stode()
+vars_x <- attr(x, "parameters")[attr(x, "parameters") %in% names(ic_raw)]
+ic_raw <- ic_raw[vars_x]
+
+pars_inner_opt_0 <- setdiff(attr(g, "parameters"),names(c(pars_raw,ic_raw)))
+pars_inner_opt_0 <- structure(rep(0, length(pars_inner_opt_0)), 
+                              names = pars_inner_opt_0)
+
+pars_inner_0 <- pars_inner <- c(ic_raw, pars_raw, pars_inner_opt_0)
+```
+
+
+### General log transformation and setting some pars to zero
+It's better to do a logtransformation for all Fitting purposes and work with the log-Parameters.
+The way to implement is this, is
+log_pars %>% p_log %>% p_other %>% p_other_2 %>% ...
+```{r}
+trafo <- getParameters(x,g) %>% 
+  setNames(.,.) %>% 
+  insert("x~0", x = getSymbols(mytrafo[[i]]) %>% str_subset("deg|syn")) %>% # set synthesis and degradations to zero
+  insert("x~0", x = getSymbols(mytrafo[[i]]) %>% str_subset("^C*[xyz](2|1.2)")) %>% # set inits to zero
+  insert("x~0", x = c("k131", "k132", "k14")) %>% 
+  insert("x~0", x = c("k111", "k112", "k12")) %>% 
+  insert("x~exp(x)", x = getSymbols(mytrafo[[i]])) %>%
+  # {.} %T>% print %>% 
+  {.} 
+
+p_log <- P(trafo = trafo,
+           modelname = "p_log",
+           compile = T)
+
+pars <- getParameters(p_log) %>% are_names_of(0) %>% sort_by_name()
+pars_opt <- names(pars_inner_opt_0) %>% are_names_of(.Machine$double.eps) %>% log
+```
+
+
+```{r}
+pars <- c(
+  a_Cxy    	=	.Machine$double.eps	, # 1
+  a_Cyz    	=	.Machine$double.eps	, # 2
+  a_Czx    	=	.Machine$double.eps	, # 3
+  a_tox_Cxy	=	.Machine$double.eps	, # 4
+  a_tox_Czx	=	.Machine$double.eps	, # 5
+  a_toy_Cxy	=	.Machine$double.eps	, # 6
+  a_toy_Cyz	=	.Machine$double.eps	, # 7
+  a_toz_Cyz	=	.Machine$double.eps	, # 8
+  a_toz_Czx	=	.Machine$double.eps	, # 9
+  
+  gainlf   	=	1	, # 10
+  gainuf   	=	1	, # 11
+  k9       	=	100	, # 29
+  k10      	=	100	, # 13
+  
+  k1       	=	100	, # 12
+  v1       	=	1.5	, # 30
+  k2       	=	100	, # 20
+  v2       	=	1	, # 31
+  
+  k31      	=	0.002	, # 21
+  k32      	=	0.4	, # 22
+  k4       	=	0.05	, # 23
+  k5       	=	100	, # 24
+  v5       	=	5	, # 32
+  
+  k61      	=	0.005	, # 25
+  k62      	=	0.4	, # 26
+  k7       	=	0.05	, # 27
+  k8       	=	100	, # 28
+  v8       	=	1	, # 33
+  
+  
+  x1       	=	100	, # 34
+  y1       	=	100	, # 35
+  z1       	=	100	  # 36 
+) %>% 
+  log 
+
+```
+
+
+
+# Apply different perturbations
+```{r}
+# pp_x <- c("x1", "k1", "v1", "k2", "v2") 
+# pp_y <- c("y1", "k5", "v5", "k31", "k32", "k4") 
+# pp_z <- c("z1", "k8", "v8", "k61", "k62", "k7")
+pp_x <- c("x1") 
+pp_y <- c("y1") 
+pp_z <- c("z1")
+
+
+mygrid <- expand.grid(pp_x, pp_y, pp_z, stringsAsFactors = F) 
+
+pp_list <- map(1:nrow(mygrid), function(i) {
+  mynames <- mygrid[i,] %>% unlist() %>% unname() %>% unique()
+  if(length(mynames)<3) return(NULL)
+  mynames %>% are_names_of(log(0.9))
+}) %>% 
+  .[!map_lgl(., is.null)]
+# alpha <- 0s
+
+myrunbg_job <- runbg({
+  cores <- detectFreeCores()
+  pars0 <- pars
+  
+  # gainufs <- c(-10, seq(-2,2,.1), seq(2,10,1)) %>% unique() %>% sort
+  gainufs <- seq(-1,1,1)
+  map(gainufs, function(gainuf) {
+    pars <- pars0
+    pars["gainuf"] <- c(gainuf = gainuf)
+    
+    # alphas <- c(seq(-3,10,0.1))
+    alphas <- c(-3,0,3)
+    mclapply(alphas, function(alpha) {
+      
+      mclapply(pp_list, function(pp) {
+        p_pert <- p_pert_fun(pp, pars = pars, modelname = NULL)
+        
+        myframe <- dMod.frame("1", g, x, p_log, NULL, NULL, p_pert = list(p_pert), xs = list(xs), pars = list(pars))
+        
+        g <- myframe$g[[1]]
+        p_pert <- myframe$p_pert[[1]]
+        p <- myframe$p[[1]]
+        xs <- myframe$xs[[1]]
+        pars <- myframe$pars[[1]]
+        
+        # browser()
+        perturbation_prediction <- (xs*p*p_pert)(c(0,Inf), pars, deriv = F)
+        
+        try({r_0 <- R_fun(pars_opt = pars_opt,
+                          perturbation_prediction = perturbation_prediction,
+                          obs_fun = g,
+                          p_fun = (p*p_pert),
+                          pars = pars) %>% local_response_matrix_eq10()})
+        if(inherits(r_0, "try-error")) return(NULL)
+        
+        algo <- function(which_pars_opt, prefix = NULL) {
+          
+          out <- tibble(r_kept = list(NULL), parframes = list(NULL), r_opt = list(NULL))
+          
+          
+          r_1 <- r_alpha_fun(pars_opt = pars_opt[which_pars_opt],
+                               perturbation_prediction = perturbation_prediction,
+                               obs_fun = g,
+                               p_fun = (p * p_pert),
+                               pars = pars,
+                               alpha =
+                                 -log(.Machine$double.eps) + alpha)
+          out$r_kept <- list(r_1)
+          
+          r_kept <- r_kept_fun(pars_opt = pars_opt[which_pars_opt],
+                               perturbation_prediction = perturbation_prediction,
+                               obs_fun = g,
+                               p_fun = (p * p_pert),
+                               pars = pars,
+                               alpha =
+                                 -log(.Machine$double.eps) + alpha)
+          out$r_kept <- list(r_kept)
+          
+          
+          
+          myfits <- mstrust(obj_alpha,
+                            center =  structure(rep(0, length(which_pars_opt)), names = which_pars_opt),
+                            studyname = "Fits",
+                            cores = 5,
+                            fits = 5,
+                            sd = 1,
+                            mypars = pars,
+                            perturbation_prediction = perturbation_prediction,
+                            r_kept = r_kept,
+                            p_fun = (p * p_pert),
+                            obs_fun = g)
+          myparframe <- try(myfits %>% as.parframe())
+          out$parframes <- list(myparframe)
+          if (inherits(myparframe, "try-error")) {
+            out$parframes <- list(myfits)
+            return(out)
+          }
+          
+          r_opt <- r_alpha_fun(pars_opt = myfits %>% as.parframe() %>% as.parvec() %>% unclass() ,
+                               pars = pars,
+                               perturbation_prediction = perturbation_prediction,
+                               p_fun = (p*p_pert))
+          out$r_opt <- list(r_opt)
+          return(out)
+        }
+        
+        to_upstream_module <- algo(c("a_tox_Cxy", "a_toy_Cyz"), "upstream")
+        to_both_modules <- algo(c("a_Cxy", "a_Cyz"), "both")
+        
+        bind_cols(tibble(r_0 = list(r_0 %>% round(2)), pars_perturbed = list(pp), alpha = alpha, gainuf = gainuf), to_upstream_module, to_both_modules)
+    }) %>% 
+      do.call(rbind,.)
+    }, mc.cores = cores) %>% 
+        do.call(rbind,.) 
+  }) %>% 
+    do.call(rbind,.)
+  
+}, machine = c("localhost"), input = ls(pos=.GlobalEnv), filename = "2018_07_18_33_10_gainuf"
+# , recover = T
+)
+# myrunbg_job$check()
+# myrunbg <- myrunbg_job$get()[[1]]
+# saveRDS(myrunbg, file = "2018_07_18_33_10_gainufmyrunbg.rds")
+# results <- readRDS("2018_07_18_33_10_gainufmyrunbg.rds")
+# myrunbg_job$purge()
+
+# saveRDS(results, "test_different_perturbations.rds")
+```
+
+
+
+```{r}
+results %>% str1
+
+```
+
+
+```{r unnest runbg job}
+# helper functions
+matrix_2_wide_df <- function(mat, nm) {mat %>% 
+    `dim<-`(NULL) %>% 
+    t %>% 
+    as.data.frame %>% 
+    `names<-`(nm)}
+
+
+
+# prepare data for clustering
+results_unnested_matrices <-
+  results %>%
+  rename(upstreamropt = r_opt, 
+         bothropt = r_opt1) %>% 
+  filter(map_lgl(upstreamropt, is.double), map_lgl(bothropt, is.double)) %>% 
+  
+  mutate(upstreamropt = map(upstreamropt, matrix_2_wide_df, nm = (paste0("up_r", outer(1:3,1:3, paste0)))),
+         bothropt = map(bothropt, . %>% matrix_2_wide_df(paste0("both_r", outer(1:3,1:3, paste0)))),
+         pars_perturbed = map(pars_perturbed, . %>% names %>% `names<-`(LETTERS[24:26]) %>% t %>% as.data.frame(stringsAsFactors = F)),
+         perturbed_set = seq_along(alpha),
+         alpha = as.numeric(alpha)) %>% 
+  unnest(upstreamropt, bothropt, pars_perturbed)
+
+
+
+```
+
+```{r}
+results_unnested_matrices %>% 
+  filter(alpha == 0) %>% 
+  gather(name, value, matches("up_r|both_r")) %>% 
+  mutate(where = case_when(str_detect(name, "up") ~ "upstream", str_detect(name, "both") ~ "both" )) %>% 
+  ggplot(aes(gainuf, value, color = name)) +
+  geom_line() + 
+  facet_wrap(~where)
+
+# ggplotly()
+```
+
+```{r}
+
+mypublish3 <- function(x, path) {
+  
+  
+  mynames <- x %>% names
+  x %>%
+    # replaceSymbols(what = mynames, by = paste0("[",mynames, "]"), x = .) %>%
+    # {`names<-`(paste0(" ", ., " "), paste0("d/dt[ ", names(.), "]"))} %>%
+    # tibble(names(.),.) %>%
+    xtable() %>% print(include.rownames = F) %>%
+    paste("\\documentclass[10pt,a4paper]{article}
+\\usepackage[latin1]{inputenc}
+\\usepackage{amsmath}
+\\usepackage{amsfonts}
+\\usepackage{amssymb}
+\\usepackage{graphicx}
+\\begin{document}", ., "\\end{document}") %>%
+    write_lines(paste0(path,".tex"))
+  system2("pandoc", c(paste0("-o ",path,".docx"), paste0(path,".tex")))
+  }
+
+
+
+mynames <- paste0(LETTERS[24:26], "*")
+
+
+results %>% 
+  filter(alpha == 0, gainuf %in% c(-1,0,1)) %>% 
+  .[c("r_0", "r_opt")] %>% unlist(F) %>% 
+  imap(~.x  %>% round(2) %>% as.tibble() %>% `names<-`(mynames) %>% bind_cols(aopt = rep(" ",3), module = mynames,.) %>%  mypublish3(paste0("gainuf", .y-2)))
+```
+
+
+
+
+# Description of results
+
+```{r}
+pp_x <- c("x1", "k1", "v1", "k2", "v2") %>% print
+pp_y <- c("y1", "k5", "v5", "k31", "k32", "k4") %>% print 
+pp_z <- c("z1", "k8", "v8", "k61", "k62", "k7") %>% print
+
+results_unnested_matrices %>% select(alpha, gainuf) %>% map(unique)
+```
+
+
+## Upstream:
+
+* gain -10: There are basically two clusters, one where (r23 == 0) and one where (r23 != 0)
+* r23 == 0: all, all, c("z1", "k61", "k62")
+* r23 != 0: all, all, c("k8", "v8", "k7")
+```{r}
+cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, -10, "up_", 5, (1:5)[-3])%>% 
+  print(n = 1000)
+```
+
+```{r}
+cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, -10, "up_", 5, 3)%>% 
+  print(n = 1000)
+```
+
+* gain -1: One can in principle see the same clusters as in gain-10, but the feedback is masked by the sequestration connection
+```{r}
+cluster_matrices_and_print_perturbations(results_unnested_matrices, 1, -1, "up_", 5, 3)%>% 
+  print(n = 1000)
+```
+
+* gain 0: works well, here the clusters are around the y-perturbations, c(k32,v5) and c(k31,k4,k5 and y1), but this is probably just a numerical artefact from the finite differences. They are similar enough
+```{r}
+cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, 0, "up_", 2, 2)%>% 
+  arrange(Y,X,Z) %>% 
+  print(n = 1000)
+```
+
+* gain 0: works well, here the clusters are around the y-perturbations, c(k32,v5) and c(k31,k4,k5 and y1), but this is probably just a numerical artefact from the finite differences. They are similar enough
+```{r}
+cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, 0.4, "up_", 1,1)%>% 
+  # arrange(Y,X,Z) %>% 
+  # print(n = 1000)
+{.}
+
+mypublish3 <- function(x, path) {
+  
+  
+  mynames <- x %>% names
+  x %>%
+    # replaceSymbols(what = mynames, by = paste0("[",mynames, "]"), x = .) %>%
+    # {`names<-`(paste0(" ", ., " "), paste0("d/dt[ ", names(.), "]"))} %>%
+    # tibble(names(.),.) %>%
+    xtable() %>% print(include.rownames = F) %>%
+    paste("\\documentclass[10pt,a4paper]{article}
+\\usepackage[latin1]{inputenc}
+\\usepackage{amsmath}
+\\usepackage{amsfonts}
+\\usepackage{amssymb}
+\\usepackage{graphicx}
+\\begin{document}", ., "\\end{document}") %>%
+    write_lines(paste0(path,".tex"))
+  system2("pandoc", c(paste0("-o ",path,".docx"), paste0(path,".tex")))}
+
+
+
+mynames <- paste0(LETTERS[24:26], "*")
+.mat  %>% round(2) %>% as.tibble() %>% `names<-`(mynames) %>% bind_cols(aopt = rep(" ",3), module = mynames,.) %>%  mypublish3("gain04")
+
+```
+
+* gain 1: The positive feedback can be seen for some perturbations, for some it cant
+* r23 == 0: all, c("y1", "k5", "k31", "k4"), c("k8", "v8", "k7") (cluster 6/6)
+* r23 ~~ 0: all, c("v5", "k32"), c("k8", "v8", "k7"), and two exceptions (cluster 1/6)
+* r23 != 0: the rest
+```{r}
+cluster_matrices_and_print_perturbations(results_unnested_matrices, 1, 1, "up_", 6, 1)%>% 
+  # select(Y) %>% unique() %>% t
+  print(n = 1000)
+```
+
+* gain 2: same as in gain 1
+```{r}
+cluster_matrices_and_print_perturbations(results_unnested_matrices, 1, 2, "up_", 5, 2)%>% 
+  print(n = 1000)
+
+mynames <- paste0(LETTERS[24:26], "*")
+.mat  %>% round(2) %>% as.tibble() %>% `names<-`(mynames) %>% bind_cols(aopt = rep(" ",3), module = mynames,.) %>%  mypublish3("gain2")
+
+```
+
+* gain >=4: out of linear range, no feedback detected anymore
+```{r}
+cluster_matrices_and_print_perturbations(results_unnested_matrices, 1, 4, "up_", 10, 2)%>% 
+  print(n = 1000)
+```
+
+
+## Both:
+
+* gain -10: some perturbations lead to complete bullshit, some overlook the feedback, some show it
+```{r}
+cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, -10, "both_", 10, c(3,9))%>% 
+  print(n = 1000)
+```
+
+
+* gain -1: The feedback is consistently overseen, but for y = k4, k5, v5, there is the weird r31 connection
+```{r}
+cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, -1, "both_", 3, 2:3)%>% 
+  print(n = 1000)
+```
+
+* gain 0: for y = k4, k5, v5, there is the weird r31 connection
+```{r}
+cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, 0, "both_", 2, 2)%>% 
+  arrange(Y,X,Z) %>% 
+  print(n = 1000)
+```
+
+* gain 1: weird r31 connection, sometimes feedback is seen most times not
+```{r}
+cluster_matrices_and_print_perturbations(results_unnested_matrices, 1, 1, "both_", 6, 1)%>% 
+  # select(Y) %>% unique() %>% t
+  print(n = 1000)
+```
+
+* gain 2: same as in gain 1
+```{r}
+cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, 2, "both_", 5, 2)%>% 
+  print(n = 1000)
+```
+
+* gain >=4: out of linear range, no feedback detected anymore
+```{r}
+cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, 4, "both_", 10, 2)%>% 
+  print(n = 1000)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
