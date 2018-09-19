@@ -122,11 +122,9 @@ pars <- c(
   a_toy_Cyz	=	.Machine$double.eps	, # 7
   a_toz_Cyz	=	.Machine$double.eps	, # 8
   a_toz_Czx	=	.Machine$double.eps	, # 9
-  
-  gainlf   	=	1	, # 10
-  gainuf   	=	1	, # 11
-  k9       	=	100	, # 29
-  k10      	=	100	, # 13
+  x1       	=	100	, # 34
+  y1       	=	100	, # 35
+  z1       	=	100	,  # 36 
   
   k1       	=	100	, # 12
   v1       	=	1.5	, # 30
@@ -145,13 +143,38 @@ pars <- c(
   k8       	=	100	, # 28
   v8       	=	1	, # 33
   
+  gainlf   	=	1	, # 10
+  gainuf   	=	1	, # 11
+  k9       	=	100	, # 29
+  k10      	=	100	 # 13
   
-  x1       	=	100	, # 34
-  y1       	=	100	, # 35
-  z1       	=	100	  # 36 
+
 ) %>% 
   log 
 
+
+
+
+```
+
+
+
+```{r}
+p_pert <- p_pert_fun(c("x1" = log(0.9) , "y1" = log(0.9), "z1" = log(0.9)), pars = pars, modelname = NULL)
+
+perturbation_prediction <- (xs*p_log*p_pert)(c(0,Inf), pars, deriv = F)
+
+r_alpha_fun(pars_opt = pars_opt - log(.Machine$double.eps),
+            perturbation_prediction = perturbation_prediction,
+            obs_fun = g,
+            p_fun = (p_log*p_pert),
+            pars = pars) %>% round(2)
+
+r_alpha_fun(pars_opt = pars_opt ,#- log(.Machine$double.eps),
+            perturbation_prediction = perturbation_prediction,
+            obs_fun = g,
+            p_fun = (p_log*p_pert),
+            pars = pars) %>% round(2)
 ```
 
 
@@ -176,113 +199,108 @@ pp_list <- map(1:nrow(mygrid), function(i) {
   .[!map_lgl(., is.null)]
 # alpha <- 0s
 
-myrunbg_job <- runbg({
-  cores <- detectFreeCores()
-  pars0 <- pars
+
+cores <- 3
+pars0 <- pars
+p <- p_log
+```
+
+```{r}
+
+# gainufs <- c(-10, seq(-2,2,.1), seq(2,10,1)) %>% unique() %>% sort
+gainufs <- seq(-1,1,1)
+results <- map(gainufs, function(gainuf) {
+  pars <- pars0
+  pars["gainuf"] <- gainuf
   
-  # gainufs <- c(-10, seq(-2,2,.1), seq(2,10,1)) %>% unique() %>% sort
-  gainufs <- seq(-1,1,1)
-  map(gainufs, function(gainuf) {
-    pars <- pars0
-    pars["gainuf"] <- c(gainuf = gainuf)
+  # alphas <- c(seq(-3,10,0.1))
+  alphas <- c(-3,0,3)
+  mclapply(alphas, function(alpha) {
     
-    # alphas <- c(seq(-3,10,0.1))
-    alphas <- c(-3,0,3)
-    mclapply(alphas, function(alpha) {
+    mclapply(pp_list, function(pp) {
+      p_pert <- p_pert_fun(pp, pars = pars, modelname = NULL)
       
-      mclapply(pp_list, function(pp) {
-        p_pert <- p_pert_fun(pp, pars = pars, modelname = NULL)
+      # myframe <- dMod.frame("1", g, x, p_log, NULL, NULL, p_pert = list(p_pert), xs = list(xs), pars = list(pars))
+      # 
+      # g <- myframe$g[[1]]
+      # p_pert <- myframe$p_pert[[1]]
+      # p <- myframe$p[[1]]
+      # xs <- myframe$xs[[1]]
+      # pars <- myframe$pars[[1]]
+      
+      # browser()
+      perturbation_prediction <- (xs*p*p_pert)(c(0,Inf), pars, deriv = F)
+      
+      try({r_0 <- R_fun(pars_opt = pars_opt,
+                        perturbation_prediction = perturbation_prediction,
+                        obs_fun = g,
+                        p_fun = (p*p_pert),
+                        pars = pars) %>% local_response_matrix_eq10()})
+      if(inherits(r_0, "try-error")) return(NULL)
+      
+      algo <- function(which_pars_opt, prefix = NULL) {
         
-        myframe <- dMod.frame("1", g, x, p_log, NULL, NULL, p_pert = list(p_pert), xs = list(xs), pars = list(pars))
+        out <- tibble(r_kept = list(NULL), parframes = list(NULL), r_opt = list(NULL))
         
-        g <- myframe$g[[1]]
-        p_pert <- myframe$p_pert[[1]]
-        p <- myframe$p[[1]]
-        xs <- myframe$xs[[1]]
-        pars <- myframe$pars[[1]]
         
-        # browser()
-        perturbation_prediction <- (xs*p*p_pert)(c(0,Inf), pars, deriv = F)
+        r_1 <- r_alpha_fun(pars_opt = pars_opt[which_pars_opt] * 0  + alpha,
+                           perturbation_prediction = perturbation_prediction,
+                           obs_fun = g,
+                           p_fun = (p * p_pert),
+                           pars = pars)
+        out$r_1 <- list(r_1)
         
-        try({r_0 <- R_fun(pars_opt = pars_opt,
+        r_kept <- r_kept_fun(pars_opt = pars_opt[which_pars_opt],
+                             perturbation_prediction = perturbation_prediction,
+                             obs_fun = g,
+                             p_fun = (p * p_pert),
+                             pars = pars,
+                             alpha =
+        )
+        out$r_kept <- list(r_kept)
+        
+        
+        
+        myfits <- mstrust(obj_alpha,
+                          center =  structure(rep(0, length(which_pars_opt)), names = which_pars_opt),
+                          studyname = "Fits",
+                          cores = 5,
+                          fits = 5,
+                          sd = 1,
+                          mypars = pars,
                           perturbation_prediction = perturbation_prediction,
-                          obs_fun = g,
-                          p_fun = (p*p_pert),
-                          pars = pars) %>% local_response_matrix_eq10()})
-        if(inherits(r_0, "try-error")) return(NULL)
-        
-        algo <- function(which_pars_opt, prefix = NULL) {
-          
-          out <- tibble(r_kept = list(NULL), parframes = list(NULL), r_opt = list(NULL))
-          
-          
-          r_1 <- r_alpha_fun(pars_opt = pars_opt[which_pars_opt],
-                               perturbation_prediction = perturbation_prediction,
-                               obs_fun = g,
-                               p_fun = (p * p_pert),
-                               pars = pars,
-                               alpha =
-                                 -log(.Machine$double.eps) + alpha)
-          out$r_kept <- list(r_1)
-          
-          r_kept <- r_kept_fun(pars_opt = pars_opt[which_pars_opt],
-                               perturbation_prediction = perturbation_prediction,
-                               obs_fun = g,
-                               p_fun = (p * p_pert),
-                               pars = pars,
-                               alpha =
-                                 -log(.Machine$double.eps) + alpha)
-          out$r_kept <- list(r_kept)
-          
-          
-          
-          myfits <- mstrust(obj_alpha,
-                            center =  structure(rep(0, length(which_pars_opt)), names = which_pars_opt),
-                            studyname = "Fits",
-                            cores = 5,
-                            fits = 5,
-                            sd = 1,
-                            mypars = pars,
-                            perturbation_prediction = perturbation_prediction,
-                            r_kept = r_kept,
-                            p_fun = (p * p_pert),
-                            obs_fun = g)
-          myparframe <- try(myfits %>% as.parframe())
-          out$parframes <- list(myparframe)
-          if (inherits(myparframe, "try-error")) {
-            out$parframes <- list(myfits)
-            return(out)
-          }
-          
-          r_opt <- r_alpha_fun(pars_opt = myfits %>% as.parframe() %>% as.parvec() %>% unclass() ,
-                               pars = pars,
-                               perturbation_prediction = perturbation_prediction,
-                               p_fun = (p*p_pert))
-          out$r_opt <- list(r_opt)
+                          r_kept = r_kept,
+                          p_fun = (p * p_pert),
+                          obs_fun = g)
+        myparframe <- try(myfits %>% as.parframe())
+        out$parframes <- list(myparframe)
+        if (inherits(myparframe, "try-error")) {
+          out$parframes <- list(myfits)
           return(out)
         }
         
-        to_upstream_module <- algo(c("a_tox_Cxy", "a_toy_Cyz"), "upstream")
-        to_both_modules <- algo(c("a_Cxy", "a_Cyz"), "both")
-        
-        bind_cols(tibble(r_0 = list(r_0 %>% round(2)), pars_perturbed = list(pp), alpha = alpha, gainuf = gainuf), to_upstream_module, to_both_modules)
+        r_opt <- r_alpha_fun(pars_opt = myfits %>% as.parframe() %>% as.parvec() %>% unclass() ,
+                             pars = pars,
+                             perturbation_prediction = perturbation_prediction,
+                             p_fun = (p*p_pert))
+        out$r_opt <- list(r_opt)
+        return(out)
+      }
+      
+      to_upstream_module <- algo(c("a_tox_Cxy", "a_toy_Cyz"), "upstream")
+      to_both_modules <- algo(c("a_Cxy", "a_Cyz"), "both")
+      
+      bind_cols(tibble(r_0 = list(r_0 %>% round(2)), pars_perturbed = list(pp), alpha = alpha, gainuf = gainuf), to_upstream_module, to_both_modules)
     }) %>% 
       do.call(rbind,.)
-    }, mc.cores = cores) %>% 
-        do.call(rbind,.) 
-  }) %>% 
-    do.call(rbind,.)
+  }, mc.cores = cores) %>% 
+    do.call(rbind,.) 
+}) %>% 
+  do.call(rbind,.)
   
-}, machine = c("localhost"), input = ls(pos=.GlobalEnv), filename = "2018_07_18_33_10_gainuf"
-# , recover = T
-)
-# myrunbg_job$check()
-# myrunbg <- myrunbg_job$get()[[1]]
-# saveRDS(myrunbg, file = "2018_07_18_33_10_gainufmyrunbg.rds")
-# results <- readRDS("2018_07_18_33_10_gainufmyrunbg.rds")
-# myrunbg_job$purge()
+# saveRDS(results, "results_gainuf.rds")
+results <- readRDS("results_gainuf.rds")
 
-# saveRDS(results, "test_different_perturbations.rds")
 ```
 
 
@@ -343,7 +361,7 @@ mypublish3 <- function(x, path) {
     # replaceSymbols(what = mynames, by = paste0("[",mynames, "]"), x = .) %>%
     # {`names<-`(paste0(" ", ., " "), paste0("d/dt[ ", names(.), "]"))} %>%
     # tibble(names(.),.) %>%
-    xtable() %>% print(include.rownames = F) %>%
+    xtable() %>% {print(invisible(.), include.rownames = F)} %>%
     paste("\\documentclass[10pt,a4paper]{article}
 \\usepackage[latin1]{inputenc}
 \\usepackage{amsmath}
@@ -360,12 +378,112 @@ mypublish3 <- function(x, path) {
 mynames <- paste0(LETTERS[24:26], "*")
 
 
-results %>% 
-  filter(alpha == 0, gainuf %in% c(-1,0,1)) %>% 
-  .[c("r_0", "r_opt")] %>% unlist(F) %>% 
-  imap(~.x  %>% round(2) %>% as.tibble() %>% `names<-`(mynames) %>% bind_cols(aopt = rep(" ",3), module = mynames,.) %>%  mypublish3(paste0("gainuf", .y-2)))
+# results %>% 
+#   filter(alpha == 0, gainuf %in% c(-1,0,1)) %>% 
+#   .[c("r_0", "r_1","r_opt")] %>% unlist(F) %>% unname() %>% 
+#   imap(~ .x  %>% round(2) %>% as.tibble() %>% `names<-`(mynames) %>% bind_cols(aopt = rep(" ",3), module = mynames,.) %>%  mypublish3(paste0("gainuf", .y - 2)))
+
+
+mypublish4 <- function(x, path, digits = 2) {
+  
+  tables <- 
+    map(x, . %>%
+    # replaceSymbols(what = mynames, by = paste0("[",mynames, "]"), x = .) %>%
+    # {`names<-`(paste0(" ", ., " "), paste0("d/dt[ ", names(.), "]"))} %>%
+    # tibble(names(.),.) %>%
+    xtable(digits = digits) %>% {xtable:::print.xtable(invisible(.), include.rownames = F)}) %>% 
+    paste0(collapse = "\n\n")
+  
+  
+  tables %>%
+    paste("\\documentclass[10pt,a4paper]{article}
+\\usepackage[latin1]{inputenc}
+\\usepackage{amsmath}
+\\usepackage{amsfonts}
+\\usepackage{amssymb}
+\\usepackage{graphicx}
+\\begin{document}", ., "\\end{document}") %>%
+    write_lines(paste0(path,".tex"))
+  system2("pandoc", c(paste0("-o ",path,".docx"), paste0(path,".tex")))
+  }
+
+
 ```
 
+
+```{r}
+#' Print single matrices as matrices in word math environemt
+#' 
+#' The align argument of xtable outside of mypublish mat needs to be ncol(mat) + 1
+#' @param x 
+#' @param filename 
+#'
+#' @return
+#' @export
+#'
+#' @examples
+#' list(r_0 = r_0, r_1 = r_1, r_opt_1 = r_opt_1) %>% imap(~.x %>% round(2) %>% xtable(align = rep("",4)) %>% print(tabular.environment="pmatrix", include.colnames = F, include.rownames = F, floating = F, hline.after = NULL) %>%  mypublish_mat(.y)
+mypublish_mat <- function(x,filename) {
+  
+  x %>%
+    paste("\\documentclass[10pt,a4paper]{article}
+\\usepackage[latin1]{inputenc}
+\\usepackage{amsmath}
+\\usepackage{amsfonts}
+\\usepackage{amssymb}
+\\usepackage{graphicx}
+\\begin{document}", 
+"\\begin{equation*}",
+filename, " = ", .,
+"\\end{equation*}", 
+"\\end{document}") %>%
+    write_lines(paste0(filename,".tex"))
+  system2("pandoc", c(paste0("-o", filename,".docx"), paste0(filename,".tex")))}
+  
+
+results %>%
+  filter(alpha == 0, gainuf %in% c(-1)) %>%
+  .[c("r_opt", "r_opt1")] %>% unlist(F) %>%
+ imap(~.x %>% round(2) %>% xtable(align = rep("",4)) %>% print(tabular.environment="pmatrix", include.colnames = F, include.rownames = F, floating = F, hline.after = NULL) %>%  mypublish_mat(.y))
+```
+
+
+
+
+```{r}
+# print matrices when adding to upper
+results %>% 
+  filter(alpha == 0, gainuf %in% c(-1,0,1)) %>%
+  .[c("r_0", "r_1","r_opt")] %>%
+  unlist(F) %>% .[t(matrix(1:9, nrow = 3))] %>% 
+  {wup <- .; `names<-`(wup, names(wup) %>% str_replace_all(c("1$" = "gu = -1", "2$" = "gu = 0", "3$" = "gu = 1",
+                                               "r_0" = "a = 0, ", "r_1" = "a = 1, ", "r_opt" = "a = a_opt, ")))} %>%
+  imap(~ .x  %>% round(2) %>% as.tibble() %>% `names<-`(mynames) %>% bind_cols(aopt = rep(.y ,3), module = mynames,.) ) %>% mypublish4("matrices_gainuf")
+
+```
+
+```{r}
+# print matrices when adding to both
+results %>% 
+  filter(alpha == 0, gainuf %in% c(-1,0,1)) %>%
+  .[c("r_0", "r_11","r_opt1")] %>%
+  unlist(F) %>% .[t(matrix(1:9, nrow = 3))] %>% 
+  {wup <- .; `names<-`(wup, names(wup) %>% str_replace_all(c("1$" = "gu = -1", "2$" = "gu = 0", "3$" = "gu = 1",
+                                               "r_0" = "a = 0, ", "r_1" = "a = 1, ", "r_opt" = "a = a_opt, ")))} %>%
+  imap(~ .x  %>% round(2) %>% as.tibble() %>% `names<-`(mynames) %>% bind_cols(aopt = rep(.y ,3), module = mynames,.) ) %>% mypublish4("matrices_gainuf_to_both")
+
+```
+
+
+```{r}
+(1+exp(-1))/2
+# print pars
+exp(pars) %>% 
+  str_subset_name("^[^a]") %>% 
+  data.frame(parameter = names(.), value = .) %>% 
+  list %>% 
+  mypublish4("parameters_gu", digits = 3)
+```
 
 
 
