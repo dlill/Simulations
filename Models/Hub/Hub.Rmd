@@ -5,9 +5,7 @@ output:
   pdf_document:
     keep_tex: yes
 ---
-
 Load libraries and define some useful paths
-
 ```{r Libraries, results='hide', echo=FALSE, message=FALSE}
 rm(list = ls())
 library(plotly)
@@ -343,9 +341,8 @@ exp(best_fit)
 r_opt <- r_alpha_fun(pars_opt = unclass(best_fit), pars = pars, perturbation_prediction = perturbation_prediction) %>% round(2)
 # pars
 r_opt
-```
 
-```{r}
+
 mypublish4 <- function(x, path, digits = 2) {
   
   tables <- 
@@ -367,10 +364,33 @@ mypublish4 <- function(x, path, digits = 2) {
 \\begin{document}", ., "\\end{document}") %>%
     write_lines(paste0(path,".tex"))
   system2("pandoc", c(paste0("-o ",path,".docx"), paste0(path,".tex")))
-  }
+}
+
+mypublish_mat <- function(x,filename) {
+  
+  x %>%
+    paste("\\documentclass[10pt,a4paper]{article}
+\\usepackage[latin1]{inputenc}
+\\usepackage{amsmath}
+\\usepackage{amsfonts}
+\\usepackage{amssymb}
+\\usepackage{graphicx}
+\\begin{document}", 
+"\\begin{equation*}",
+filename, " = ", .,
+"\\end{equation*}", 
+"\\end{document}") %>%
+    write_lines(paste0(filename,".tex"))
+  system2("pandoc", c(paste0("-o", filename,".docx"), paste0(filename,".tex")))}
+
+mynames <- paste0(LETTERS[24:26], "*")
+list(r_0 = r_0, r_1 = r_1, r_opt = r_opt) %>% 
+  imap(~ .x  %>% round(2) %>% as.tibble() %>% `names<-`(mynames) %>% bind_cols(aopt = rep(.y ,3), module = mynames,.) ) %>% mypublish4("matrices_v1k31z1")
 
 list(r_0 = r_0, r_1 = r_1, r_opt = r_opt) %>% 
-  imap(~ .x  %>% round(2) %>% as.tibble() %>% `names<-`(mynames) %>% bind_cols(aopt = rep(.y ,3), module = mynames,.) ) %>% mypublish4("matrices_gainuf")
+  imap(~ .x  %>% round(2) %>% xtable(align = rep("",4)) %>% print(tabular.environment="pmatrix", include.colnames = F, include.rownames = F, floating = F, hline.after = NULL) %>%  mypublish_mat(paste0("matrix", .y, "v1k31z1")))
+
+
 ```
 
 
