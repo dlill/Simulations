@@ -100,8 +100,8 @@ pars <- c(
   a_toz_Cyz	=	.Machine$double.eps	, # 8
   a_toz_Czx	=	.Machine$double.eps	, # 9
   
-  u2   	    =	1	, # 10
-  u1   	    =	1	, # 11
+  u1   	    =	1	, # 10
+  u2   	    =	1	, # 11
   k9       	=	50	, # 29
   k10      	=	50	, # 13
   
@@ -189,8 +189,7 @@ myrunbg_job <- runbg({
                                obs_fun = g,
                                p_fun = (p_log * p_pert),
                                pars = pars,
-                               alpha =
-                                 -log(.Machine$double.eps) + alpha)
+                               alpha = -log(.Machine$double.eps) + alpha)
           out$r_kept <- list(r_kept)
           
           myfits <- mstrust(obj_alpha,
@@ -252,7 +251,7 @@ results <- readRDS("2018_07_18_33_10_u1myrunbg.rds")
 
 Purge files from the remote computing job.
 ```{r}
-myrunbg_job$purge()
+# myrunbg_job$purge()
 ```
 
 

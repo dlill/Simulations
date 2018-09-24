@@ -18,7 +18,7 @@ library(xtable)
 ## ODE model setup
 ```{r Prediction function Cascade, results='asis'}
 reactions <- NULL %>% 
-  addReaction(from = "x1", to = "x2", rate = "((v1 *  x1)/(k1 + x1))*(1 + u2*z2/k9)/(1 + z2/k9)", description = "act_x") %>% 
+  addReaction(from = "x1", to = "x2", rate = "((v1 *  x1)/(k1 + x1))*(1 + u1*z2/k9)/(1 + z2/k9)", description = "act_x") %>% 
   addReaction(from = "x2", to = "x1", rate = "((v2 * x2 )/(k2 + x2))", description = "deact_x") %>% 
   addReaction(from = "x2 + y1", to = "Cx2y1", rate = "(k31 * y1 *x2) * (1 + u2*z2/k10)/(1 + z2/k10) - (k32 *Cx2y1)", description = "x2_y_to_comp") %>% 
   addReaction(from = "Cx2y1", to = "x2 + y2", rate = "(k4 * Cx2y1)", description = "y2_formation") %>% 
@@ -137,10 +137,15 @@ alpha_pars <- pars[str_detect(names(pars), "^a_")]
 
 # Apply different perturbations and run the algorithm
 Since all possible combinations of paramter perturbations are many, these computations are done in a parallelized manner on a remote server.
+If you want to quickly check the implementation with only one perturbation per module, uncomment the lower three lines assigning "perturbations_module_*", if you want to check the full set of perturbations, uncomment the upper three lines
 ```{r}
 perturbations_module_x <- c("x1", "k1", "v1", "k2", "v2")
 perturbations_module_y <- c("y1", "k5", "v5", "k31", "k32", "k4")
 perturbations_module_z <- c("z1", "k8", "v8", "k61", "k62", "k7")
+
+# perturbations_module_x <- c("x1")
+# perturbations_module_y <- c("y1")
+# perturbations_module_z <- c("z1")
 
 perturbation_combinations <- expand.grid(perturbations_module_x, perturbations_module_y, perturbations_module_z, stringsAsFactors = F) 
 
@@ -156,12 +161,12 @@ myrunbg_job <- runbg({
   cores <- detectFreeCores()
   pars0 <- pars
   
-  u2s <- c(-3, -1, -0.5, -0.4, -0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3, 0.4, 0.5, 1, 3, 5)
+  u2s <- c(-3, -1, -0.5, -0.3, -0.1, 0, 0.1, 0.3, 0.5, 1, 3)
   map(u2s, function(u2) {
     pars <- pars0
     pars["u2"] <- c(u2 = u2)
     
-    alphas <- c(-3, -1, -0.5, 0, 1, 2, 3)
+    alphas <- c(-3, -1, 0, 1, 3)
     map(alphas, function(alpha) {
       
       mclapply(perturbations, function(perturbations_module_) {
@@ -185,15 +190,14 @@ myrunbg_job <- runbg({
                                obs_fun = g,
                                p_fun = (p_log * p_pert),
                                pars = pars,
-                               alpha =
-                                 -log(.Machine$double.eps) + alpha)
+                               alpha = -log(.Machine$double.eps) + alpha)
           out$r_kept <- list(r_kept)
           
           myfits <- mstrust(obj_alpha,
                             center =  structure(rep(0, length(which_alpha_pars)), names = which_alpha_pars),
                             studyname = "Fits",
                             cores = 1,
-                            fits = 5,
+                            fits = 3,
                             sd = 1,
                             mypars = pars,
                             perturbation_prediction = perturbation_prediction,
@@ -210,7 +214,8 @@ myrunbg_job <- runbg({
           r_opt <- r_alpha_fun(pars_opt = myfits %>% as.parframe() %>% as.parvec() %>% unclass() ,
                                pars = pars,
                                perturbation_prediction = perturbation_prediction,
-                               p_fun = (p_log*p_pert))
+                               p_fun = (p_log*p_pert),
+                               obs_fun = g)
           out$r_opt <- list(r_opt)
           return(out)
         }
@@ -226,7 +231,7 @@ myrunbg_job <- runbg({
   }) %>% 
     do.call(rbind,.)
   
-}, machine = c("fermi"), input = ls(pos=.GlobalEnv), filename = "2018_07_18_33_10_u1"
+}, machine = c("knecht4"), input = ls(pos=.GlobalEnv), filename = "2018_07_18_33_10_u1"
 # , recover = T
 )
 ```
@@ -238,8 +243,8 @@ myrunbg_job$check()
 
 Fetch/save/restore results
 ```{r}
-# myrunbg <- myrunbg_job$get()[[1]]
-# saveRDS(myrunbg, file = "2018_07_18_33_10_u2myrunbg.rds")
+myrunbg <- myrunbg_job$get()[[1]]
+saveRDS(myrunbg, file = "2018_07_18_33_10_u2myrunbg.rds")
 results <- readRDS("2018_07_18_33_10_u2myrunbg.rds")
 
 ```
@@ -248,18 +253,6 @@ Purge files from the remote computing job.
 ```{r}
 # myrunbg_job$purge()
 ```
-
-
-```{r}
-results3 <- readRDS("2018_07_18_33_10_gainlfmyrunbg3.rds")
-results2 <- readRDS("2018_07_18_33_10_gainlfmyrunbg2.rds")
-results <- readRDS("2018_07_18_33_10_gainlfmyrunbg.rds")
-results <- bind_rows(results, results2, results3)
-# myrunbg_job$purge()
-
-# saveRDS(results, "test_different_perturbations.rds")
-```
-
 
 
 
