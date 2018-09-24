@@ -215,10 +215,9 @@ myrunbg_job <- runbg({
   }) %>% 
     do.call(rbind,.)
   
-}, machine = c("knecht2"), input = ls(pos=.GlobalEnv), filename = "2018_07_18_33_10_gainlf"
+}, machine = c("fermi"), input = ls(pos=.GlobalEnv), filename = "2018_07_18_33_10_gainlf"
 # , recover = T
 )
-
 ```
 
 Check if results are ready.

@@ -126,10 +126,15 @@ alpha_pars <- pars[str_detect(names(pars), "^a_")]
 
 # Apply different perturbations and run the algorithm
 Since all possible combinations of paramter perturbations are many, these computations are done in a parallelized manner on a remote server.
+If you want to quickly check the implementation with only one perturbation per module, uncomment the lower three lines assigning "perturbations_module_*", if you want to check the full set of perturbations, uncomment the upper three lines
 ```{r}
 perturbations_module_x <- c("x1", "k1", "v1", "k2", "v2")
 perturbations_module_y <- c("y1", "k5", "v5", "k31", "k32", "k4")
 perturbations_module_z <- c("z1", "k8", "v8", "k61", "k62", "k7")
+
+# perturbations_module_x <- c("x1")
+# perturbations_module_y <- c("y1")
+# perturbations_module_z <- c("z1")
 
 perturbation_combinations <- expand.grid(perturbations_module_x, perturbations_module_y, perturbations_module_z, stringsAsFactors = F) 
 
@@ -145,12 +150,12 @@ myrunbg_job <- runbg({
   cores <- detectFreeCores()
   pars0 <- pars
   
-  gainufs <- c(-10, -1, -0.5, -0.4, -0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3, 0.4, 0.5, 1, 2, 4, 7, 10)
+  gainufs <- c(-10, -1, -0.5, -0.4, -0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3, 0.4, 0.5, 1, 2, 5, 10)
   map(gainufs, function(gainuf) {
     pars <- pars0
     pars["gainuf"] <- c(gainuf = gainuf)
     
-    alphas <- c(-1, -0.5, 0, 1, 2, 3, 4, 5, 6, 7)
+    alphas <- c(-3, -1, -0.5, 0, 1, 2, 3)
     map(alphas, function(alpha) {
       
       mclapply(perturbations, function(perturbations_module_) {
@@ -215,7 +220,7 @@ myrunbg_job <- runbg({
   }) %>% 
     do.call(rbind,.)
   
-}, machine = c("knecht2"), input = ls(pos=.GlobalEnv), filename = "2018_07_18_33_10_gainuf"
+}, machine = c("knecht4"), input = ls(pos=.GlobalEnv), filename = "2018_07_18_33_10_gainuf"
 # , recover = T
 )
 
