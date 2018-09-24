@@ -40,10 +40,6 @@ xs <- Xs_steady(compiled_model) # When computing steady states, set deriv = F
 loadDLL(x)
 ```
 
-
-
-
-
 ### Modules, their observables and the observation function
 Observation function which depends also on the optimization parameters. With their help, the complexes can smoothly be switched on in the observation.
 
@@ -320,35 +316,6 @@ results %>%
 
 
 
-```{r}
-#' Print single matrices as matrices in word math environemt
-#' 
-#' The align argument of xtable outside of mypublish mat needs to be ncol(mat) + 1
-#' @param x 
-#' @param filename 
-#'
-#' @return
-#' @export
-#'
-#' @examples
-#' list(r_0 = r_0, r_1 = r_1, r_opt_1 = r_opt_1) %>% imap(~.x %>% round(2) %>% xtable(align = rep("",4)) %>% print(tabular.environment="pmatrix", include.colnames = F, include.rownames = F, floating = F, hline.after = NULL) %>%  mypublish_mat(.y)
-mypublish_mat <- function(x,filename) {
-  
-  x %>%
-    paste("\\documentclass[10pt,a4paper]{article}
-\\usepackage[latin1]{inputenc}
-\\usepackage{amsmath}
-\\usepackage{amsfonts}
-\\usepackage{amssymb}
-\\usepackage{graphicx}
-\\begin{document}", 
-"\\begin{equation*}",
-filename, " = ", .,
-"\\end{equation*}", 
-"\\end{document}") %>%
-    write_lines(paste0(filename,".tex"))
-  system2("pandoc", c(paste0("-o", filename,".docx"), paste0(filename,".tex")))}
-  
 
 results %>%
   filter(alpha == 0, u1 %in% c(-1)) %>%

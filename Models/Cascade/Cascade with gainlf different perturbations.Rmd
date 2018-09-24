@@ -17,14 +17,26 @@ library(xtable)
 
 ## ODE model setup
 ```{r Prediction function Cascade, results='asis'}
-modelname   <- "Cascade"
-reactions     <- as.eqnlist(read.csv(paste0(modelname, ".csv")))
-myodemodel <- odemodel(reactions, modelname = modelname)
+reactions <- NULL %>% 
+  addReaction(from = "x1", to = "x2", rate = "((v1 *  x1)/(k1 + x1))*(1 + u2*z2/k9)/(1 + z2/k9)", description = "act_x") %>% 
+  addReaction(from = "x2", to = "x1", rate = "((v2 * x2 )/(k2 + x2))", description = "deact_x") %>% 
+  addReaction(from = "x2 + y1", to = "Cx2y1", rate = "(k31 * y1 *x2) * (1 + u2*z2/k10)/(1 + z2/k10) - (k32 *Cx2y1)", description = "x2_y_to_comp") %>% 
+  addReaction(from = "Cx2y1", to = "x2 + y2", rate = "(k4 * Cx2y1)", description = "y2_formation") %>% 
+  addReaction(from = "y2", to = "y1", rate = "((v5 * y2)/(k5 + y2))", description = "deact_y") %>% 
+  addReaction(from = "y2 + z1", to = "Cy2z1", rate = "((k61 *z1 *y2) - (k62 * Cy2z1))", description = "y2_z_to_comp") %>% 
+  addReaction(from = "Cy2z1", to = "y2 + z2", rate = "(k7 * Cy2z1)", description = "z2_formation") %>% 
+  addReaction(from = "z2", to = "z1", rate = "((v8 * z2)/(k8 + z2))", description = "z_deact") %>% 
+  addReaction(from = "x2 + z2", to = "Cx2z2", rate = "k111*x2*z2-k112*Cx2z2", description = "z2_x2_to_comp") %>% 
+  addReaction(from = "Cx2z2", to = "x1 + z2", rate = "k12*Cx2z2", description = "deact_x_by_z2") %>% 
+  addReaction(from = "x1 + z2", to = "Cx1z2", rate = "k131*x1*z2-k132*Cx1z2", description = "z2_x1_to_comp") %>% 
+  addReaction(from = "Cx1z2", to = "x2 + z2", rate = "k14*Cx1z2", description = "act_x_by_z2")
+
+compiled_model <- odemodel(reactions, modelname = "Cascade")
 
 # Prediction function
-x <- Xs(odemodel = myodemodel)
+x <- Xs(odemodel = compiled_model) 
 # Prediction function for steady states
-xs <- Xs_steady(myodemodel) # When computing steady states, set deriv = F
+xs <- Xs_steady(compiled_model) # When computing steady states, set deriv = F
 loadDLL(x)
 ```
 
@@ -63,7 +75,6 @@ log_pars %>% p_log %>% p_other %>% p_other_2 %>% ...
 ```{r}
 trafo <- getParameters(x,g) %>% 
   setNames(.,.) %>% 
-  insert("x~0", x = str_subset(.currentSymbols, "deg|syn")) %>% # set synthesis and degradations to zero
   insert("x~0", x = str_subset(.currentSymbols, "^C*[xyz](2|1.2)")) %>% # set inits to zero
   insert("x~0", x = c("k131", "k132", "k14")) %>% 
   insert("x~0", x = c("k111", "k112", "k12")) %>% 
@@ -89,10 +100,10 @@ pars <- c(
   a_toz_Cyz	=	.Machine$double.eps	, # 8
   a_toz_Czx	=	.Machine$double.eps	, # 9
   
-  gainlf   	=	1	, # 10
-  gainuf   	=	1	, # 11
-  k9       	=	100	, # 29
-  k10      	=	100	, # 13
+  u1   	    =	1	, # 10
+  u2   	    =	1	, # 11
+  k9       	=	50	, # 29
+  k10      	=	50	, # 13
   
   k1       	=	100	, # 12
   v1       	=	1.5	, # 30
@@ -145,12 +156,12 @@ myrunbg_job <- runbg({
   cores <- detectFreeCores()
   pars0 <- pars
   
-  gainlfs <- c(-10, -1, -0.5, -0.4, -0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3, 0.4, 0.5, 1, 2, 4, 7, 10)
-  map(gainlfs, function(gainlf) {
+  u2s <- c(-3, -1, -0.5, -0.4, -0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3, 0.4, 0.5, 1, 3, 5)
+  map(u2s, function(u2) {
     pars <- pars0
-    pars["gainlf"] <- c(gainlf = gainlf)
+    pars["u2"] <- c(u2 = u2)
     
-    alphas <- c(-1, -0.5, 0, 1, 2, 3, 4, 5, 6, 7)
+    alphas <- c(-3, -1, -0.5, 0, 1, 2, 3)
     map(alphas, function(alpha) {
       
       mclapply(perturbations, function(perturbations_module_) {
@@ -207,7 +218,7 @@ myrunbg_job <- runbg({
         to_upstream_module <- algo(c("a_tox_Cxy", "a_toy_Cyz", "a_toz_Czx"), "upstream")
         to_both_modules <- algo(c("a_Cxy", "a_Cyz", "a_Czx"), "both")
         
-        bind_cols(tibble(r_0 = list(r_0 %>% round(2)), pars_perturbed = list(perturbations_module_), alpha = alpha, gainlf = gainlf), to_upstream_module, to_both_modules)
+        bind_cols(tibble(r_0 = list(r_0 %>% round(2)), pars_perturbed = list(perturbations_module_), alpha = alpha, u2 = u2), to_upstream_module, to_both_modules)
       }, mc.cores = cores) %>% 
         do.call(rbind,.) 
     }) %>% 
@@ -215,7 +226,7 @@ myrunbg_job <- runbg({
   }) %>% 
     do.call(rbind,.)
   
-}, machine = c("fermi"), input = ls(pos=.GlobalEnv), filename = "2018_07_18_33_10_gainlf"
+}, machine = c("fermi"), input = ls(pos=.GlobalEnv), filename = "2018_07_18_33_10_u1"
 # , recover = T
 )
 ```
@@ -228,8 +239,8 @@ myrunbg_job$check()
 Fetch/save/restore results
 ```{r}
 # myrunbg <- myrunbg_job$get()[[1]]
-# saveRDS(myrunbg, file = "2018_07_18_33_10_gainlfmyrunbg.rds")
-results <- readRDS("2018_07_18_33_10_gainlfmyrunbg.rds")
+# saveRDS(myrunbg, file = "2018_07_18_33_10_u2myrunbg.rds")
+results <- readRDS("2018_07_18_33_10_u2myrunbg.rds")
 
 ```
 
@@ -277,35 +288,32 @@ print_msword_table <- function(x, path, digits = 2) {
 Export some tables for the publication
 ```{r}
 results %>% 
-  filter(alpha == 0, gainlf %in% c(-10,0,2)) %>% 
+  filter(alpha == 0, u2 %in% c(-10,0,2)) %>% 
   filter(map_lgl(pars_perturbed, . %>% {str_detect(names(.), c("x1", "y1", "z1"))} %>% all)) %>% 
   .[c("r_opt","r_opt1")] %>%
   unlist(F) %>% #.[t(matrix(1:6, nrow = 3))] %>% 
   {mymatrix <- .; `names<-`(mymatrix, names(mymatrix) %>% str_replace_all(c("1$" = "gl = -10", "2$" = "gl = 0", "3$" = "gl = 2",
                                                "r_0" = "a = 0, ", "r_1" = "a = 1, ", "r_opt" = "a = a_opt, ")))} %>%
-  imap(~ .x  %>% round(2) %>% as.tibble() %>% `names<-`(communicating_species) %>% bind_cols(aopt = rep(.y ,3), module = communicating_species,.) ) %>% print_msword_table("matrices_gainlf_positive_detected")
+  imap(~ .x  %>% round(2) %>% as.tibble() %>% `names<-`(communicating_species) %>% bind_cols(aopt = rep(.y ,3), module = communicating_species,.) ) %>% print_msword_table("matrices_u2_positive_detected")
 
 
 results %>% 
-  filter(alpha == 0, gainlf %in% c(-10,0,2)) %>% 
+  filter(alpha == 0, u2 %in% c(-10,0,2)) %>% 
   filter(map_lgl(pars_perturbed,. %>% {str_detect(names(.), c("x1", "y1", "k8"))} %>% all)) %>% 
   .[c("r_opt","r_opt1")] %>%
   unlist(F) %>% #.[t(matrix(1:6, nrow = 3))] %>% 
   {mymatrix <- .; `names<-`(mymatrix, names(mymatrix) %>% str_replace_all(c("1$" = "gl = -10", "2$" = "gl = 0", "3$" = "gl = 2",
                                                "r_0" = "a = 0, ", "r_1" = "a = 1, ", "r_opt" = "a = a_opt, ")))} %>%
-  imap(~ .x  %>% round(2) %>% as.tibble() %>% `names<-`(communicating_species) %>% bind_cols(aopt = rep(.y ,3), module = communicating_species,.) ) %>% print_msword_table("matrices_gainlf_negative_detected")
+  imap(~ .x  %>% round(2) %>% as.tibble() %>% `names<-`(communicating_species) %>% bind_cols(aopt = rep(.y ,3), module = communicating_species,.) ) %>% print_msword_table("matrices_u2_negative_detected")
 
 ```
 
 
 
 
-
-
-
-
-
-
-
-
+results %>%
+  filter(alpha == 0, u2 %in% c(-1)) %>%
+  .[c("r_opt", "r_opt1")] %>% unlist(F) %>%
+ imap(~.x %>% round(2) %>% xtable(align = rep("",4)) %>% print(tabular.environment="pmatrix", include.colnames = F, include.rownames = F, floating = F, hline.after = NULL) %>%  mypublish_mat(.y))
+```
 
