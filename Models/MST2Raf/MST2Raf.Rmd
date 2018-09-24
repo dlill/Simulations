@@ -13,8 +13,6 @@ rm(list = ls())
 library(MRAr)
 library(scales)
 library(xtable)
-path <- paste0(getwd(), "/")
-pathout <- paste0(path, "Output/")
 ```
 
 ```{r Names for Fit storage of different initial Conditions}
@@ -22,7 +20,7 @@ fit_name <- "MST2-Raf"
 ```
 
 ```{r Call render without overwriting any previous documents, echo=FALSE, eval=FALSE}
-rmarkdown::render("MST2Raf.Rmd", output_file = paste0(pathout, fit_name, format(Sys.time(), "%Y%m%d-%H%M"), ".pdf"))
+rmarkdown::render("MST2Raf.Rmd", output_file = paste0(fit_name, format(Sys.time(), "%Y%m%d-%H%M"), ".pdf"))
 ```
 # Cascade
 
@@ -34,20 +32,41 @@ odemodel writes a C-function, which is executed in x and xs.
 x is a regular prediction function while xs only finds and returns the steady states.
 If the odemodel has been calculated already, it can be loaded with "load".
 ```{r Prediction function Cascade}
-modelpath <- paste0(path, "Models/MST2Raf/")
 modelname   <- "MST2Raf"
-mymodel     <- as.eqnlist(read.csv(paste0(modelpath, modelname, ".csv")))
+mymodel     <- as.eqnlist(read.csv(paste0(modelname, ".csv")))
 # mymodel
 
 # myodemodel <- odemodel(mymodel, modelname = paste0(modelname), deriv = T)
-# save(myodemodel, file = paste0(modelpath, "odemodel",modelname, ".RData"))
-load(paste0(modelpath, "odemodel",modelname, ".RData"))
+# save(myodemodel, file = paste0("odemodel",modelname, ".RData"))
+load(paste0("odemodel",modelname, ".RData"))
 
 # Prediction function
 x <- Xs(odemodel = myodemodel)
 # Prediction function for steady states
 xs <- Xs_steady(myodemodel) # When computing steady states, set deriv = F
 mymodel
+
+mymodel %>% as.eqnvec() %>% {`names<-`(paste0("$ ", ., " $"), paste0("$ \\dot{ ", names(.), " }$"))} %>% tibble(names(.),.) #%>% write_csv("model.md", col_names = F)
+
+
+mynames <- mymodel %>% as.eqnvec() %>% names
+mymodel %>% 
+  as.eqnvec() %>% 
+  replaceSymbols(what = mynames, by = paste0("[",mynames, "]"), x = .) %>% 
+  {`names<-`(paste0("$ ", ., " $"), paste0("$d/dt[ ", names(.), "]$"))} %>% 
+  tibble(names(.),.) %>% 
+  xtable() %>% print(include.rownames = F, include.colnames = F) %>% 
+  paste("\\documentclass[10pt,a4paper]{article}
+\\usepackage[latin1]{inputenc}
+\\usepackage{amsmath}
+\\usepackage{amsfonts}
+\\usepackage{amssymb}
+\\usepackage{graphicx}
+\\begin{document}", ., "\\end{document}")  %>% 
+  str_replace_all( "\\\\\\$" , "$")  %>% 
+  write_lines("model.tex")
+system2("pandoc", c("-o model.docx", "model.tex"))
+
 ```
 
 ### Modules, their observables and the observation function
@@ -68,9 +87,9 @@ g <- g0 <- Y(as.eqnvec(structure(obs, names = modules)), mymodel, compile = TRUE
 Load all parameters and format them for further use.
 ```{r Parameters Cascade}
 
-pars_raw <- read.csv(paste0(modelpath, "pars.csv"), header = FALSE)  # dynamical parameters
+pars_raw <- read.csv(paste0("pars.csv"), header = FALSE)  # dynamical parameters
 pars_raw <- structure(pars_raw$V2, names = as.character(pars_raw$V1))
-ic_raw <- read.csv(paste0(modelpath, "IC.csv"), header = F)          # initial conditions
+ic_raw <- read.csv(paste0("IC.csv"), header = F)          # initial conditions
 ic_raw <- structure(ic_raw$V2, names = as.character(ic_raw$V1))
 # sort ics like they appear in x, so it can be used in stode()
 vars_x <- attr(x, "parameters")[attr(x, "parameters") %in% names(ic_raw)]

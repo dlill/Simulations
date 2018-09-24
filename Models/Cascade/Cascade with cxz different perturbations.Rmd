@@ -177,9 +177,9 @@ z1       	=	100	  # 36
 
 # Apply different perturbations
 ```{r job}
-pp_x <- c("x1", "k1", "v1", "k2", "v2", "k111", "k112", "k12") 
-pp_y <- c("y1", "k5", "v5", "k31", "k32", "k4") 
-pp_z <- c("z1", "k8", "v8", "k61", "k62", "k7")
+pp_x = c("x1", "k1", "v1", "k2", "v2", "k111", "k112", "k12") 
+pp_y = c("y1", "k5", "v5", "k31", "k32", "k4") 
+pp_z = c("z1", "k8", "v8", "k61", "k62", "k7")
 
 mygrid <- expand.grid(pp_x, pp_y, pp_z, stringsAsFactors = F) 
 pp_list <- map(1:nrow(mygrid), function(i) {
@@ -263,10 +263,10 @@ myrunbg_job <- runbg({
 )
 # myrunbg_job$check()
 # runbg(wait_for_runbg(myrunbg_job), filename = "wait", input = "myrunbg_job")
-# myrunbg <- myrunbg_job$get()$fermi
+# myrunbg <- myrunbg_job$get()[[1]]
 # saveRDS(myrunbg, file = "myrunbg_new.rds")
-# results <- readRDS("myrunbg_new.rds")
-results <- readRDS("myrunbg.rds")
+results <- readRDS("myrunbg_new.rds")
+# results <- readRDS("myrunbg.rds")
 # myrunbg_job$purge()
 
 # saveRDS(results, "test_different_perturbations.rds")
@@ -301,7 +301,7 @@ results_unnested_matrices <-
   unnest(upstreamropt, bothropt, pars_perturbed)
 
 # clustering and print function
-cluster_matrices_and_print_perturbations <- function(results_unnested_matrices, a, col_start, nclust, not_which_clust) {
+cluster_matrices_and_print_perturbations <- function(results_unnested_matrices, a,col_start, nclust, which_clust) {
   kclusts <- results_unnested_matrices %>% 
     filter(near(alpha, a)) %>% 
     select(starts_with(col_start)) %>% 
@@ -310,44 +310,93 @@ cluster_matrices_and_print_perturbations <- function(results_unnested_matrices, 
     {.} %T>% print(digits = 2) %>%
     {.}
   
+  kclusts$centers %>% 
+    round(2) %>% 
+    apply(1, . %>% matrix( nrow = 3) %>% print %>% {NULL}) 
+    
   augmented <- broom::augment(kclusts, results_unnested_matrices %>% filter(near(alpha, a)))
   
   augmented %>% 
-    filter(! (.cluster %in% not_which_clust)) %>% 
+    filter(.cluster %in% which_clust) %>% 
     select(X,Y,Z) 
 }
-
 ```
 
 
 # Description of results
 
+```{r}
+pp_x <-  c("x1", "k1", "v1", "k2", "v2", "k111", "k112", "k12")  %>% print
+pp_y <- c("y1", "k5", "v5", "k31", "k32", "k4") %>% print 
+pp_z <- c("z1", "k8", "v8", "k61", "k62", "k7") %>% print
+
+results_unnested_matrices %>% select(alpha) %>% map(unique)
+```
+
+
 ## Upstream:
 * Adding complex to upstream works well, perturbations of k\*1, k\*2 and kcat are eligible for downstream modules, not for upstream modules
 ```{r}
-cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, "up_", 10, 1:2)%>% 
+cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, "up_", 10, (1:10)[-(1:2)])%>% 
     print(n = 1000)
 ```
 
 ## Both
 
-* Adding the complexes to both introduces the need to choose a different alpha, e.g. with alpha = 0, it doesn't work anymore:
+* alpha = 0 is too low
 ```{r}
-cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, "both_", 20, 1:2)%>% 
+cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, "both_", 10, 1)%>% 
     print(n = 1000)
 ```
 
-* with higher alpha, it starts to work a bit better
+* alpha = 3 is better, but there is still no "unique network", cluster 9/15 looks ok, though
 ```{r}
-cluster_matrices_and_print_perturbations(results_unnested_matrices, 3, "both_", 15, (1:15)[-3])%>% 
-    print(n = 1000)
-cluster_matrices_and_print_perturbations(results_unnested_matrices, 3, "both_", 15, 3)%>% 
+cluster_matrices_and_print_perturbations(results_unnested_matrices, 3, "both_", 15, 9)%>% 
     print(n = 1000)
 ```
 
+* alpha = 4 is a bit better, cluster 3/5 looks quite good, but the others don't
 ```{r}
-cluster_matrices_and_print_perturbations(results_unnested_matrices, 3, "both_", 20, (1:20)[-3]) %>% 
+cluster_matrices_and_print_perturbations(results_unnested_matrices, 4, "both_", 5, 3) %>% 
+  # write_csv("selected_perturbations.csv")
+print(n = 1000)
+
+
+
+mygrid %>% `names<-`(LETTERS[24:26]) %>% 
+  write_csv("all_pertubrations.csv")
+
+
+# clustering and print function
+wup <- function(results_unnested_matrices, a,col_start, nclust, which_clust) {
+  kclusts <- results_unnested_matrices %>% 
+    filter(near(alpha, a)) %>% 
+    select(starts_with(col_start)) %>% 
+    {.} %T>% {set.seed(1)} %>%
+    kmeans(nclust) %>% 
+    {.} %T>% print(digits = 2) %>%
+    {.}
+  
+  kclusts$centers %>% 
+    round(2) %>% 
+    apply(1, . %>% matrix( nrow = 3) %>% print %>% {NULL}) 
+    
+  augmented <- broom::augment(kclusts, results_unnested_matrices %>% filter(near(alpha, a)))
+  
+  augmented %>% 
+    filter(.cluster %in% which_clust) %>% 
+    select(starts_with(col_start)) %>% 
+    apply(1, . %>% unlist %>% matrix(ncol = 3) %>% print %>% {NULL})
+}
+wup(results_unnested_matrices, 4, "both_", 5, 3)
+```
+
+
+```{r}
+cluster_matrices_and_print_perturbations(results_unnested_matrices, 5, "both_", 10, 2) %>% 
   arrange(X,Y,Z) %>% 
+  group_by(X) %>% 
+  summarise(n = n())
   print(n = 1000)
 ```
 

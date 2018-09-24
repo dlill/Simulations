@@ -410,6 +410,31 @@ mypublish4 <- function(x, path, digits = 2) {
 
 ```
 
+```{r}
+# print matrices when adding to upper
+results %>% 
+  filter(alpha == 0, gainuf %in% c(-1,0,1)) %>%
+  .[c("r_0", "r_1","r_opt")] %>%
+  unlist(F) %>% .[t(matrix(1:9, nrow = 3))] %>% 
+  {wup <- .; `names<-`(wup, names(wup) %>% str_replace_all(c("1$" = "gu = -1", "2$" = "gu = 0", "3$" = "gu = 1",
+                                               "r_0" = "a = 0, ", "r_1" = "a = 1, ", "r_opt" = "a = a_opt, ")))} %>%
+  imap(~ .x  %>% round(2) %>% as.tibble() %>% `names<-`(mynames) %>% bind_cols(aopt = rep(.y ,3), module = mynames,.) ) %>% mypublish4("matrices_gainuf")
+
+```
+
+```{r}
+# print matrices when adding to both
+results %>% 
+  filter(alpha == 0, gainuf %in% c(-1,0,1)) %>%
+  .[c("r_0", "r_11","r_opt1")] %>%
+  unlist(F) %>% .[t(matrix(1:9, nrow = 3))] %>% 
+  {wup <- .; `names<-`(wup, names(wup) %>% str_replace_all(c("1$" = "gu = -1", "2$" = "gu = 0", "3$" = "gu = 1",
+                                               "r_0" = "a = 0, ", "r_1" = "a = 1, ", "r_opt" = "a = a_opt, ")))} %>%
+  imap(~ .x  %>% round(2) %>% as.tibble() %>% `names<-`(mynames) %>% bind_cols(aopt = rep(.y ,3), module = mynames,.) ) %>% mypublish4("matrices_gainuf_to_both")
+
+```
+
+
 
 ```{r}
 #' Print single matrices as matrices in word math environemt
@@ -446,34 +471,6 @@ results %>%
   .[c("r_opt", "r_opt1")] %>% unlist(F) %>%
  imap(~.x %>% round(2) %>% xtable(align = rep("",4)) %>% print(tabular.environment="pmatrix", include.colnames = F, include.rownames = F, floating = F, hline.after = NULL) %>%  mypublish_mat(.y))
 ```
-
-
-
-
-```{r}
-# print matrices when adding to upper
-results %>% 
-  filter(alpha == 0, gainuf %in% c(-1,0,1)) %>%
-  .[c("r_0", "r_1","r_opt")] %>%
-  unlist(F) %>% .[t(matrix(1:9, nrow = 3))] %>% 
-  {wup <- .; `names<-`(wup, names(wup) %>% str_replace_all(c("1$" = "gu = -1", "2$" = "gu = 0", "3$" = "gu = 1",
-                                               "r_0" = "a = 0, ", "r_1" = "a = 1, ", "r_opt" = "a = a_opt, ")))} %>%
-  imap(~ .x  %>% round(2) %>% as.tibble() %>% `names<-`(mynames) %>% bind_cols(aopt = rep(.y ,3), module = mynames,.) ) %>% mypublish4("matrices_gainuf")
-
-```
-
-```{r}
-# print matrices when adding to both
-results %>% 
-  filter(alpha == 0, gainuf %in% c(-1,0,1)) %>%
-  .[c("r_0", "r_11","r_opt1")] %>%
-  unlist(F) %>% .[t(matrix(1:9, nrow = 3))] %>% 
-  {wup <- .; `names<-`(wup, names(wup) %>% str_replace_all(c("1$" = "gu = -1", "2$" = "gu = 0", "3$" = "gu = 1",
-                                               "r_0" = "a = 0, ", "r_1" = "a = 1, ", "r_opt" = "a = a_opt, ")))} %>%
-  imap(~ .x  %>% round(2) %>% as.tibble() %>% `names<-`(mynames) %>% bind_cols(aopt = rep(.y ,3), module = mynames,.) ) %>% mypublish4("matrices_gainuf_to_both")
-
-```
-
 
 ```{r}
 (1+exp(-1))/2

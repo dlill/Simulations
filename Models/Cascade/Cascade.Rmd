@@ -9,7 +9,7 @@ output:
 
 ```{r Initialization, results='hide', echo=FALSE, message=FALSE}
 # Load libraries and define some useful paths
-rm(list = ls())
+# rm(list = ls())
 library(MRAr)
 library(scales)
 library(xtable)
@@ -205,6 +205,9 @@ a_toz_Cyz	=	0	  # 49
 pars_0 <- pars <- log(pars+.Machine$double.eps) %>% set_names(names(pars_0))
 ```
 
+
+
+
 Parameters for Figure 5
 ```{r}
 # pars <- c(100,0,0,100,0,0,100,0,0,
@@ -290,9 +293,14 @@ remove_c_and_o()
 ```{r}
 myframe <- dMod.frame("1", g, x, p_log, NULL, NULL, p_pert = list(p_pert), xs = list(xs), pars = list(pars))
 
-pp_x <- c("x1", "k1", "v1", "k2", "v2", "k31", "k32", "k4") %>% paste0("log", .)
-pp_y <- c("y1", "k5", "v5", "k31", "k32", "k4", "k61", "k62", "k7") %>% paste0("log", .)
-pp_z <- c("z1", "k8", "v8", "k61", "k62", "k7") %>% paste0("log", .)
+# pp_x <- c("x1", "k1", "v1", "k2", "v2", "k31", "k32", "k4") %>% paste0("log", .)
+# pp_y <- c("y1", "k5", "v5", "k31", "k32", "k4", "k61", "k62", "k7") %>% paste0("log", .)
+# pp_z <- c("z1", "k8", "v8", "k61", "k62", "k7") %>% paste0("log", .)
+
+pp_x <- c("x1") %>% paste0("log", .)
+pp_y <- c("y1") %>% paste0("log", .)
+pp_z <- c("z1") %>% paste0("log", .)
+
 
 mygrid <- expand.grid(pp_x, pp_y, pp_z, stringsAsFactors = F) 
 pp_list <- map(1:nrow(mygrid), function(i) {
@@ -389,6 +397,9 @@ map(mygrid_2$ind, function(i) {
 })
 ```
 
+```{r}
+results
+```
 
 
 

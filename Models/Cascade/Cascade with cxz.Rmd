@@ -255,16 +255,20 @@ myrunbg_job <- runbg({
   }, mc.cores = cores)
   result
 }, machine = c("fermi"), input = ls(pos=.GlobalEnv), filename = "2018_07_17_16_10_myrunbg_job"
-  # , recover = T
+  , recover = T
 )
 # myrunbg_job$check()
 # runbg(wait_for_runbg(myrunbg_job), filename = "wait", input = "myrunbg_job")
-myrunbg <- myrunbg_job$get()$fermi
-saveRDS(myrunbg, file = "myrunbg.rds")
+# myrunbg <- myrunbg_job$get()$fermi
+# saveRDS(myrunbg, file = "myrunbg.rds")
 results <- readRDS("myrunbg.rds")
 # myrunbg_job$purge()
 
 # saveRDS(results, "test_different_perturbations.rds")
+```
+
+```{r}
+results[1,]$bothropt
 ```
 
 
@@ -370,56 +374,21 @@ Just to show the code...
 Set up the perturbations
 ```{r}
 # Which pars shall be perturbed?
-pars_perturbed_0 <- pars_perturbed <- c("x1" = log(0.8), "y1" = log(0.8), "z1" = log(0.8))
+pars_perturbed <- c("x1" = log(0.9), "y1" = log(0.9), "z1" = log(0.9))
 
 p_pert <- p_pert_fun(pars_perturbed = pars_perturbed, pars = pars)
-# ```
-# 
-# 
-# ```{r  which pars are perturbed  Cascade, echo=FALSE}
-# pars <- c(100,0,0,100,0,0,100,0,0,
-#           14.766,0.241,1058.451,5.295,
-#           0.003,
-#           0.012,0.022,
-#           1150.484,
-#           50,
-#           0.00065,
-#           0.005,0.023,
-#           550.208,13.304,50,50,
-#           1,1,
-#           0,0,0,0,0,0,00,0,0,0,0,0,
-#           rep(0, length(pars_opt_0))) # large complex
-print("")
-pars <- c(100,0,0,100,0,0,100,0,0,
-          100,1.5,100,1,     0.002,0.4,0.05,
-          100,5,            0.005,0.4,0.05,
-          100,1,
-          100,100,1,1,
-          0,0,0,0,0,0,0,0,0,
-          0.002,0.4,0.05,
-          rep(0, length(pars_opt_0))) %>% set_names(names(pars_inner_0))
-
-pars
-
-pars_0 <- pars <- log(pars+.Machine$double.eps) %>% set_names(names(pars_0))# large complex concentrations
-# p_log(pars)
-
-# (p_log*p_pert)(pars)
-
-perturbation_prediction_0 <- perturbation_prediction <-  (xs*p_log*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
-
-# mytime <- 2000
-# (x*p_log*p_pert)(times = seq(0,2000, length.out = 50), pars = pars) %>% 
-#   getDerivs() %>% 
-#   extract2(1) %>%
-#   apply_expression({x[,c(str_detect(colnames(x), "(Cx2y1\\.)|time"))]}) %>% prdlist() %>% set_names("blas") %>% 
-#   plotPrediction()
+compile(p_pert)
+perturbation_prediction <-  (xs*p_log*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
 
 
 
 # perturbation_prediction %>% lapply(round,2)
 
-r_kept_0 <- r_kept_fun(pars_opt = pars_opt_0,
+```
+
+```{r}
+
+r_kept_0 <- r_kept_fun(pars_opt = pars_opt,
                        perturbation_prediction = perturbation_prediction, 
                        obs_fun = g,
                        p_fun = (p_log * p_pert), 
@@ -427,29 +396,127 @@ r_kept_0 <- r_kept_fun(pars_opt = pars_opt_0,
                        alpha = -log(0+.Machine$double.eps))
 r_kept_0
 
-r_0 <-   R_fun(pars_opt = pars_opt[c("loga_tox_Cxy", "loga_toy_Cyz")],
+par_opt_names <- c("a_tox_Cxy", "a_toy_Cyz", "a_toz_Czx")
+
+
+r_0 <-   R_fun(pars_opt = pars_opt[par_opt_names],
                perturbation_prediction = perturbation_prediction,
                obs_fun = g,
                p_fun = (p_log*p_pert),
                pars = pars) %>% local_response_matrix_eq10()
 r_0%>% round(2)
 
-r_1 <-   R_fun(pars_opt = pars_opt[c("loga_tox_Cxy", "loga_toy_Cyz")]-(log(0+.Machine$double.eps)),
+r_1 <-   R_fun(pars_opt = pars_opt[par_opt_names]-(log(0+.Machine$double.eps)),
                perturbation_prediction = perturbation_prediction,
                obs_fun = g,
                p_fun = (p_log*p_pert),
                pars = pars) %>% local_response_matrix_eq10()
 r_1 %>% round(2)
 
-par_opt_names <- c("loga_tox_Cxy", "loga_toy_Cyz", "loga_toz_Czx")
 # matrix(c(F,F,F,T,F,F,F,T,F), ncol = 3)
-myfits <- mstrust(obj_alpha, center =  structure(rep(0, length(pars_opt_0[par_opt_names])), names = names(pars_opt_0[par_opt_names])), studyname = "Fits", cores = 3, fits = 3, sd = 1, mypars = pars, perturbation_prediction = perturbation_prediction_0, r_kept = r_kept_0)
+
+myfits <- mstrust(obj_alpha, center =  par_opt_names %>% are_names_of(0), studyname = "Fits", cores = 3, fits = 3, sd = 1, mypars = pars, perturbation_prediction = perturbation_prediction, r_kept = r_kept_0)
 # myfits %>% as.parframe() 
 best_fit <- myfits %>% as.parframe() %>% as.parvec()
 
-r_alpha_fun(pars_opt = unclass(best_fit), pars = pars, perturbation_prediction = perturbation_prediction) %>% round(2)
+r_opt_1 <- r_alpha_fun(pars_opt = unclass(best_fit), pars = pars, perturbation_prediction = perturbation_prediction) %>% round(2)
+
 ```
 
+```{r}
+
+#' Print single matrices as matrices in word math environemt
+#' 
+#' The align argument of xtable outside of mypublish mat needs to be ncol(mat) + 1
+#' @param x 
+#' @param filename 
+#'
+#' @return
+#' @export
+#'
+#' @examples
+#' list(r_0 = r_0, r_1 = r_1, r_opt_1 = r_opt_1) %>% imap(~.x %>% round(2) %>% xtable(align = rep("",4)) %>% print(tabular.environment="pmatrix", include.colnames = F, include.rownames = F, floating = F, hline.after = NULL) %>%  mypublish_mat(.y)
+mypublish_mat <- function(x,filename) {
+  
+  x %>%
+    paste("\\documentclass[10pt,a4paper]{article}
+\\usepackage[latin1]{inputenc}
+\\usepackage{amsmath}
+\\usepackage{amsfonts}
+\\usepackage{amssymb}
+\\usepackage{graphicx}
+\\begin{document}", 
+"\\begin{equation*}",
+filename, " = ", .,
+"\\end{equation*}", 
+"\\end{document}") %>%
+    write_lines(paste0(filename,".tex"))
+  system2("pandoc", c(paste0("-o", filename,".docx"), paste0(filename,".tex")))}
+  
+
+list(r_0 = r_0, r_1 = r_1, r_opt_1 = r_opt_1) %>% imap(~.x %>% round(2) %>% xtable(align = rep("",4)) %>% print(tabular.environment="pmatrix", include.colnames = F, include.rownames = F, floating = F, hline.after = NULL) %>%  mypublish_mat(.y))
+
+
+```
+
+```{r}
+list(r_0 = r_0, r_1 = r_1, r_opt_1 = r_opt_1) %>% imap(~.x %>% round(2) %>% xtable(align = rep("",4)) %>% print(tabular.environment="pmatrix", include.colnames = F, include.rownames = F, floating = F, hline.after = NULL) %>%  mypublish_mat(.y))
+
+r_0 %>% round(2) %>% 
+  cbind(rep("", nrow(.)), paste0(rownames(.), "*"),.) %>% 
+  `rownames<-`(NULL) %>% 
+  `colnames<-`(., paste0(colnames(.), "*")) %>% 
+  xtable() %>% 
+  print.xtable(include.rownames = F) %>% 
+  write_lines("filename")
+
+mypublish_mat2 <- function(x,filename) {
+  
+  x %>% round(2) %>% 
+  cbind(rep("", nrow(.)), paste0(rownames(.), "*"),.) %>% 
+  `rownames<-`(NULL) %>% 
+  `colnames<-`(., paste0(colnames(.), "*")) %>% 
+    xtable() %>% 
+  print.xtable(include.rownames = F) %>% 
+    paste("\\documentclass[10pt,a4paper]{article}
+\\usepackage[latin1]{inputenc}
+\\usepackage{amsmath}
+\\usepackage{amsfonts}
+\\usepackage{amssymb}
+\\usepackage{graphicx}
+\\begin{document}", 
+.,
+"\\end{document}") %>%
+    write_lines(paste0(filename,".tex"))
+  system2("pandoc", c(paste0("-o", filename,".docx"), paste0(filename,".tex")))}
+
+write2latexandcompile <- function(string, filename) {
+  string %>% 
+paste("\\documentclass[10pt,a4paper]{article}
+\\usepackage[latin1]{inputenc}
+\\usepackage{amsmath}
+\\usepackage{amsfonts}
+\\usepackage{amssymb}
+\\usepackage{graphicx}
+\\begin{document}", 
+.,
+"\\end{document}") %>%
+    write_lines(paste0(filename,".tex"))
+  system2("pandoc", c(paste0("-o", filename,".docx"), paste0(filename,".tex")))
+}
+
+prepare_matrix_for_latex <- . %>% 
+   round(2) %>% 
+  cbind(rep("", nrow(.)), paste0(rownames(.), "*"),.) %>% 
+  `rownames<-`(NULL) %>% 
+  `colnames<-`(., paste0(colnames(.), "*")) %>% 
+    xtable() %>% 
+  print.xtable(include.rownames = F)
+
+
+list(r_0 = r_0, r_1 = r_1, r_opt_1 = r_opt_1) %>% map(prepare_matrix_for_latex) %>% paste(collapse = "\n") %>% write2latexandcompile("fig4c")
+
+```
 
 
 

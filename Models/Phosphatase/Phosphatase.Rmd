@@ -272,7 +272,6 @@ plot_data <-
   assign_point_locations %>% 
   {.}
 
-
 geom_rect_data <- plot_data %>% 
   filter(alpha %in% point_locations) %>% 
   group_by(alpha) %>% 
@@ -317,8 +316,6 @@ ggshave(plot = myplot,
        check_overwrite = F
        # , commit_script = "Phosphatase to both, grey boxes around points."
        )
-
-
 ```
 
 ```{r plot complex to upstream}
