@@ -210,14 +210,17 @@ assign_point_locations <- . %>% {.} %T>% {assign("point_locations",
 remove_diags <- . %>% filter(! (r_element %in% paste0("r", c(11,22,33))))
 
 
-print_matrices_at_point_locations <- function(point_locations, plot_data) {
-  walk(point_locations, function(i) {
+print_matrices_at_point_locations <- function(point_locations, plot_data, path) {
+  map(point_locations, function(i) {
     plot_data  %>%
-    filter(near(alpha, i, tol = 1e-6)) %>%
-    .$value %>% c(-1, ., -1) %>% matrix(ncol = 2) %>% round(2) %>%
-    xtable() %>% print(tabular.enivronment = "pmatrix", floating = FALSE, hline.after=NULL, include.rownames=FALSE, include.colnames=FALSE) %>%
-    str_replace_all(c("tabular"= "pmatrix", "\\{rr\\}" = "", "\\\\begin" = "$\\\\begin")) %>% paste0(., "$")
-  })
+      filter(near(alpha, i, tol = 1e-6)) %>%
+      .$value %>% c(-1, ., -1) %>% matrix(ncol = 2) %>% round(2) %>%
+      xtable() %>% print(tabular.enivronment = "pmatrix", floating = FALSE, hline.after=NULL, include.rownames=FALSE, include.colnames=FALSE) %>%
+      str_replace_all(c("tabular"= "pmatrix", "\\{rr\\}" = "", "\\\\begin" = "$\\\\begin")) %>% paste0(., "$") 
+  }) %>% 
+    paste0(collapse = "\n\n") %>% 
+    write_lines(paste0(path, ".tex"))
+  system2("pandoc", c(paste0("-o ", path, ".docx"), paste0(path, ".tex")))
 }
 ```
 
@@ -274,7 +277,7 @@ myplot <- plot_data %>%
   ylab("Connection coefficient")
 
 myplot
-print_matrices_at_point_locations(point_locations, plot_data)
+print_matrices_at_point_locations(point_locations, plot_data, path = "matrices_of_plot2upper_Prabakaran")
 ```
 
 
@@ -332,15 +335,41 @@ myplot <- plot_data %>%
   ylab("Connection coefficient")
 
 myplot
-print_matrices_at_point_locations(point_locations, plot_data)
+print_matrices_at_point_locations(point_locations, plot_data, path = "matrices_of_plot2both_Prabakaran")
 ```
 
 ## Tables
+Print parameters
 ```{r}
 pars %>% 
   exp %>% 
-  print2word_namedvec("pars", names_in_mathenv = T)
+  print2word_namedvec("pars_Prabakaran", names_in_mathenv = T)
 ```
+
+Print ODEs
+```{r}
+reactions %>% 
+  as.eqnvec() %>% 
+  print2word_eqnvec("odes_Prabakaran")
+```
+
+## Clean up Workdir
+```{r}
+unlink(paste0("*.", c("c", "o", "so")))
+unlink("Fits/", T)
+```
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
