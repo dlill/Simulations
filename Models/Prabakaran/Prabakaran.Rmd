@@ -50,6 +50,33 @@ g <- Y(as.eqnvec(structure(observables, names = modules)), x, compile = TRUE, mo
 
 
 
+
+## Inner parameters
+Load all parameters and format them for further use.
+```{r Parameters}
+
+pars_raw <- read.csv(paste0("pars.csv"), header = FALSE)  # dynamical parameters
+pars_raw <- structure(pars_raw$V2, names = as.character(pars_raw$V1))
+ic_raw <- read.csv(paste0("IC.csv"), header = F)          # initial conditions
+ic_raw <- structure(ic_raw$V2, names = as.character(ic_raw$V1))
+# sort ics like they appear in x, so it can be used in stode()
+vars_x <- attr(x, "parameters")[attr(x, "parameters") %in% names(ic_raw)]
+ic_raw <- ic_raw[vars_x]
+
+pars_inner_opt_0 <- setdiff(attr(g, "parameters"),names(c(pars_raw,ic_raw)))
+pars_inner_opt_0 <- structure(rep(0, length(pars_inner_opt_0)), 
+                              names = pars_inner_opt_0)
+
+pars_inner_0 <- pars_inner <- c(ic_raw, pars_raw, pars_inner_opt_0)
+
+
+# # check if all parameters are assigned a value. Both lines should evaluate to the same number.
+# x_pars <- unique(union((g) %>% attr("parameters"),(xs) %>% attr("parameters")))
+# names(pars) %in% x_pars %>% sum()
+# x_pars %in% names(pars) %>% sum()
+
+```
+
 ## Parameter transformation function
 ```{r}
 trafo <- getParameters(x,g) %>% 
@@ -76,8 +103,8 @@ pars <- c(
   k32     	=	1	, # 7
   k4      	=	1	, # 8
   k5      	=	1	, # 9
-  k61     	=	1	, # 10
-  k62     	=	0.01	, # 11
+  k61     	=	0.01	, # 10
+  k62     	=	1	, # 11
   a_xy    	=	.Machine$double.eps	, # 12
   a_tox_xy	=	.Machine$double.eps	, # 13
   a_toy_xy	=	.Machine$double.eps	  # 14 
@@ -88,7 +115,6 @@ alpha_pars <- pars[str_detect(names(pars), "^a_")]
 ```
 
 # Simulate perturbation data
-
 For the perturbation experiments we use another parameter transformation to scale some parameters.
 p_pert_fun automatically generates a parameter transformation function, which returns different sets of parameters for different conditions and a control condition.
 Eg. if we have pars_perturbed = c("logx1" = log(0.9)), p_pert_fun(pars_perturbed) will return a parameter transformation with the control condition with unchanged parameters and one condition in which logx' = logx + log(0.9)
@@ -102,26 +128,24 @@ p_pert <- p_pert_fun(pars_perturbed = pars_perturbed,
                      pars = pars)
 ```
 
-
-
 ## Generate the perturbation data and run the algorithm
+
 ```{r}
 perturbation_prediction <-  (xs*p_log*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
+
+r_0 <-   R_fun(pars_opt = alpha_pars[c("loga_tox_xy")],
+               perturbation_prediction = perturbation_prediction,
+               obs_fun = g,
+               p_fun = (p_log*p_pert),
+               pars = pars) %>% local_response_matrix_eq10()
+r_0 %>% round(2)
+
 r_kept <- r_kept_fun(pars_opt = alpha_pars, 
                      perturbation_prediction = perturbation_prediction,
                      obs_fun = g, 
                      p_fun = (p_log*p_pert),
                      pars = pars)
-# r_kept <- c(F,F,T,F)
 
-# perturbation_prediction <-  (xs*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
-
-r <-   R_fun(pars_opt = alpha_pars[c("loga_tox_xy")],
-               perturbation_prediction = perturbation_prediction,
-               obs_fun = g,
-               p_fun = (p_log*p_pert),
-               pars = pars) %>% local_response_matrix_eq10()
-r%>% round(3)
 
 myfits <- mstrust(obj_alpha,
                   center = alpha_pars["a_tox_xy"] * 0 ,
@@ -134,215 +158,189 @@ myfits <- mstrust(obj_alpha,
                   obs_fun = g,
                   p_fun = (p_log*p_pert),
                   perturbation_prediction = perturbation_prediction)
-# myfits %>% as.parframe() %>% plotValues()
 
-(best_fit <- myfits %>% as.parframe() %>% as.parvec())
-r_alpha_fun(best_fit, pars = pars, p_fun = (p_log*p_pert), obs_fun = g, perturbation_prediction = perturbation_prediction) %>% round(3)
-
+best_fit <- myfits %>% as.parframe %>% as.parvec
+r_opt <- r_alpha_fun(best_fit, pars = pars, p_fun = (p_log*p_pert), obs_fun = g, perturbation_prediction = perturbation_prediction) %>% round(3)
+r_opt %>% round(2)
 ```
 
 # Compute the local response matrix in dependence of a
 Use par_opt_setting to define, to which module(s) the complex should be added.
 ```{r, warning=FALSE}
-# par_opt_settings <- list("loga_xy", "loga_tox_xy", "loga_toy_xy", c("loga_tox_xy", "loga_toy_xy")) %>% set_names(1:4)
-# par_opt_settings <- par_opt_settings[1:2]
-# dr_list <- lapply(par_opt_settings, function(i) {
-#   r_opt_dose_response(which_par = "logk1", 
-#                       dosages = pars["logk1"],#+seq(-2,2,by = 2),
-#                       alpha_oars = alpha_oars[i],
-#                       alpha_scan_range = sort(unique(seq(-10,10,by = .1))),
-#                       pars = pars
-#   )
-# })
-
-# saveRDS(dr_list, file = "Prabakaran_dr_list.rds")
-
-```
-
-
-# Plot the local response matrix in dependence of a
- - Different opacities correspond to different communicating species
-
-```{r plot}
-dr_list <- readRDS("Prabakaran_dr_list.rds")
-
-plot_data <- dr_list %>%   
-  # extract2(1) %>%
-  combine_dr_list() %>% 
-  filter(par_opt_setting %in% 1:2) %>%
-  filter(near(dose,log(0.1))) %>%
-  filter(! (r_element %in% paste0("r", c(11,22,33)))) %>% 
-  # filter(alpha >-5, alpha <3) %>% 
-  filter(matrix == "r_alpha") %>%
-  {
-    .$matrix[.$matrix == "r_alpha"] <- "r"
-    .$matrix[.$matrix == "r_opt"] <- "r(a = a_opt)"
-    .$matrix <- .$matrix %>% factor(levels = c("r", "r(a = a_opt)", "r_kept"))
-    .
-  } %>% 
-  mutate(Element = r_element) %>% 
-  # mutate(points = value) %>% 
-  # { logpoints <- c(-8.5,-0.7,2.1,9)
-  #   nears <- seq(-10,10,by=0.1)[apply(sapply(logpoints, function(i) near(seq(-10,10,by=0.1),i)),1,any)]
-  #   .[!(.$alpha %in% nears),"points"] <- NA
-  #   .[(.$alpha < (-6))|(.$alpha > (7)),"value"] <- NA
-  #   filter(., alpha >= (-9))
-  # } %>% 
-  {
-    .$par_opt_setting[.$par_opt_setting == 1] <- "X* and Y*"
-    .$par_opt_setting[.$par_opt_setting == 2] <- "X*"
-    .$par_opt_setting <- .$par_opt_setting %>% factor(levels = c("X* and Y*","X*"))
-    .
-  } %>%
-  
-  
-  # linear x axis
-  mutate(alpha = exp(alpha)) %>%
-  filter(alpha<5) %>%
-  filter(!is.na(value)) %>%
-  {.} %T>% {assign("nears", c(min(.$alpha), 0.4965853, 4.953032), envir = .GlobalEnv)} %>% #assign values where points should be to .GlobalEnv
-  mutate(points = replace(value, map_lgl(alpha, . %>% near(nears, tol = 1e-6) %>% any %>% `!`), NA)) %>% #filter(!is.na(points)) %>% print
-  # choose par_opt_settings to plot, uncomment alpha in ggplot call, if there is only one par_opt_setting
-  filter(par_opt_setting == "X*")  
-
-# Print the matrices at the points
-map(nears, function(i) {
-  plot_data  %>% 
-  filter( near(alpha, i, 1e-6), par_opt == "loga_tox_xy") %>% 
-  .$value %>% c(-1, ., -1) %>% matrix(ncol = 2) %>% round(2) %>% 
-  xtable() %>% print(tabular.enivronment = "pmatrix", floating = FALSE, hline.after=NULL, include.rownames=FALSE, include.colnames=FALSE) %>% 
-  str_replace_all(c("tabular"= "pmatrix", "\\{rr\\}" = "", "\\\\begin" = "$\\\\begin")) %>% paste0(., "$") %>% 
-  cat 
+par_opt_settings <- list("a_xy", "a_tox_xy") %>% `names<-`(1:2)
+# debugonce(r_opt_dose_response)
+dr_list <- lapply(par_opt_settings, function(i) {
+  r_opt_dose_response(which_par = "k1",
+                      dosages = pars["k1"],
+                      pars_opt = alpha_pars[i],
+                      alpha_scan_range = sort(unique(seq(-10,10,by = .1))),
+                      pars = pars,
+                      obs_fun = g,
+                      p_fun = (p_log * p_pert),
+                      cores = 4
+  )
 })
 
-myplot <- plot_data %>%   
-  ggplot(mapping = aes(x = alpha, y = value, color = Element
-                       # uncomment for one par_opt_setting only
-                       # , alpha = par_opt_setting
-                       )) +
-  geom_line() +
-  theme_dMod() +
-  # scale_color_dMod() +
-  scale_colour_manual(values = c("blue", "red", "green")) +
-  geom_abline(slope = 0,intercept = 0, linetype = 3) +
-  # geom_rect(xmin = -0.7, xmax = 3.2, ymin = -10, ymax = 10, alpha = 0.01, size = 0)+
-  geom_point(aes(y = points), size = 3)+
-  # facet_grid(.~par_opt_setting, scales = "free")+
-  # facet_grid(matrix~par_opt_setting, scales = "free")+
-  scale_alpha_discrete(name = "Complex \nadded to", range = c(0.3,1)) +
-  # scale_x_continuous(breaks = c(-5,0,5))+
-  xlab("\tFree parameter a") +
-  ylab("Connection coefficient")
-# plotly::ggplotly(myplot)
-myplot
-
-
-
-
-ggshave(plot = myplot,
-       filename = paste0("~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/Algorithm_linear_axis.png"),
-       width = 10,
-       height = 8,
-       units = "cm",
-       device = "png",
-       check_overwrite = F
-       , commit_script = "Changed color of r21 to blue"
-       )
-
-
-
 ```
 
 
+# Outputs
 
-```{r plot adding complexes to both modules}
-dr_list <- readRDS("Prabakaran_dr_list.rds")
-
-plot_data <- dr_list %>%   
-  # extract2(1) %>%
-  combine_dr_list() %>% 
-  filter(par_opt_setting %in% 1:2) %>%
-  filter(near(dose,log(0.1))) %>%
-  filter(! (r_element %in% paste0("r", c(11,22,33)))) %>% 
-  # filter(alpha >-5, alpha <3) %>% 
-  filter(matrix == "r_alpha") %>%
-  {
-    .$matrix[.$matrix == "r_alpha"] <- "r"
+```{r plotting helpers}
+fancify_labels <- . %>% 
+  {.$matrix[.$matrix == "r_alpha"] <- "r"
     .$matrix[.$matrix == "r_opt"] <- "r(a = a_opt)"
     .$matrix <- .$matrix %>% factor(levels = c("r", "r(a = a_opt)", "r_kept"))
-    .
-  } %>% 
+    .} %>% 
   mutate(Element = r_element) %>% 
-  # mutate(points = value) %>% 
-  # { logpoints <- c(-8.5,-0.7,2.1,9)
-  #   nears <- seq(-10,10,by=0.1)[apply(sapply(logpoints, function(i) near(seq(-10,10,by=0.1),i)),1,any)]
-  #   .[!(.$alpha %in% nears),"points"] <- NA
-  #   .[(.$alpha < (-6))|(.$alpha > (7)),"value"] <- NA
-  #   filter(., alpha >= (-9))
-  # } %>% 
   {
     .$par_opt_setting[.$par_opt_setting == 1] <- "X* and Y*"
     .$par_opt_setting[.$par_opt_setting == 2] <- "X*"
     .$par_opt_setting <- .$par_opt_setting %>% factor(levels = c("X* and Y*","X*"))
-    .
-  } %>%
-  
-  
-  # linear x axis
-  mutate(alpha = exp(alpha)) %>%
-  filter(alpha<5) %>%
+    .}
+
+assign_point_locations <- . %>% {.} %T>% {assign("point_locations", 
+                                                 c(min(.$alpha), 
+                                                   .$alpha[near(.$value,0,tol = 0.01)], 
+                                                   max(.$alpha)), 
+                                                 envir = .GlobalEnv)} %>% #assign values where points should be to .GlobalEnv
+  mutate(points = replace(value, map_lgl(alpha, . %>% near(point_locations, tol = 1e-6) %>% any %>% `!`), NA))
+
+
+remove_diags <- . %>% filter(! (r_element %in% paste0("r", c(11,22,33))))
+
+
+print_matrices_at_point_locations <- function(point_locations, plot_data) {
+  walk(point_locations, function(i) {
+    plot_data  %>%
+    filter(near(alpha, i, tol = 1e-6)) %>%
+    .$value %>% c(-1, ., -1) %>% matrix(ncol = 2) %>% round(2) %>%
+    xtable() %>% print(tabular.enivronment = "pmatrix", floating = FALSE, hline.after=NULL, include.rownames=FALSE, include.colnames=FALSE) %>%
+    str_replace_all(c("tabular"= "pmatrix", "\\{rr\\}" = "", "\\\\begin" = "$\\\\begin")) %>% paste0(., "$")
+  })
+}
+```
+
+## Plot adding the complex to upper module
+```{r}
+plot_data <-
+  dr_list %>%   
+  combine_dr_list() %>% 
   filter(!is.na(value)) %>%
-  {.} %T>% {assign("nears", c(min(.$alpha), 0.4965853, 4.953032), envir = .GlobalEnv)} %>% #assign values where points should be to .GlobalEnv
-  mutate(points = replace(value, map_lgl(alpha, . %>% near(nears, tol = 1e-6) %>% any %>% `!`), NA)) %>% #filter(!is.na(points)) %>% print
-  # choose par_opt_settings to plot, uncomment alpha in ggplot call, if there is only one par_opt_setting
-  filter(par_opt_setting == "X* and Y*") %>% 
+  remove_diags %>% 
+
+  filter(matrix == "r_alpha") %>%
+
+  mutate(alpha = exp(alpha)) %>%
+  filter(alpha<5) %>% #.$alpha
+  
+  fancify_labels %>%
+  filter(par_opt_setting %in% "X*") %>%
+
+  assign_point_locations %>% 
   {.}
 
-# Print the matrices at the points
-map(nears, function(i) {
-  plot_data  %>% 
-  filter( near(alpha, i, 1e-6), par_opt == "loga_xy") %>% 
-  .$value %>% c(-1, ., -1) %>% matrix(ncol = 2) %>% round(2) %>% 
-  xtable() %>% print(tabular.enivronment = "pmatrix", floating = FALSE, hline.after=NULL, include.rownames=FALSE, include.colnames=FALSE) %>% 
-  str_replace_all(c("tabular"= "pmatrix", "\\{rr\\}" = "", "\\\\begin" = "$\\\\begin")) %>% paste0(., "$") %>% 
-  cat 
-})
+geom_rect_data <- plot_data %>% 
+  filter(alpha %in% point_locations) %>% 
+  group_by(alpha) %>% 
+  summarise(maxval = max(value), minval = min(value))
+
+text_data <- geom_rect_data %>% 
+  mutate(label=rank(alpha)) %>% 
+  group_by(alpha) %>% 
+  mutate(value = c(minval-0.12, maxval+0.12)[which.min(abs(c(minval, maxval)))]) %>% 
+  ungroup
+
+plot_data <- plot_data %>% left_join(geom_rect_data)
+
 
 myplot <- plot_data %>%   
   ggplot(mapping = aes(x = alpha, y = value, color = Element
                        # uncomment for one par_opt_setting only
                        # , alpha = par_opt_setting
                        )) +
+
+
+  geom_rect(aes(xmin = alpha - 0.17, xmax = alpha + 0.17, ymin = minval - 0.07, ymax = maxval + 0.07), alpha = 1, fill = "#E9E9E9", color = "black", size = 0.3) + 
+  geom_text(aes(label = label), data = text_data, color = "black", size = 5, fontface = "bold") +
+
   geom_line() +
   theme_dMod() +
-  # scale_color_dMod() +
   scale_colour_manual(values = c("blue", "red", "green")) +
   geom_abline(slope = 0,intercept = 0, linetype = 3) +
-  # geom_rect(xmin = -0.7, xmax = 3.2, ymin = -10, ymax = 10, alpha = 0.01, size = 0)+
   geom_point(aes(y = points), size = 3)+
-  # facet_grid(.~par_opt_setting, scales = "free")+
-  # facet_grid(matrix~par_opt_setting, scales = "free")+
   scale_alpha_discrete(name = "Complex \nadded to", range = c(0.3,1)) +
-  scale_y_continuous(breaks = c(-1,0,1,2)) + 
-  # scale_x_continuous(breaks = c(-5,0,5))+
   xlab("\tFree parameter a") +
   ylab("Connection coefficient")
-# plotly::ggplotly(myplot)
+
 myplot
-
-
-
-
-ggshave(plot = myplot,
-       filename = paste0("~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/Algorithm_linear_axis_add_complex_to_both.png"),
-       width = 10,
-       height = 8,
-       units = "cm",
-       device = "png",
-       check_overwrite = F
-       , commit_script = "Removed par opt setting 1 from adding complexes to both plot"
-       )
-
-
-
+print_matrices_at_point_locations(point_locations, plot_data)
 ```
+
+
+## Plot adding the complex to both modules
+```{r}
+plot_data <-
+  dr_list %>%   
+  combine_dr_list() %>% 
+  filter(!is.na(value)) %>%
+  remove_diags %>% 
+
+  filter(matrix == "r_alpha") %>%
+
+  mutate(alpha = exp(alpha)) %>%
+  filter(alpha<5) %>% #.$alpha
+  
+  fancify_labels %>%
+  filter(par_opt_setting %in% "X* and Y*") %>%
+
+  assign_point_locations %>% 
+  {.}
+
+geom_rect_data <- plot_data %>% 
+  filter(alpha %in% point_locations) %>% 
+  group_by(alpha) %>% 
+  summarise(maxval = max(value), minval = min(value))
+
+text_data <- geom_rect_data %>% 
+  mutate(label=rank(alpha)) %>% 
+  group_by(alpha) %>% 
+  mutate(value = c(minval-0.12, maxval+0.12)[which.min(abs(c(minval, maxval)))]) %>% 
+  ungroup
+
+plot_data <- plot_data %>% left_join(geom_rect_data)
+
+# print_matrices_at_point_locations(point_locations, plot_data)
+
+myplot <- plot_data %>%   
+  ggplot(mapping = aes(x = alpha, y = value, color = Element
+                       # uncomment for one par_opt_setting only
+                       # , alpha = par_opt_setting
+                       )) +
+
+
+  geom_rect(aes(xmin = alpha - 0.17, xmax = alpha + 0.17, ymin = minval - 0.07, ymax = maxval + 0.07), alpha = 1, fill = "#E9E9E9", color = "black", size = 0.3) + 
+  geom_text(aes(label = label), data = text_data, color = "black", size = 5, fontface = "bold") +
+
+  geom_line() +
+  theme_dMod() +
+  scale_colour_manual(values = c("blue", "red", "green")) +
+  geom_abline(slope = 0,intercept = 0, linetype = 3) +
+  geom_point(aes(y = points), size = 3)+
+  scale_alpha_discrete(name = "Complex \nadded to", range = c(0.3,1)) +
+  xlab("\tFree parameter a") +
+  ylab("Connection coefficient")
+
+myplot
+print_matrices_at_point_locations(point_locations, plot_data)
+```
+
+## Tables
+```{r}
+pars %>% 
+  exp %>% 
+  print2word_namedvec("pars", names_in_mathenv = T)
+```
+
+
+
