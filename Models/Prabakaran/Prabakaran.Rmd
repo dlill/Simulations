@@ -9,127 +9,83 @@ output:
 # Load libraries and define some useful paths
 
 ```{r setup, results='hide', echo=FALSE, message=FALSE}
-rm(list = ls())
 library(MRAr)
 library(scales)
 library(xtable)
 ```
 
-# Setup Model 
-This is the setup of the ODE model.
+# Model Setup
 
-Our (internal) states x are described by the odemodel which is turned into a prediction via the prediction function x():
-
-dx/dt = f(x,p_dyn)
-x = x(t, p_dyn, x_ini)
-
-p_dyn are dynamical parameters like rate constants etc, x_ini are initial values for all states.
-The prediction function xs() runs the stimulation until it reaches a steady state.
-
-
-Then, these states are linked to observables y via the observation function g(). In our case the observables will be the communicating species:
-
-y = g(x, p_obs)
-
-p_obs are observation parameters like scaling factors.
-
-
-Since all parameters are positive, it is beneficial to use log-parameters, therefore all parameters are transformed to the log-scale. These we call "outer parameters", p_outer. To feed them into our original model, we transform them back to the linear scale ("p_inner") by a parameter transformation function p(). This way, all our calculations can be made in log-space:
-
-p_inner = p(p_outer) = p(log(p_obs), log(p_dyn), log(x_ini))
-
-
-These three types of functions can be concatenated by the "*"-operator.
-g(x(t, p(p_outer))) = g*x*p(t, p_outer)
-
-
-## Prediction function
-odemodel() writes the function f as a C-function, which is called by x and xs.
+## ODE model setup
 ```{r Prediction function}
-modelname   <- "Prabakaran"
-mymodel     <- as.eqnlist(read.csv(paste0(modelname, ".csv")))
-# mymodel
+reactions <- NULL %>% 
+  addReaction(from = "m1", to = "m2", rate = "k1*m1", description = "act_m") %>% 
+  addReaction(from = "m2", to = "m1", rate = "k2*m2", description = "deact_m") %>% 
+  addReaction(from = "m2 + e1", to = "Cm2e1", rate = "(k31 * e1 *m2)", description = "m2_e1_to_comp") %>% 
+  addReaction(from = "Cm2e1", to = "m2 + e1", rate = "(k32 *Cm2e1)", description = "comp_to_m2_e1") %>% 
+  addReaction(from = "Cm2e1", to = "m2 + e2", rate = "(k4 * Cm2e1)", description = "e2_formation") %>% 
+  addReaction(from = "e2 + p1", to = "Ce2p1", rate = "((k61 *p1 *e2))", description = "e2_p1_to_comp") %>% 
+  addReaction(from = "Ce2p1", to = "e2 + p1", rate = "(k62 * Ce2p1)", description = "compt_to_e2_p1") %>% 
+  addReaction(from = "Ce2p1", to = "e1 + p1", rate = "k5*Ce2p1", description = "e2_deact") %>% {.}
 
-# myodemodel <- odemodel(mymodel, modelname = modelname, deriv = T)
-# saveRDS(myodemodel, file = paste0("odemodel",modelname, ".rds"))
-myodemodel <- readRDS(paste0("odemodel",modelname, ".rds"))
+compiled_model <- odemodel(reactions, modelname = "Prabakaran", estimate = c("m1", "k1"))
 
 # Prediction function
-x <- Xs(odemodel = myodemodel)
+x <- Xs(odemodel = compiled_model)
 # Prediction function for steady states
-xs <- Xs_steady(myodemodel)
-# loadDLL(xs)
-print(mymodel)
+xs <- Xs_steady(compiled_model)
 ```
 
 
 ## Observation function
 Observation function which returns our communicating species. 
 The free parameters a_ij are introduced here to perform the linear combination of states which we wish to observe.
-We chose to call them pars_opt, since they will be used to optimize the objective function later on.
+We chose to call them alpha_oars, since they will be used to optimize the objective function later on.
 ```{r Naive observation function}
-modules <- modules0 <- c("X","Y")
-
-obs <- obs0 <- c("m2+a_xy*Cm2e1+a_tox_xy*Cm2e1",
+modules <-  c("X","Y")
+observables <-  c("m2+a_xy*Cm2e1+a_tox_xy*Cm2e1",
                  "e2+a_xy*Cm2e1+a_toy_xy*Cm2e1")
-g <- g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), mymodel, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
+g <- Y(as.eqnvec(structure(observables, names = modules)), x, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
 ```
 
 
-
-
-## Inner parameters
-Load all parameters and format them for further use.
-```{r Parameters}
-
-pars_raw <- read.csv(paste0("pars.csv"), header = FALSE)  # dynamical parameters
-pars_raw <- structure(pars_raw$V2, names = as.character(pars_raw$V1))
-ic_raw <- read.csv(paste0("IC.csv"), header = F)          # initial conditions
-ic_raw <- structure(ic_raw$V2, names = as.character(ic_raw$V1))
-# sort ics like they appear in x, so it can be used in stode()
-vars_x <- attr(x, "parameters")[attr(x, "parameters") %in% names(ic_raw)]
-ic_raw <- ic_raw[vars_x]
-
-pars_inner_opt_0 <- setdiff(attr(g, "parameters"),names(c(pars_raw,ic_raw)))
-pars_inner_opt_0 <- structure(rep(0, length(pars_inner_opt_0)), 
-                              names = pars_inner_opt_0)
-
-pars_inner_0 <- pars_inner <- c(ic_raw, pars_raw, pars_inner_opt_0)
-
-
-# # check if all parameters are assigned a value. Both lines should evaluate to the same number.
-# x_pars <- unique(union((g) %>% attr("parameters"),(xs) %>% attr("parameters")))
-# names(pars) %in% x_pars %>% sum()
-# x_pars %in% names(pars) %>% sum()
-
-```
 
 ## Parameter transformation function
 ```{r}
-# Logtrafo of all pars
-logtrafo <- structure(paste0("exp( log", names(pars_inner_0), ")"), 
-                             names = names(pars_inner_0))
+trafo <- getParameters(x,g) %>% 
+  setNames(.,.) %>% 
+  insert("x~0", x = str_subset(.currentSymbols, "^C*[me](2|1.2)")) %>% # set inits to zero
+  insert("x~exp(x)", x = .currentSymbols) %>%
+  # {.} %T>% print %>% 
+  {.} 
 
-# initial values
-logtrafo[c("m2", "Cm2e1", "e2", "Ce2p1")] <- 0
 
-
-
-p_log <- P(trafo = logtrafo,
-           compile = F,
+p_log <- P(trafo = trafo,
+           compile = T,
            modelname = "p_log")
-           
-
-pars_opt_0 <- pars_opt <- structure(rep(log(0+.Machine$double.eps), length(pars_inner_opt_0)), names = paste0("log", names(pars_inner_opt_0)))
-
-pars_0 <- pars <- structure(log(pars_inner_0+.Machine$double.eps), names = paste0("log", names(pars_inner_0))) 
-pars_0[names(pars_opt_0)] <- log(0+.Machine$double.eps)
-
-
-# pars_0
-# p_log(pars_0, deriv = F)
 ```
 
+```{r}
+pars <- c(
+  m1      	=	100	, # 1
+  e1      	=	1000	, # 2
+  p1      	=	100	, # 3
+  k1      	=	0.1	, # 4
+  k2      	=	0.1	, # 5
+  k31     	=	0.01	, # 6
+  k32     	=	1	, # 7
+  k4      	=	1	, # 8
+  k5      	=	1	, # 9
+  k61     	=	1	, # 10
+  k62     	=	0.01	, # 11
+  a_xy    	=	.Machine$double.eps	, # 12
+  a_tox_xy	=	.Machine$double.eps	, # 13
+  a_toy_xy	=	.Machine$double.eps	  # 14 
+) %>% 
+  log
+
+alpha_pars <- pars[str_detect(names(pars), "^a_")]
+```
 
 # Simulate perturbation data
 
@@ -140,43 +96,48 @@ Eg. if we have pars_perturbed = c("logx1" = log(0.9)), p_pert_fun(pars_perturbed
 "log(0.9)" corresponds to a ~10% reduction of the original parameter value.
 ```{r which pars are perturbed}
 # Which pars shall be perturbed?
-pars_perturbed_0 <- pars_perturbed <- c(logk1 = log(0.9), loge1 = log(0.9))
+pars_perturbed <- c(k1 = log(0.9), e1 = log(0.9))
 
-p_pert <- p_pert_fun(pars_perturbed = pars_perturbed_0,
-                     pars = pars_0)
-compile(p_pert, p_log, output = "p")
-remove_c_and_o()
+p_pert <- p_pert_fun(pars_perturbed = pars_perturbed,
+                     pars = pars)
 ```
 
 
 
 ## Generate the perturbation data and run the algorithm
 ```{r}
-loadDLL(xs, p_log, p_pert, g)
-perturbation_prediction <- perturbation_prediction_0 <-  (xs*p_log*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
-# perturbation_prediction
-r_kept_0 <- r_kept_fun(pars_opt = pars_opt_0, obs_fun = g, p_fun = (p_log*p_pert))
-# r_kept_0 <- c(F,F,T,F)
+perturbation_prediction <-  (xs*p_log*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
+r_kept <- r_kept_fun(pars_opt = alpha_pars, 
+                     perturbation_prediction = perturbation_prediction,
+                     obs_fun = g, 
+                     p_fun = (p_log*p_pert),
+                     pars = pars)
+# r_kept <- c(F,F,T,F)
 
-# perturbation_prediction_0 <-  (xs*p_pert)(times = c(0,Inf), pars = pars_0, deriv = F)
+# perturbation_prediction <-  (xs*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
 
-r_0 <-   R_fun(pars_opt = pars_opt[c("loga_tox_xy")],
+r <-   R_fun(pars_opt = alpha_pars[c("loga_tox_xy")],
                perturbation_prediction = perturbation_prediction,
                obs_fun = g,
                p_fun = (p_log*p_pert),
                pars = pars) %>% local_response_matrix_eq10()
-r_0%>% round(3)
+r%>% round(3)
 
 myfits <- mstrust(obj_alpha,
-                  center =  (pars_opt_0-pars_opt_0)["loga_tox_xy"],
+                  center = alpha_pars["a_tox_xy"] * 0 ,
                   studyname = "Fits",
                   cores = 3,
                   fits = 3,
-                  sd = 3, mypars = pars)
+                  sd = 3, 
+                  r_kept = r_kept,
+                  mypars = pars,
+                  obs_fun = g,
+                  p_fun = (p_log*p_pert),
+                  perturbation_prediction = perturbation_prediction)
 # myfits %>% as.parframe() %>% plotValues()
 
 (best_fit <- myfits %>% as.parframe() %>% as.parvec())
-r_alpha_fun(best_fit, pars = pars) %>% round(3)
+r_alpha_fun(best_fit, pars = pars, p_fun = (p_log*p_pert), obs_fun = g, perturbation_prediction = perturbation_prediction) %>% round(3)
 
 ```
 
@@ -187,8 +148,8 @@ Use par_opt_setting to define, to which module(s) the complex should be added.
 # par_opt_settings <- par_opt_settings[1:2]
 # dr_list <- lapply(par_opt_settings, function(i) {
 #   r_opt_dose_response(which_par = "logk1", 
-#                       dosages = pars_0["logk1"],#+seq(-2,2,by = 2),
-#                       pars_opt = pars_opt_0[i],
+#                       dosages = pars["logk1"],#+seq(-2,2,by = 2),
+#                       alpha_oars = alpha_oars[i],
 #                       alpha_scan_range = sort(unique(seq(-10,10,by = .1))),
 #                       pars = pars
 #   )
