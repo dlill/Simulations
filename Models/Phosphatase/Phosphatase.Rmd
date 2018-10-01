@@ -8,211 +8,149 @@ output:
 
 # Load libraries and define some useful paths
 
-```{r Libraries, results='hide', echo=FALSE, message=FALSE}
-rm(list = ls())
+```{r setup, results='hide', echo=FALSE, message=FALSE}
 library(MRAr)
 library(scales)
 library(xtable)
-path <- paste0(getwd(), "/")
-pathout <- paste0(path, "Output/")
 ```
 
-```{r Names for Fit storage of different initial Conditions}
-fit_name <- "phosphatase"
-```
+# Model Setup
 
-```{r Call render without overwriting any previous documents, echo=FALSE, eval=FALSE, message=FALSE, include=FALSE}
-
-rmarkdown::render("phosphatase.Rmd", output_file = paste0(pathout, format(Sys.time(), "%Y%m%d-%H%M")
-, " - " , fit_name, ".pdf"))
-beepr::beep("~/Promotion/Software/rimshot.mp3")
-```
-
-# phosphatase-Model
-
-### Prediction function.
-odemodel writes a C-function, which is executed in x and xs.
-x is a regular prediction function while xs only finds and returns the steady states.
-If the odemodel has been calculated already, it can be loaded with "load".
+## ODE model setup
 ```{r Prediction function}
-modelname   <- "phosphatase"
-mymodel     <- as.eqnlist(read.csv(paste0(modelname, ".csv")))
-# mymodel
+reactions <- NULL %>% 
+  addReaction(from = "m1", to = "m2", rate = "k1 * m1", description = "act_m") %>% 
+  addReaction(from = "m2", to = "m1", rate = "k2 * m2", description = "deact_m") %>% 
+  addReaction(from = "m2 + e2", to = "Cm2e2", rate = "(k31 * e2 * m2)", description = "m2_e1_to_comp") %>% 
+  addReaction(from = "Cm2e2", to = "m2 + e2", rate = "(k32 * Cm2e2)", description = "comp_to_m2_e1") %>% 
+  addReaction(from = "Cm2e2", to = "m2 + e1", rate = "(k4 * Cm2e2)", description = "e1_formation") %>% 
+  addReaction(from = "e1", to = "e2", rate = "k5 * e1", description = "act_e") %>% {.}
 
-myodemodel <- odemodel(mymodel, modelname = modelname, deriv = T)
-save(myodemodel, file = paste0("odemodel", modelname, ".RData"))
-load(paste0( "odemodel",modelname, ".RData"))
-
+compiled_model <- odemodel(reactions, modelname = "Phosphatase", estimate = c("m1", "k1"))
 
 # Prediction function
-x <- Xs(odemodel = myodemodel)
+x <- Xs(odemodel = compiled_model)
 # Prediction function for steady states
-xs <- Xs_steady(myodemodel)
-loadDLL(xs)
-print(mymodel)
+xs <- Xs_steady(compiled_model)
 ```
 
-### Modules, their observables and the observation function. {#modulesandobsfuns}
-Observation function which depends also on the optimization parameters. With their help, the complexes can smoothly be switched on in the observation.
 
-This is the naive modularization used in the phosphatase Paper, desregarding, which species are actually the communicating ones. This is fair enough, because usually the "active" forms are consedered to be the communicating species in a non-parametric network reconstruction.
+## Observation function
+Observation function which returns our communicating species. 
+The free parameters a_ij are introduced here to perform the linear combination of states which we wish to observe.
+We chose to call them alpha_oars, since they will be used to optimize the objective function later on.
 ```{r Naive observation function}
-modules <- modules0 <- c("X","Y")
+modules <- c("X","Y")
 
-obs <- obs0 <- c("m2+a*Cm2e2+a_1*Cm2e2",
-                 "e2+a*Cm2e2+a_2*Cm2e2")
-g <- g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), mymodel, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
+observables <- c("m2+a_xy*Cm2e2+a_tox_xy*Cm2e2",
+                 "e2+a_xy*Cm2e2+a_toy_xy*Cm2e2")
+g <- Y(as.eqnvec(structure(observables, names = modules)), x, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
 ```
 
-### Parameters.
-Load all parameters and format them for further use.
-```{r Parameters}
-
-pars_raw <- read.csv(paste0( "pars.csv"), header = FALSE)  # dynamical parameters
-pars_raw <- structure(pars_raw$V2, names = as.character(pars_raw$V1))
-ic_raw <- read.csv(paste0( "IC.csv"), header = F)          # initial conditions
-ic_raw <- structure(ic_raw$V2, names = as.character(ic_raw$V1))
-# sort ics like they appear in x, so it can be used in stode()
-vars_x <- attr(x, "parameters")[attr(x, "parameters") %in% names(ic_raw)]
-ic_raw <- ic_raw[vars_x]
-
-pars_inner_opt_0 <- setdiff(attr(g, "parameters"),names(c(pars_raw,ic_raw)))
-pars_inner_opt_0 <- structure(rep(0, length(pars_inner_opt_0)), 
-                              names = pars_inner_opt_0)
-
-pars_inner_0 <- pars_inner <- c(ic_raw, pars_raw, pars_inner_opt_0)
 
 
-# # check if all parameters are assigned a value. Both lines should evaluate to the same number.
-# x_pars <- unique(union((g) %>% attr("parameters"),(xs) %>% attr("parameters")))
-# names(pars) %in% x_pars %>% sum()
-# x_pars %in% names(pars) %>% sum()
-
-```
-
-### General log transformation and setting some pars to zero
-It's better to do a logtransformation for all Fitting purposes and work with the log-Parameters.
-The way to implement is this, is
-log_pars %>% p_log %>% p_other %>% p_other_2 %>% ...
+## Parameter transformation function
+Define logtrafo, define initial conditions
 ```{r}
-# Logtrafo of all pars
-logtrafo <- structure(paste0("exp( log", names(pars_inner_0), ")"), 
-                             names = names(pars_inner_0))
-
-# initial values
-logtrafo[c("m2", "Cm2e2", "e2")] <- 0
-
-
-
-p_log <- P(trafo = logtrafo,
-           compile = TRUE,
+trafo <- getParameters(x,g) %>% 
+  setNames(.,.) %>% 
+  insert("x~0", x = str_subset(.currentSymbols, "^C*[me](2|1.2)")) %>% # set inits to zero
+  insert("x~exp(x)", x = .currentSymbols)
+p_log <- P(trafo = trafo,
+           compile = T,
            modelname = "p_log")
-           
-
-pars_opt_0 <- pars_opt <- structure(rep(log(0+.Machine$double.eps), length(pars_inner_opt_0)), names = paste0("log", names(pars_inner_opt_0)))
-
-pars_0 <- pars <- structure(log(pars_inner_0+.Machine$double.eps), names = paste0("log", names(pars_inner_0))) 
-# pars_0[names(pars_opt_0)] <- -16
-
-
-# pars_0
-# p_log(pars_0, deriv = F)
 ```
 
 
-## Example code
-Now the module can be simulated to generate perturbation data.
+```{r}
+pars <- c(
+  m1      	=	100	, # 1
+  e1      	=	100	, # 2
+  k1      	=	0.1	, # 3
+  k2      	=	0.1	, # 4
+  k31     	=	0.01	, # 5
+  k32     	=	1	, # 6
+  k4      	=	1	, # 7
+  k5      	=	1	, # 8
+  a_xy    	=	.Machine$double.eps	, # 9
+  a_tox_xy	= .Machine$double.eps	, # 10
+  a_toy_xy	=	.Machine$double.eps	  # 11 
+) %>% 
+  log
 
-### Parameter trafos for convenient perturbation data.
-Set up the perturbations
+alpha_pars <- pars[str_detect(names(pars), "^a_")]
+```
+
+# Simulate perturbation data
+For the perturbation experiments we use another parameter transformation to scale some parameters.
+p_pert_fun automatically generates a parameter transformation function, which returns different sets of parameters for different conditions and a control condition.
+Eg. if we have pars_perturbed = c("x1" = log(0.9)), p_pert_fun(pars_perturbed) will return a parameter transformation with the control condition with unchanged parameters and one condition in which x' = x + log(0.9)
+
+"log(0.9)" corresponds to a ~10% reduction of the original parameter value.
 ```{r which pars are perturbed}
 # Which pars shall be perturbed?
-pars_perturbed_0 <- pars_perturbed <- c(logm1 = log(0.8), loge1 = log(0.8))
+pars_perturbed <- c(m1 = log(0.9), e1 = log(0.9))
 
-p_pert <- p_pert_fun(pars_perturbed = pars_perturbed_0,
-                     pars = pars_0)
-compile(p_pert)
+p_pert <- p_pert_fun(pars_perturbed = pars_perturbed,
+                     pars = pars)
 ```
 
-### Perturbation data generation and elements to keep.
-Just to show the code...
-```{r Generate perturbation data}
-perturbation_prediction_0 <-  (xs*p_log*p_pert)(times = c(0,Inf), pars = pars_0, deriv = F)
-r_kept_0 <- r_kept_fun(pars_opt = pars_opt_0, obs_fun = g, p_fun = (p_log*p_pert), alpha = 16)
+## Generate the perturbation data and run the algorithm
+```{r}
+perturbation_prediction <-  (xs*p_log*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
 
-```
-
-
-
-
-```{r  which pars are perturbed  Cascade, echo=FALSE}
-# pars <- c(100, 0,0, 100,0,
-#           0.1, 0.5,
-#           0.3, 2, .01,
-#           .1,
-#           0,0,0)
-# pars
-# pars <- myfit$par
-
-
-# pars_0 <- pars <- log(pars+.Machine$double.eps) %>% set_names(names(pars_0))# large complex concentrations
-
-perturbation_prediction_0 <- perturbation_prediction <-  (xs*p_log*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
-
-perturbation_prediction %>% lapply(round,2)
-
-r_kept_0 <- r_kept_fun(pars_opt = pars_opt_0,
-                       perturbation_prediction = perturbation_prediction, 
-                       obs_fun = g,
-                       p_fun = (p_log * p_pert), 
-                       pars = pars,
-                       alpha = -log(0+.Machine$double.eps))
-r_kept_0
-
-r_0 <-   R_fun(pars_opt = pars_opt[c("loga")],
+r_0 <-   R_fun(pars_opt = alpha_pars[c("loga_tox_xy")],
                perturbation_prediction = perturbation_prediction,
                obs_fun = g,
                p_fun = (p_log*p_pert),
                pars = pars) %>% local_response_matrix_eq10()
-r_0%>% round(2)
+r_0 %>% round(2)
 
-r_1 <-   R_fun(pars_opt = pars_opt[c("loga")]-(log(0+.Machine$double.eps)),
-               perturbation_prediction = perturbation_prediction,
-               obs_fun = g,
-               p_fun = (p_log*p_pert),
-               pars = pars) %>% local_response_matrix_eq10()
-r_1 %>% round(2)
+r_kept <- r_kept_fun(pars_opt = alpha_pars, 
+                     perturbation_prediction = perturbation_prediction,
+                     obs_fun = g, 
+                     p_fun = (p_log*p_pert),
+                     pars = pars)
 
 
-pars_opt_0
-par_opt_names <- c("loga_2")
-# matrix(c(F,F,F,T,F,F,F,T,F), ncol = 3)
-myfits <- mstrust(obj_alpha, center =  structure(rep(0, length(pars_opt_0[par_opt_names])), names = names(pars_opt_0[par_opt_names])), studyname = "Fits", cores = 3, fits = 3, sd = 1, mypars = pars, perturbation_prediction = perturbation_prediction_0, r_kept = r_kept_0)
-# myfits %>% as.parframe()
-best_fit <- myfits %>% as.parframe() %>% as.parvec()
+myfits <- mstrust(obj_alpha,
+                  center = alpha_pars["a_tox_xy"] * 0 ,
+                  studyname = "Fits",
+                  cores = 3,
+                  fits = 3,
+                  sd = 3, 
+                  r_kept = r_kept,
+                  mypars = pars,
+                  obs_fun = g,
+                  p_fun = (p_log*p_pert),
+                  perturbation_prediction = perturbation_prediction)
 
-r_alpha_fun(pars_opt = unclass(best_fit), pars = pars, perturbation_prediction = perturbation_prediction) %>% round(2)
+best_fit <- myfits %>% as.parframe %>% as.parvec
+r_opt <- r_alpha_fun(best_fit, pars = pars, p_fun = (p_log*p_pert), obs_fun = g, perturbation_prediction = perturbation_prediction) %>% round(3)
+r_opt %>% round(2)
 ```
 
-
-
-
-# Plots
-```{r computations}
-par_opt_settings <- list("loga", "loga_1", "loga_2", c("loga_1", "loga_2")) %>% set_names(1:4)
-
+# Compute the local response matrix in dependence of a
+Use par_opt_setting to define, to which module(s) the complex should be added.
+```{r, warning=FALSE}
+par_opt_settings <- list("a_xy", "a_tox_xy") %>% `names<-`(1:2)
+# debugonce(r_opt_dose_response)
 dr_list <- lapply(par_opt_settings, function(i) {
-  r_opt_dose_response(which_par = "logk4", 
-                      dosages = pars["logk4"],
-                      pars_opt = pars_opt_0[i],
-                      alpha_scan_range = sort(c(log(0.00000000000001), 
-                                                log(seq(0,20,by = .1)[-1]),
-                                                log(seq(20,50,by = 1)[-1]))),
-                      pars = pars
+  r_opt_dose_response(which_par = "k1",
+                      dosages = pars["k1"],
+                      pars_opt = alpha_pars[i],
+                      alpha_scan_range = sort(unique(seq(-10,10,by = .1))),
+                      pars = pars,
+                      obs_fun = g,
+                      p_fun = (p_log * p_pert),
+                      cores = 4
   )
 })
 
 ```
+
+
+# Outputs
 
 ```{r plotting helpers}
 fancify_labels <- . %>% 
@@ -224,15 +162,12 @@ fancify_labels <- . %>%
   {
     .$par_opt_setting[.$par_opt_setting == 1] <- "X* and Y*"
     .$par_opt_setting[.$par_opt_setting == 2] <- "X*"
-    .$par_opt_setting[.$par_opt_setting == 3] <- "Y*"
-    .$par_opt_setting[.$par_opt_setting == 4] <- "X* and Y* independently"
-    .$par_opt_setting <- .$par_opt_setting %>% factor(levels = c("X* and Y*","X*", "Y*","X* and Y* independently"))
+    .$par_opt_setting <- .$par_opt_setting %>% factor(levels = c("X* and Y*","X*"))
     .}
-
 
 assign_point_locations <- . %>% {.} %T>% {assign("point_locations", 
                                                  c(min(.$alpha), 
-                                                   .$alpha[near(.$value,0,tol = 0.001)], 
+                                                   .$alpha[near(.$value,0,tol = 0.01)], 
                                                    max(.$alpha)), 
                                                  envir = .GlobalEnv)} %>% #assign values where points should be to .GlobalEnv
   mutate(points = replace(value, map_lgl(alpha, . %>% near(point_locations, tol = 1e-6) %>% any %>% `!`), NA))
@@ -241,26 +176,88 @@ assign_point_locations <- . %>% {.} %T>% {assign("point_locations",
 remove_diags <- . %>% filter(! (r_element %in% paste0("r", c(11,22,33))))
 
 
-print_matrices_at_point_locations <- function(point_locations, plot_data) {
-  walk(point_locations, function(i) {
+print_matrices_at_point_locations <- function(point_locations, plot_data, path) {
+  map(point_locations, function(i) {
     plot_data  %>%
-    filter(near(alpha, i, tol = 1e-6)) %>%
-    .$value %>% c(-1, ., -1) %>% matrix(ncol = 2) %>% round(2) %>%
-    xtable() %>% print(tabular.enivronment = "pmatrix", floating = FALSE, hline.after=NULL, include.rownames=FALSE, include.colnames=FALSE) %>%
-    str_replace_all(c("tabular"= "pmatrix", "\\{rr\\}" = "", "\\\\begin" = "$\\\\begin")) %>% paste0(., "$")
-  })
+      filter(near(alpha, i, tol = 1e-6)) %>%
+      .$value %>% c(-1, ., -1) %>% matrix(ncol = 2) %>% round(2) %>%
+      xtable() %>% print(tabular.enivronment = "pmatrix", floating = FALSE, hline.after=NULL, include.rownames=FALSE, include.colnames=FALSE) %>%
+      str_replace_all(c("tabular"= "pmatrix", "\\{rr\\}" = "", "\\\\begin" = "$\\\\begin")) %>% paste0(., "$") 
+  }) %>% 
+    paste0(collapse = "\n\n") %>% 
+    write_lines(paste0(path, ".tex"))
+  system2("pandoc", c(paste0("-o ", path, ".docx"), paste0(path, ".tex")))
 }
 ```
 
-
-```{r plot complex to both}
+## Plot adding the complex to upper module
+```{r}
 plot_data <-
   dr_list %>%   
   combine_dr_list() %>% 
   filter(!is.na(value)) %>%
   remove_diags %>% 
 
-  filter(near(dose,2.220446e-16)) %>%
+#  filter(near(dose,2.220446e-16)) %>%
+  filter(matrix == "r_alpha") %>%
+
+  mutate(alpha = exp(alpha)) %>%
+  filter(alpha<5) %>% #.$alpha
+  
+  fancify_labels %>%
+  filter(par_opt_setting %in% "X*") %>%
+
+  assign_point_locations %>% 
+  {.}
+
+geom_rect_data <- plot_data %>% 
+  filter(alpha %in% point_locations) %>% 
+  group_by(alpha) %>% 
+  summarise(maxval = max(value), minval = min(value))
+
+text_data <- geom_rect_data %>% 
+  mutate(label=rank(alpha)) %>% 
+  group_by(alpha) %>% 
+  mutate(value = c(minval-0.12, maxval+0.12)[which.min(abs(c(minval, maxval)))]) %>% 
+  ungroup
+
+plot_data <- plot_data %>% left_join(geom_rect_data)
+
+
+myplot <- plot_data %>%   
+  ggplot(mapping = aes(x = alpha, y = value, color = Element
+                       # uncomment for one par_opt_setting only
+                       # , alpha = par_opt_setting
+                       )) +
+
+
+  geom_rect(aes(xmin = alpha - 0.17, xmax = alpha + 0.17, ymin = minval - 0.07, ymax = maxval + 0.07), alpha = 1, fill = "#E9E9E9", color = "black", size = 0.3) + 
+  geom_text(aes(label = label), data = text_data, color = "black", size = 5, fontface = "bold") +
+
+  geom_line() +
+  theme_dMod() +
+  scale_colour_manual(values = c("blue", "red", "green")) +
+  geom_abline(slope = 0,intercept = 0, linetype = 3) +
+  geom_point(aes(y = points), size = 3)+
+  scale_alpha_discrete(name = "Complex \nadded to", range = c(0.3,1)) +
+  xlab("\tFree parameter a") +
+  ylab("Connection coefficient")
+
+myplot
+ggsave("plot2upper.png", myplot)
+print_matrices_at_point_locations(point_locations, plot_data, path = "matrices_of_plot2upper_Phosphatase")
+```
+
+
+## Plot adding the complex to both modules
+```{r}
+plot_data <-
+  dr_list %>%   
+  combine_dr_list() %>% 
+  filter(!is.na(value)) %>%
+  remove_diags %>% 
+
+#  filter(near(dose,2.220446e-16)) %>%
   filter(matrix == "r_alpha") %>%
 
   mutate(alpha = exp(alpha)) %>%
@@ -293,7 +290,6 @@ myplot <- plot_data %>%
                        # , alpha = par_opt_setting
                        )) +
 
-
   geom_rect(aes(xmin = alpha - 0.17, xmax = alpha + 0.17, ymin = minval - 0.07, ymax = maxval + 0.07), alpha = 1, fill = "#E9E9E9", color = "black", size = 0.3) + 
   geom_text(aes(label = label), data = text_data, color = "black", size = 5, fontface = "bold") +
 
@@ -306,168 +302,33 @@ myplot <- plot_data %>%
   xlab("\tFree parameter a") +
   ylab("Connection coefficient")
 
-
-ggshave(plot = myplot,
-       filename = paste0("~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/phosphatase_complex_to_both.png"),
-       width = 10,
-       height = 8,
-       units = "cm",
-       device = "png",
-       check_overwrite = F
-       # , commit_script = "Phosphatase to both, grey boxes around points."
-       )
-```
-
-```{r plot complex to upstream}
-plot_data <-
-  dr_list %>%   
-  combine_dr_list() %>% 
-  filter(!is.na(value)) %>%
-  remove_diags %>% 
-
-  filter(near(dose,2.220446e-16)) %>%
-  filter(matrix == "r_alpha") %>%
-
-  mutate(alpha = exp(alpha)) %>%
-  filter(alpha<5) %>% #.$alpha
-  
-  fancify_labels %>%
-  filter(par_opt_setting %in% "X*") %>%
-
-  assign_point_locations %>% 
-  {.}
-
-geom_rect_data <- plot_data %>% 
-  filter(alpha %in% point_locations) %>% 
-  group_by(alpha) %>% 
-  summarise(maxval = max(value), minval = min(value))
-
-text_data <- geom_rect_data %>% 
-  mutate(label=rank(alpha)) %>% 
-  group_by(alpha) %>% 
-  mutate(value = c(minval-0.12, maxval+0.12)[which.min(abs(c(minval, maxval)))]) %>% 
-  ungroup
-
-plot_data <- plot_data %>% left_join(geom_rect_data)
-
-
-
-# print_matrices_at_point_locations(point_locations, plot_data)
-
-myplot <- plot_data %>%   
-  ggplot(mapping = aes(x = alpha, y = value, color = Element
-                       # uncomment for one par_opt_setting only
-                       # , alpha = par_opt_setting
-                       )) +
-  
-
-  geom_rect(aes(xmin = alpha - 0.17, xmax = alpha + 0.17, ymin = minval - 0.07, ymax = maxval + 0.07), alpha = 1, fill = "#E9E9E9", color = "black", size = 0.3) + 
-  geom_text(aes(label = label), data = text_data, color = "black", size = 5, fontface = "bold") +
-
-  geom_line() +
-  theme_dMod() +
-  scale_colour_manual(values = c("blue", "red", "green")) +
-  geom_abline(slope = 0,intercept = 0, linetype = 3) +
-  geom_point(aes(y = points), size = 3)+
-  scale_alpha_discrete(name = "Complex \nadded to", range = c(0.3,1)) +
-  xlab("\tFree parameter a") +
-  ylab("Connection coefficient")
 myplot
-
-
-
-ggshave(plot = myplot,
-       filename = paste0("~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/phosphatase_complex_to_upstream.png"),
-       width = 10,
-       height = 8,
-       units = "cm",
-       device = "png",
-       check_overwrite = F
-       , commit_script = "Phosphatase, complex to upstream"
-       )
-
+ggsave("plot2both.png", myplot)
+print_matrices_at_point_locations(point_locations, plot_data, path = "matrices_of_plot2both_Phosphatase")
 ```
 
-```{r plot complex to downstream}
-plot_data <-
-  dr_list %>%   
-  combine_dr_list() %>% 
-  filter(!is.na(value)) %>%
-  remove_diags %>% 
-
-  filter(near(dose,2.220446e-16)) %>%
-  filter(matrix == "r_alpha") %>%
-
-  mutate(alpha = exp(alpha)) %>%
-  filter(alpha<5) %>% #.$alpha
-  
-  fancify_labels %>%
-  filter(par_opt_setting %in% "Y*") %>%
-
-  assign_point_locations %>% 
-  {.}
-
-
-geom_rect_data <- plot_data %>% 
-  filter(alpha %in% point_locations) %>% 
-  group_by(alpha) %>% 
-  summarise(maxval = max(value), minval = min(value))
-
-text_data <- geom_rect_data %>% 
-  mutate(label=rank(alpha)) %>% 
-  group_by(alpha) %>% 
-  mutate(value = c(minval-0.12, maxval+0.12)[which.min(abs(c(minval, maxval)))]) %>% 
-  ungroup
-
-plot_data <- plot_data %>% left_join(geom_rect_data)
-
-
-
-# print_matrices_at_point_locations(point_locations, plot_data)
-
-myplot <- plot_data %>%   
-  ggplot(mapping = aes(x = alpha, y = value, color = Element
-                       # uncomment for one par_opt_setting only
-                       # , alpha = par_opt_setting
-                       )) +
-
-  geom_rect(aes(xmin = alpha - 0.17, xmax = alpha + 0.17, ymin = minval - 0.07, ymax = maxval + 0.07), alpha = 1, fill = "#E9E9E9", color = "black", size = 0.3) + 
-  geom_text(aes(label = label), data = text_data, color = "black", size = 5, fontface = "bold") +
-
-  geom_line() +
-  theme_dMod() +
-  scale_colour_manual(values = c("blue", "red", "green")) +
-  geom_abline(slope = 0,intercept = 0, linetype = 3) +
-  geom_point(aes(y = points), size = 3)+
-  scale_alpha_discrete(name = "Complex \nadded to", range = c(0.3,1)) +
-  xlab("\tFree parameter a") +
-  ylab("Connection coefficient")
-myplot
-
-
-
-ggshave(plot = myplot,
-       filename = paste0("~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/pictures/phosphatase_complex_to_downstream.png"),
-       width = 10,
-       height = 8,
-       units = "cm",
-       device = "png",
-       check_overwrite = F
-       , commit_script = "Phosphatase, complex to upstream"
-       )
-
+## Tables
+Print parameters
+```{r}
+pars %>% 
+  .[!str_detect(names(.), "^a")] %>% 
+  exp %>% 
+  print2word_namedvec("pars_Phosphatase", names_in_mathenv = T)
 ```
 
+Print ODEs
+```{r}
+reactions %>% 
+  as.eqnvec() %>% 
+  print2word_eqnvec("odes_Phosphatase")
+```
 
-
-
-
-
-
-
-
-
-
+## Clean up Workdir
+```{r}
+unlink(paste0("*.", c("c", "o", "so", "tex", "lnk")))
+unlink("Fits/", T)
+unlink(".pars_controlled/", T)
+```
 
 
 
