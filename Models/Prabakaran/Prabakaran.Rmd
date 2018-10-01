@@ -277,6 +277,7 @@ myplot <- plot_data %>%
   ylab("Connection coefficient")
 
 myplot
+ggsave("plot2upper.png", myplot)
 print_matrices_at_point_locations(point_locations, plot_data, path = "matrices_of_plot2upper_Prabakaran")
 ```
 
@@ -334,7 +335,7 @@ myplot <- plot_data %>%
   xlab("\tFree parameter a") +
   ylab("Connection coefficient")
 
-myplot
+ggsave("plot2both.png", myplot)
 print_matrices_at_point_locations(point_locations, plot_data, path = "matrices_of_plot2both_Prabakaran")
 ```
 
@@ -358,6 +359,7 @@ reactions %>%
 ```{r}
 unlink(paste0("*.", c("c", "o", "so", "tex", "lnk")))
 unlink("Fits/", T)
+unlink(".pars_controlled/", T)
 ```
 
 
