@@ -55,25 +55,25 @@ g <- Y(as.eqnvec(structure(observables, names = modules)), x, compile = TRUE, mo
 Load all parameters and format them for further use.
 ```{r Parameters}
 
-pars_raw <- read.csv(paste0("pars.csv"), header = FALSE)  # dynamical parameters
-pars_raw <- structure(pars_raw$V2, names = as.character(pars_raw$V1))
-ic_raw <- read.csv(paste0("IC.csv"), header = F)          # initial conditions
-ic_raw <- structure(ic_raw$V2, names = as.character(ic_raw$V1))
-# sort ics like they appear in x, so it can be used in stode()
-vars_x <- attr(x, "parameters")[attr(x, "parameters") %in% names(ic_raw)]
-ic_raw <- ic_raw[vars_x]
-
-pars_inner_opt_0 <- setdiff(attr(g, "parameters"),names(c(pars_raw,ic_raw)))
-pars_inner_opt_0 <- structure(rep(0, length(pars_inner_opt_0)), 
-                              names = pars_inner_opt_0)
-
-pars_inner_0 <- pars_inner <- c(ic_raw, pars_raw, pars_inner_opt_0)
-
-
-# # check if all parameters are assigned a value. Both lines should evaluate to the same number.
-# x_pars <- unique(union((g) %>% attr("parameters"),(xs) %>% attr("parameters")))
-# names(pars) %in% x_pars %>% sum()
-# x_pars %in% names(pars) %>% sum()
+# pars_raw <- read.csv(paste0("pars.csv"), header = FALSE)  # dynamical parameters
+# pars_raw <- structure(pars_raw$V2, names = as.character(pars_raw$V1))
+# ic_raw <- read.csv(paste0("IC.csv"), header = F)          # initial conditions
+# ic_raw <- structure(ic_raw$V2, names = as.character(ic_raw$V1))
+# # sort ics like they appear in x, so it can be used in stode()
+# vars_x <- attr(x, "parameters")[attr(x, "parameters") %in% names(ic_raw)]
+# ic_raw <- ic_raw[vars_x]
+# 
+# pars_inner_opt_0 <- setdiff(attr(g, "parameters"),names(c(pars_raw,ic_raw)))
+# pars_inner_opt_0 <- structure(rep(0, length(pars_inner_opt_0)), 
+#                               names = pars_inner_opt_0)
+# 
+# pars_inner_0 <- pars_inner <- c(ic_raw, pars_raw, pars_inner_opt_0)
+# 
+# 
+# # # check if all parameters are assigned a value. Both lines should evaluate to the same number.
+# # x_pars <- unique(union((g) %>% attr("parameters"),(xs) %>% attr("parameters")))
+# # names(pars) %in% x_pars %>% sum()
+# # x_pars %in% names(pars) %>% sum()
 
 ```
 
@@ -342,6 +342,7 @@ print_matrices_at_point_locations(point_locations, plot_data, path = "matrices_o
 Print parameters
 ```{r}
 pars %>% 
+  .[!str_detect(names(.), "^a")] %>% 
   exp %>% 
   print2word_namedvec("pars_Prabakaran", names_in_mathenv = T)
 ```
@@ -355,7 +356,7 @@ reactions %>%
 
 ## Clean up Workdir
 ```{r}
-unlink(paste0("*.", c("c", "o", "so")))
+unlink(paste0("*.", c("c", "o", "so", "tex", "lnk")))
 unlink("Fits/", T)
 ```
 
