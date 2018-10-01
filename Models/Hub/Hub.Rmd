@@ -5,7 +5,7 @@ output: html
 ---
 
 # Load libraries and define some useful paths
-```{r setup}
+```{r setup, message=FALSE}
 library(parallel)
 library(MRAr)
 library(xtable)
@@ -30,21 +30,19 @@ compiled_model <- odemodel(reactions, modelname = "Hub", estimate = c("x1", "k1"
 # Prediction function
 x <- Xs(odemodel = compiled_model) 
 # Prediction function for steady states
-xs <- Xs_steady(compiled_model) # When computing steady states, set deriv = F
-loadDLL(x)
+xs <- Xs_steady(compiled_model) 
 ```
 
 ## Observation function
 Observation function which returns our communicating species. 
 The free parameters a_ij are introduced here to perform the linear combination of states which we wish to observe.
-We chose to call them pars_opt, since they will be used to optimize the objective function later on.
 ```{r Observation function with Cx2z2 in x-module}
 modules <- c("X", "Y", "Z")
 
-obs <-  c("x2 + a_1 * Cx2y1 + a_2 * Cx2z1 + a_tox_Cxy * Cx2y1 + a_tox_Cxz * Cx2z1",
+observables <-  c("x2 + a_1 * Cx2y1 + a_2 * Cx2z1 + a_tox_Cxy * Cx2y1 + a_tox_Cxz * Cx2z1",
           "y2 + a_1 * Cx2y1 + a_3 * Cx2z1",
           "z2 + a_2 * Cx2z1 + a_4 * Cx2y1 ")
-g <-   Y(as.eqnvec(structure(obs, names = modules)), x, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
+g <-   Y(as.eqnvec(structure(observables, names = modules)), x, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
 ```
 
 ### General log transformation and setting some pars to zero
@@ -97,6 +95,14 @@ alpha_pars <- pars[str_detect(names(pars), "^a_")]
 ```
 
 
+```{r}
+
+# p_pert <- letters[24:26] %>% paste0("1") %>% are_names_of(log(0.9)) %>% p_pert_fun(pars = pars, modelname = NULL)
+# model <- dMod.frame("1", g, x, p_log, NULL, NULL, p_pert = list(p_pert), pars = list(pars), xs = list(xs))
+# ropt_gadget(c("a_tox_Cxy", "a_tox_Cxz"), model)
+```
+
+
 # Apply different perturbations and run the algorithm
 Since all possible combinations of paramter perturbations are many, these computations are done in a parallelized manner on a remote server.
 If you want to quickly check the implementation with only one perturbation per module, uncomment the lower three lines assigning "perturbations_module_*", if you want to check the full set of perturbations, uncomment the upper three lines
@@ -105,9 +111,9 @@ perturbations_module_x <- c("x1", "k1", "v1", "k2", "v2")
 perturbations_module_y <- c("y1", "k5", "v5", "k31", "k32", "k4")
 perturbations_module_z <- c("z1", "k8", "v8", "k61", "k62", "k7")
 
-# perturbations_module_x <- c("x1")
-# perturbations_module_y <- c("y1")
-# perturbations_module_z <- c("z1")
+perturbations_module_x <- c("x1")
+perturbations_module_y <- c("y1")
+perturbations_module_z <- c("z1")
 
 perturbation_combinations <- expand.grid(perturbations_module_x, perturbations_module_y, perturbations_module_z, stringsAsFactors = F) 
 
@@ -118,85 +124,47 @@ perturbations <- map(1:nrow(perturbation_combinations), function(i) {
 }) %>% 
   .[!map_lgl(., is.null)]
 
-myrunbg_job <- runbg({
+
+# myrunbg_job <- runbg({
   cores <- detectFreeCores()
   alphas <- c(-3, -2, -1, 0, 1, 2, 3)
-    map(alphas, function(alpha) {
-      
-      mclapply(perturbations, function(perturbations_module_) {
-        p_pert <- p_pert_fun(perturbations_module_, pars = pars, modelname = NULL)
-        
-        perturbation_prediction <- (xs*p_log*p_pert)(c(0,Inf), pars, deriv = F)
-        
-        try({r_0 <- R_fun(pars_opt = alpha_pars,
-                          perturbation_prediction = perturbation_prediction,
-                          obs_fun = g,
-                          p_fun = (p_log*p_pert),
-                          pars = pars) %>% local_response_matrix_eq10()})
-        if(inherits(r_0, "try-error")) return(NULL)
-        
-        algo <- function(which_alpha_pars, prefix = NULL) {
-          
-          out <- tibble(r_kept = list(NULL), parframes = list(NULL), r_opt = list(NULL))
-          
-          r_kept <- r_kept_fun(pars_opt = alpha_pars[which_alpha_pars],
-                               perturbation_prediction = perturbation_prediction,
-                               obs_fun = g,
-                               p_fun = (p_log * p_pert),
-                               pars = pars,
-                               alpha = -log(.Machine$double.eps) + alpha)
-          out$r_kept <- list(r_kept)
-          
-          myfits <- mstrust(obj_alpha,
-                            center =  structure(rep(0, length(which_alpha_pars)), names = which_alpha_pars),
-                            studyname = "Fits",
-                            cores = 1,
-                            fits = 3,
-                            sd = 1,
-                            mypars = pars,
-                            perturbation_prediction = perturbation_prediction,
-                            r_kept = r_kept,
-                            p_fun = (p_log * p_pert),
-                            obs_fun = g)
-          myparframe <- try(myfits %>% as.parframe())
-          out$parframes <- list(myparframe)
-          if (inherits(myparframe, "try-error")) {
-            out$parframes <- list(myfits)
-            return(out)
-          }
-          
-          r_opt <- r_alpha_fun(pars_opt = myfits %>% as.parframe() %>% as.parvec() %>% unclass() ,
-                               pars = pars,
-                               perturbation_prediction = perturbation_prediction,
-                               p_fun = (p_log*p_pert),
-                               obs_fun = g)
-          out$r_opt <- list(r_opt)
-          return(out)
-        }
-        
-        to_upstream_module <- algo(c("a_tox_Cxy", "a_toy_Cxz"), "upstream")
-        to_both_modules <- algo(c("a_1", "a_2"), "both")
-        
-        bind_cols(tibble(r_0 = list(r_0 %>% round(2)), pars_perturbed = list(perturbations_module_), alpha = alpha), to_upstream_module, to_both_modules)
-      }, mc.cores = cores) %>% 
-        do.call(rbind,.) 
-  }) %>% 
-    do.call(rbind,.)
-  
-}, machine = c("knecht5"), input = ls(pos=.GlobalEnv), filename = "2018_09_24_hub"
-, recover = T
-)
+  dose_pars <- pars[1]
+  alpha_par_settings <- list(upstream = c("a_tox_Cxy", "a_tox_Cxz"),
+       both = c("a_Cxy", "a_Cxz"))
+
+  devtools::load_all("~/Promotion/Projects/MRA/MRAr/")
+    restuls <- run_different_perturbations(dose_pars = dose_pars, 
+                              pars0 = pars, 
+                              alphas = alphas, 
+                              perturbations = perturbations,
+                              xs = xs,
+                              p_log = p_log,
+                              p_pert = p_pert,
+                              g = g, 
+                              cores = cores,
+                              alpha_par_settings = alpha_par_settings)
+# }, machine = c("fermi"), input = ls(pos=.GlobalEnv), filename = "2018_09_24_hub"
+# # , recover = T
+# )
 ```
+
+```{r}
+restuls %>% filter(alpha == 0) %>% unlist(F)
+```
+```{r}
+results %>% filter(alpha == 0) %>% .[1,] %>% unlist(F)
+```
+
 
 Check if results are ready. Uncomment if needed
 ```{r}
-# myrunbg_job$check()
+myrunbg_job$check()
 ```
 
 Fetch/save/restore results. Comment out the first two lines after saving the fetched fit results.
 ```{r}
-# myrunbg <- myrunbg_job$get()[[1]]
-# saveRDS(myrunbg, file = "2018_09_24_hubresult.rds")
+myrunbg <- myrunbg_job$get()[[1]]
+saveRDS(myrunbg, file = "2018_09_24_hubresult.rds")
 results <- readRDS("2018_09_24_hubresult.rds")
 
 ```
@@ -208,16 +176,7 @@ Purge files from the remote computing job.  Uncomment if needed
 
 
 # Explore results
-
-```{r unnest runbg job}
-# helper functions
-matrix_2_wide_df <- function(mat, nm) {mat %>% 
-    `dim<-`(NULL) %>% 
-    t %>% 
-    as.data.frame %>% 
-    `names<-`(nm)}
-
-# prepare data for clustering
+```{r Prepare data for clustering}
 results_unnested_matrices <-
   results %>%
   rename(upstreamropt = r_opt, 
@@ -234,103 +193,34 @@ results_unnested_matrices <-
          alpha = as.numeric(alpha)) %>% 
   unnest(upstreamropt, bothropt, rzero, pars_perturbed)
 
-#' clustering and print function
-#'
-#' @param results_unnested_matrices result from above
-#' @param a alpha
-#' @param col_start regex like "up_" or "both_"
-#' @param nclust nclusters
-#' @param which_clust print perturbations of which cluster?
-cluster_matrices_and_print_perturbations <- function(results_unnested_matrices, a, col_start, nclust, which_clust) {
-  kclusts <- results_unnested_matrices %>% 
-    filter(near(alpha, a)) %>% 
-    select(starts_with(col_start)) %>% 
-    {.} %T>% {set.seed(1)} %>%
-    kmeans(nclust) %>% 
-    {.} %T>% print(digits = 2) %>%
-    {.}
-  
-  kclusts$centers %>% 
-    round(2) %>% 
-    apply(1, . %>% matrix( nrow = 3) %>% 
-    {.} %T>% assign(".mat", ., pos = .GlobalEnv) %>%
-      print %>% {NULL})
-  
-  augmented <- broom::augment(kclusts, results_unnested_matrices %>% filter(near(alpha, a)))
-  
-  augmented %>% 
-    filter(.cluster %in% which_clust) %>% 
-    select(X,Y,Z) %>% as.matrix %>% print
-  
-  out <- augmented
-}
+
 ```
 
 ```{r}
-cluster_rzero <- cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, "rzero_", 5, 4)
-representative_r0_cl1 <- c("x1", "y1", "k8")
-representative_r0_cl2 <- c("k1", "k5", "k8")
-representative_r0_cl3 <- c("x1", "y1", "z1")
-representative_r0_cl4 <- c("x1", "k5", "k8")
+cluster_by_rzero <- cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, "rzero_", 3, 3)
+cluster_representative_r0_cl1 <- c("x1", "y1", "k8")
+cluster_representative_r0_cl2 <- c("k1", "k5", "k8")
+cluster_representative_r0_cl3 <- c("x1", "y1", "z1")
 ```
 
 ```{r}
-cluster_up <- cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, "up_", 2, 2)
-representative_rup_cl1 <- c("x1", "y1", "z1")
-representative_rup_cl2 <- c("x1", "y1", "k8")
+cluster_by_ropt <- cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, "up_", 4, 2)
+cluster_representative_by_ropt_cl1 <- c("x1", "y1", "z1")
+cluster_representative_by_ropt_cl2 <- c("x1", "y1", "k8")
 ```
 
 ```{r}
-cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, "both_", 5, 6)%>% 
-  print(n = 100)
-```
-
-
-```{r}
-#' Get the relevant matrices for a perturbation and alpha-setting
-#'
-#' @param results as is from runbg
-#' @param a alpha value
-#' @param pp names of perturbed parameters
-#' @param pars,xs,obs_fun,p_log objects that were used to generate the result
-#'
-#' @return list of matrices
-get_r0_r1_ropt_rkept <- function(results, a, pp, pars, xs, obs_fun, p_log) {
-  myresults <- filter(results, alpha == a, map_lgl(pars_perturbed, . %>% names %>% identical(pp)))
-  
-  p_pert <- p_pert_fun(myresults$pars_perturbed[[1]], pars, NULL)
-  perturbation_prediction <- (xs*p_log*p_pert)(c(0,Inf), pars, deriv = F)
-  r_1 <-  r_alpha_fun(pars_opt = myresults$parframes[[1]] %>% as.parvec %>% unclass %>%  `*`(0),
-                               pars = pars,
-                               perturbation_prediction = perturbation_prediction,
-                               p_fun = (p_log*p_pert),
-                               obs_fun = g) %>% round(2)
-  
-  list(perturbed_parameters = t(pp), r_0 = myresults$r_0[[1]], r_1 = r_1, r_opt = myresults$r_opt[[1]] %>% round(2), r_kept = myresults$r_kept[[1]])
-}
-
-get_r0_r1_ropt_rkept(results, 0, representative_r0_cl1, pars, xs, obs_fun, p_log) %>% 
-  imap(~.x %>% {cbind(c(.y, rep("", nrow(.x)-1)), .)}) %>% 
+alpha <- 0
+get_r0_r1_ropt_rkept(results, alpha, cluster_representative_r0_cl1, pars, xs, obs_fun, p_log) %>%
+  imap(~.x %>% {cbind(c(.y, rep("", nrow(.x)-1)), .)}) %>%
   print2word_matrixlist("matrices_cluster1")
-get_r0_r1_ropt_rkept(results, 0, representative_r0_cl2, pars, xs, obs_fun, p_log)%>%   
-  imap(~.x %>% {cbind(c(.y, rep("", nrow(.x)-1)), .)}) %>% 
+get_r0_r1_ropt_rkept(results, alpha, cluster_representative_r0_cl2, pars, xs, obs_fun, p_log) %>%
+  imap(~.x %>% {cbind(c(.y, rep("", nrow(.x)-1)), .)}) %>%
   print2word_matrixlist("matrices_cluster2")
-get_r0_r1_ropt_rkept(results, 0, representative_r0_cl3, pars, xs, obs_fun, p_log)%>%   
-  imap(~.x %>% {cbind(c(.y, rep("", nrow(.x)-1)), .)}) %>% 
+get_r0_r1_ropt_rkept(results, alpha, cluster_representative_r0_cl3, pars, xs, obs_fun, p_log) %>% 
+  imap(~.x %>% {cbind(c(.y, rep("", nrow(.x)-1)), .)}) %>%
   print2word_matrixlist("matrices_cluster3")
-get_r0_r1_ropt_rkept(results, 0, representative_r0_cl4, pars, xs, obs_fun, p_log)%>%   
-  imap(~.x %>% {cbind(c(.y, rep("", nrow(.x)-1)), .)}) %>% 
-  print2word_matrixlist("matrices_cluster4")
-get_r0_r1_ropt_rkept(results, 0, representative_rup_cl1, pars, xs, obs_fun, p_log)%>%   
-  imap(~.x %>% {cbind(c(.y, rep("", nrow(.x)-1)), .)}) %>% 
-  print2word_matrixlist("matrices_cluster_opt1")
-get_r0_r1_ropt_rkept(results, 0, representative_rup_cl2, pars, xs, obs_fun, p_log)%>%   
-  imap(~.x %>% {cbind(c(.y, rep("", nrow(.x)-1)), .)}) %>% 
-  print2word_matrixlist("matrices_cluster_opt2")
 ```
-
-
-
 
 
 # Description of results
@@ -350,3 +240,13 @@ Export some tables for the publication
 #                                                "r_0" = "a = 0, ", "r_1" = "a = 1, ", "r_opt" = "a = a_opt, ")))} %>%
 #   imap(~ .x  %>% round(2) %>% as.tibble() %>% `names<-`(communicating_species) %>% bind_cols(aopt = rep(.y ,3), module = communicating_species,.) ) %>% 
 #   print_msword_table("matrices")
+
+```
+
+
+## Clean up Workdir
+```{r}
+unlink(paste0("*.", c("c", "o", "so", "tex", "lnk")))
+unlink("Fits/", T)
+unlink(".pars_controlled/", T)
+```
