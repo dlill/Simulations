@@ -1,7 +1,0 @@
-"Description","Rate","m1","m2","Cm2e2","e1","e2"
-"act_m","k1 * m1",-1,1,,,
-"deact_m","k2 * m2",1,-1,,,
-"m2_e1_to_comp","(k31 * e2 * m2)",,-1,1,,-1
-"comp_to_m2_e1","(k32 * Cm2e2)",,1,-1,,1
-"e1_formation","(k4 * Cm2e2)",,1,-1,1,
-"act_e","k5 * e1",,,,-1,1
