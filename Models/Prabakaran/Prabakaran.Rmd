@@ -42,50 +42,20 @@ Observation function which returns our communicating species.
 The free parameters a_ij are introduced here to perform the linear combination of states which we wish to observe.
 We chose to call them alpha_oars, since they will be used to optimize the objective function later on.
 ```{r Naive observation function}
-modules <-  c("X","Y")
+modules <- c("X","Y")
 observables <-  c("m2+a_xy*Cm2e1+a_tox_xy*Cm2e1",
                  "e2+a_xy*Cm2e1+a_toy_xy*Cm2e1")
 g <- Y(as.eqnvec(structure(observables, names = modules)), x, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
 ```
 
 
-
-
-## Inner parameters
-Load all parameters and format them for further use.
-```{r Parameters}
-
-# pars_raw <- read.csv(paste0("pars.csv"), header = FALSE)  # dynamical parameters
-# pars_raw <- structure(pars_raw$V2, names = as.character(pars_raw$V1))
-# ic_raw <- read.csv(paste0("IC.csv"), header = F)          # initial conditions
-# ic_raw <- structure(ic_raw$V2, names = as.character(ic_raw$V1))
-# # sort ics like they appear in x, so it can be used in stode()
-# vars_x <- attr(x, "parameters")[attr(x, "parameters") %in% names(ic_raw)]
-# ic_raw <- ic_raw[vars_x]
-# 
-# pars_inner_opt_0 <- setdiff(attr(g, "parameters"),names(c(pars_raw,ic_raw)))
-# pars_inner_opt_0 <- structure(rep(0, length(pars_inner_opt_0)), 
-#                               names = pars_inner_opt_0)
-# 
-# pars_inner_0 <- pars_inner <- c(ic_raw, pars_raw, pars_inner_opt_0)
-# 
-# 
-# # # check if all parameters are assigned a value. Both lines should evaluate to the same number.
-# # x_pars <- unique(union((g) %>% attr("parameters"),(xs) %>% attr("parameters")))
-# # names(pars) %in% x_pars %>% sum()
-# # x_pars %in% names(pars) %>% sum()
-
-```
-
 ## Parameter transformation function
+Define logtrafo, define initial conditions
 ```{r}
 trafo <- getParameters(x,g) %>% 
   setNames(.,.) %>% 
   insert("x~0", x = str_subset(.currentSymbols, "^C*[me](2|1.2)")) %>% # set inits to zero
-  insert("x~exp(x)", x = .currentSymbols) %>%
-  # {.} %T>% print %>% 
-  {.} 
-
+  insert("x~exp(x)", x = .currentSymbols)
 
 p_log <- P(trafo = trafo,
            compile = T,
@@ -117,12 +87,12 @@ alpha_pars <- pars[str_detect(names(pars), "^a_")]
 # Simulate perturbation data
 For the perturbation experiments we use another parameter transformation to scale some parameters.
 p_pert_fun automatically generates a parameter transformation function, which returns different sets of parameters for different conditions and a control condition.
-Eg. if we have pars_perturbed = c("logx1" = log(0.9)), p_pert_fun(pars_perturbed) will return a parameter transformation with the control condition with unchanged parameters and one condition in which logx' = logx + log(0.9)
+Eg. if we have pars_perturbed = c("x1" = log(0.9)), p_pert_fun(pars_perturbed) will return a parameter transformation with the control condition with unchanged parameters and one condition in which x' = x + log(0.9)
 
 "log(0.9)" corresponds to a ~10% reduction of the original parameter value.
 ```{r which pars are perturbed}
 # Which pars shall be perturbed?
-pars_perturbed <- c(k1 = log(0.9), e1 = log(0.9))
+pars_perturbed <- c(m1 = log(0.9), e1 = log(0.9))
 
 p_pert <- p_pert_fun(pars_perturbed = pars_perturbed,
                      pars = pars)
@@ -322,7 +292,6 @@ myplot <- plot_data %>%
                        # , alpha = par_opt_setting
                        )) +
 
-
   geom_rect(aes(xmin = alpha - 0.17, xmax = alpha + 0.17, ymin = minval - 0.07, ymax = maxval + 0.07), alpha = 1, fill = "#E9E9E9", color = "black", size = 0.3) + 
   geom_text(aes(label = label), data = text_data, color = "black", size = 5, fontface = "bold") +
 
@@ -335,6 +304,7 @@ myplot <- plot_data %>%
   xlab("\tFree parameter a") +
   ylab("Connection coefficient")
 
+myplot
 ggsave("plot2both.png", myplot)
 print_matrices_at_point_locations(point_locations, plot_data, path = "matrices_of_plot2both_Prabakaran")
 ```
