@@ -18,20 +18,16 @@ library(xtable)
 ## ODE model setup
 ```{r Prediction function Cascade, results='asis'}
 reactions <- NULL %>% 
-  addReaction(from = "x1", to = "x2", rate = "((v1 *  x1)/(k1 + x1))*(1 + u1*z2/k9)/(1 + z2/k9)", description = "act_x") %>% 
+  addReaction(from = "x1", to = "x2", rate = "((v1 *  x1)/(k1 + x1))", description = "act_x") %>% 
   addReaction(from = "x2", to = "x1", rate = "((v2 * x2 )/(k2 + x2))", description = "deact_x") %>% 
-  addReaction(from = "x2 + y1", to = "Cx2y1", rate = "(k31 * y1 *x2) * (1 + u2*z2/k10)/(1 + z2/k10) - (k32 *Cx2y1)", description = "x2_y_to_comp") %>% 
+  addReaction(from = "x2 + y1", to = "Cx2y1", rate = "(k31 * y1 *x2) - (k32 *Cx2y1)", description = "x2_y_to_comp") %>% 
   addReaction(from = "Cx2y1", to = "x2 + y2", rate = "(k4 * Cx2y1)", description = "y2_formation") %>% 
   addReaction(from = "y2", to = "y1", rate = "((v5 * y2)/(k5 + y2))", description = "deact_y") %>% 
   addReaction(from = "y2 + z1", to = "Cy2z1", rate = "((k61 *z1 *y2) - (k62 * Cy2z1))", description = "y2_z_to_comp") %>% 
   addReaction(from = "Cy2z1", to = "y2 + z2", rate = "(k7 * Cy2z1)", description = "z2_formation") %>% 
-  addReaction(from = "z2", to = "z1", rate = "((v8 * z2)/(k8 + z2))", description = "z_deact") %>% 
-  addReaction(from = "x2 + z2", to = "Cx2z2", rate = "k111*x2*z2-k112*Cx2z2", description = "z2_x2_to_comp") %>% 
-  addReaction(from = "Cx2z2", to = "x1 + z2", rate = "k12*Cx2z2", description = "deact_x_by_z2") %>% 
-  addReaction(from = "x1 + z2", to = "Cx1z2", rate = "k131*x1*z2-k132*Cx1z2", description = "z2_x1_to_comp") %>% 
-  addReaction(from = "Cx1z2", to = "x2 + z2", rate = "k14*Cx1z2", description = "act_x_by_z2")
+  addReaction(from = "z2", to = "z1", rate = "((v8 * z2)/(k8 + z2))", description = "z_deact") 
 
-compiled_model <- odemodel(reactions, modelname = "Cascade")
+compiled_model <- odemodel(reactions, modelname = "Cascade", estimate = c("x1", "k1"))
 
 # Prediction function
 x <- Xs(odemodel = compiled_model) 
@@ -67,7 +63,6 @@ g <- Y(g = as.eqnvec(structure(observables, names = modules)),
 ```
 
 
-
 ### General log transformation and setting some pars to zero
 It's better to do a logtransformation for all Fitting purposes and work with the log-Parameters.
 The way to implement is this, is
@@ -100,8 +95,10 @@ pars <- c(
   a_toz_Cyz	=	.Machine$double.eps	, # 8
   a_toz_Czx	=	.Machine$double.eps	, # 9
   
-  
-  
+  x1 = 100,      # 30
+  y1 = 100,      # 31
+  z1 = 100,       # 32
+
   k1       	=	100	, # 11
   v1       	=	1.5	, # 12
   k2       	=	100	, # 13
@@ -115,60 +112,37 @@ pars <- c(
   k62      	=	0.4	, # 21
   k7       	=	0.008	, # 22
   k8       	=	100	, # 23
-  v8       	=	1	, # 24
-  u1   	    =	1	, # 10
-  u2   	    =	1	, # 11
-  k9       	=	50	, # 29
-  k10      	=	50	, # 13
-
-  
-  x1 = 100,      # 30
-  y1 = 100,      # 31
-  z1 = 100       # 32
-  
+  v8       	=	1	
 ) %>% 
   log
 
 alpha_pars <- pars[str_detect(names(pars), "^a_")]
 ```
 
-
 ```{r}
-# test the algorithm
-algo(pars, c("a_tox_Cxy", "a_toy_Cyz"), alpha_pars, 0, g, xs, p_log, c("x1", "y1", "z1")) %>% unlist(F)
+# test the algorithm.
+test <- algo(pars, c("x1", "y1", "z1"), c("a_tox_Cxy", "a_toy_Cyz"), alpha_pars, 0, g, xs, p_log)
+unlist(test, recursive = F)
 ```
 
-
 # Apply different perturbations and run the algorithm
-Since all possible combinations of paramter perturbations are many, these computations are done in a parallelized manner on a remote server.
-If you want to quickly check the implementation with only one perturbation per module, uncomment the lower three lines assigning "perturbations_module_*", if you want to check the full set of perturbations, uncomment the upper three lines
+Since all possible combinations of paramter perturbations are many, these computations are done in a parallelized manner on a remote server. This is done by "rungb()". 
 ```{r}
 perturbations_module_x <- c("x1", "k1", "v1", "k2", "v2")
 perturbations_module_y <- c("y1", "k5", "v5", "k31", "k32", "k4")
 perturbations_module_z <- c("z1", "k8", "v8", "k61", "k62", "k7")
 
-# perturbations_module_x <- c("x1")
-# perturbations_module_y <- c("y1")
-# perturbations_module_z <- c("z1")
-
 perturbation_combinations <- expand.grid(perturbations_module_x, perturbations_module_y, perturbations_module_z, stringsAsFactors = F) 
-
 perturbations <- map(1:nrow(perturbation_combinations), function(i) {
   mynames <- perturbation_combinations[i,] %>% unlist() %>% unname() %>% unique()
   if(length(mynames)<3) return(NULL)
   mynames %>% are_names_of(log(0.9))
-}) %>% 
-  .[!map_lgl(., is.null)]
-
+}) %>% .[!map_lgl(., is.null)]
 
 myrunbg_job <- runbg({
   cores <- detectFreeCores()
-  
-  # alphas <- c(-3, -2, -1, 0, 1, 2, 3)
-  # perturbations<-perturbations[1:2]
-  
-  alphas <- seq(-3,3,0.5)
-  dose_pars <- pars[1]
+  alphas <- seq(-3, 3, 1)
+  dose_pars <- pars["x1"]
   alpha_par_settings <- list(upstream = c("a_tox_Cxy", "a_toy_Cyz"),
                              both = c("a_Cxy", "a_Cyz"))
   
@@ -184,24 +158,21 @@ myrunbg_job <- runbg({
                                          cores = cores,
                                          alpha_par_settings = alpha_par_settings)
   results 
-  
-  
-}, machine = c("fermi"), input = ls(pos=.GlobalEnv), filename = "cascade_different_perturbations"
+}, machine = c("fermi"), input = ls(pos=.GlobalEnv), filename = "cascade_different_perturbations" 
 , recover = T
 )
-
 ```
 
 Check if results are ready.
 ```{r}
-myrunbg_job$check()
+# myrunbg_job$check()
 ```
 
 Fetch/save/restore results
 ```{r}
-myrunbg <- myrunbg_job$get()[[1]]
-saveRDS(myrunbg, file = "cascade_different_perturbations.rds")
-results <- readRDS("cascade_different_perturbations.rds")
+# myrunbg <- myrunbg_job$get()[[1]]
+# saveRDS(myrunbg, file = "results_cascade_different_perturbations.rds")
+results <- readRDS("results_cascade_different_perturbations.rds")
 
 ```
 
@@ -212,57 +183,116 @@ Purge files from the remote computing job.
 
 
 
-# Description of results
-```{r}
-# helper functions/objects for exporting to ms word
-communicating_species <- paste0(LETTERS[24:26],"*")
-print_msword_table <- function(x, path, digits = 2) {
-  tables <- map(x, . %>% xtable::xtable(digits = digits) %>% {xtable:::print.xtable(invisible(.), include.rownames = F)}) %>% 
-    paste0(collapse = "\n\n")
-  
-  tables %>%
-    paste("\\documentclass[10pt,a4paper]{article}
-\\usepackage[latin1]{inputenc}
-\\usepackage{amsmath}
-\\usepackage{amsfonts}
-\\usepackage{amssymb}
-\\usepackage{graphicx}
-\\begin{document}", ., "\\end{document}") %>%
-    write_lines(paste0(path,".tex"))
-  system2("pandoc", c(paste0("-o ",path,".docx"), paste0(path,".tex")))
-}
-
+# Explore results
+```{r Prepare data for clustering}
+results_unnested_matrices <- results %>%
+  mutate(r_optupstream = map(r_optupstream, matrix_2_wide_df, nm = (paste0("upstream_ropt", outer(1:3,1:3, paste0)))),
+         r_optboth = map(r_optboth, . %>% matrix_2_wide_df(paste0("both_ropt", outer(1:3,1:3, paste0)))),
+         
+         r_keptupstream = map(r_keptupstream, matrix_2_wide_df, nm = (paste0("upstream_rkept", outer(1:3,1:3, paste0)))),
+         r_keptboth = map(r_keptboth, . %>% matrix_2_wide_df(paste0("both_rkept", outer(1:3,1:3, paste0)))),
+         
+         r_1upstream = map(r_1upstream, matrix_2_wide_df, nm = (paste0("upstream_r1", outer(1:3,1:3, paste0)))),
+         r_1both = map(r_1both, . %>% matrix_2_wide_df(paste0("both_r1", outer(1:3,1:3, paste0)))),
+         
+         r_0 = map(r_0, . %>% matrix_2_wide_df(paste0("r_0", outer(1:3,1:3, paste0)))),
+         
+         pars_perturbed = map(pars_perturbed, . %>% names %>% `names<-`(LETTERS[24:26]) %>% t %>% as.data.frame(stringsAsFactors = F)),
+         perturbed_set = seq_along(alpha),
+         alpha = as.numeric(alpha)) %>% 
+  unnest(r_optupstream, r_optboth,r_keptupstream, r_keptboth,r_1upstream, r_1both, r_0, pars_perturbed)
 ```
 
+There are about 4 different clusters of local response matrices when no complexes are measured:
+```{r}
+cluster_by_r_0 <- cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, "r_0", 8,NULL)
+```
+Also 4 clusters when total phosphorylated species are measured.
+```{r}
+cluster_by_r_1 <- cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, "upstream_r1", 8,NULL)
+```
+
+When the complexes are measured independently, the matrices are similar after detecting the sequestration elements and optimizing the free parameters to minimize these elements.
+```{r}
+cluster_by_ropt_complex_to_upstream <- cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, "upstream_ropt", 2,NULL)
+```
+
+When the complex is measured independently, some combinations of parameter perturbations don't work out anymore, but most of them do.
+```{r}
+clustered <- cluster_by_ropt_complex_to_both <- cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, "both_ropt", 5,NULL)
+```
+
+
+
+# Export of results
+
+## Parameters/ODEs
+```{r}
+reactions %>% 
+  as.eqnvec() %>% 
+  print2word_eqnvec("odes_cascade")
+```
+
+```{r}
+pars %>% 
+  exp %>% 
+  print2word_namedvec("pars_cascade", names_in_mathenv = T)
+```
+
+## Matrices
 Export some tables for the publication
 ```{r}
-results %>% 
-  filter(alpha == 0, u1 %in% c(-10,0,2)) %>% 
-  filter(map_lgl(pars_perturbed, . %>% {str_detect(names(.), c("x1", "y1", "z1"))} %>% all)) %>% 
-  .[c("r_opt","r_opt1")] %>%
-  unlist(F) %>% #.[t(matrix(1:6, nrow = 3))] %>% 
-  {mymatrix <- .; `names<-`(mymatrix, names(mymatrix) %>% str_replace_all(c("1$" = "gl = -10", "2$" = "gl = 0", "3$" = "gl = 2",
-                                                                            "r_0" = "a = 0, ", "r_1" = "a = 1, ", "r_opt" = "a = a_opt, ")))} %>%
-  imap(~ .x  %>% round(2) %>% as.tibble() %>% `names<-`(communicating_species) %>% bind_cols(aopt = rep(.y ,3), module = communicating_species,.) ) %>% print_msword_table("matrices_u1_positive_detected")
+to_export <-  results %>% 
+  filter(alpha == 0) %>% 
+  filter(map_lgl(pars_perturbed, ~identical(names(.x), c("x1", "y1", "z1")))) %>% 
+  unlist(recursive = F)
+
+to_export[c("r_0", "r_1upstream", "r_optupstream")] %>% 
+  print2word_matrixlist("cascade_matrices")
+```
+
+```{r}
+to_export <-  results %>% 
+  filter(alpha == 0) %>% 
+  filter(map_lgl(pars_perturbed, ~identical(names(.x), c("x1", "y1", "z1")))) %>% 
+  unlist(recursive = F)
+
+to_export[c("r_optupstream", "r_optboth")] %>% 
+ print2word_matrixlist2("cascade_matrices_SI")
+  
+```
 
 
-results %>% 
-  filter(alpha == 0, u1 %in% c(-10,0,2)) %>% 
-  filter(map_lgl(pars_perturbed,. %>% {str_detect(names(.), c("x1", "y1", "k8"))} %>% all)) %>% 
-  .[c("r_opt","r_opt1")] %>%
-  unlist(F) %>% #.[t(matrix(1:6, nrow = 3))] %>% 
-  {mymatrix <- .; `names<-`(mymatrix, names(mymatrix) %>% str_replace_all(c("1$" = "gl = -10", "2$" = "gl = 0", "3$" = "gl = 2",
-                                                                            "r_0" = "a = 0, ", "r_1" = "a = 1, ", "r_opt" = "a = a_opt, ")))} %>%
-  imap(~ .x  %>% round(2) %>% as.tibble() %>% `names<-`(communicating_species) %>% bind_cols(aopt = rep(.y ,3), module = communicating_species,.) ) %>% print_msword_table("matrices_u1_negative_detected")
-
+# Clean up working directory
+```{r}
+unlink(paste0("*.", c("c", "o", "so", "tex")))
+unlink("Fits/", T)
 ```
 
 
 
 
-results %>%
-filter(alpha == 0, u1 %in% c(-1)) %>%
-.[c("r_opt", "r_opt1")] %>% unlist(F) %>%
-imap(~.x %>% round(2) %>% xtable(align = rep("",4)) %>% print(tabular.environment="pmatrix", include.colnames = F, include.rownames = F, floating = F, hline.after = NULL) %>%  mypublish_mat(.y))
-```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
