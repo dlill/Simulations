@@ -39,9 +39,9 @@ The free parameters a_ij are introduced here to perform the linear combination o
 ```{r Observation function with Cx2z2 in x-module}
 modules <- c("X", "Y", "Z")
 
-observables <-  c("x2 + a_1 * Cx2y1 + a_2 * Cx2z1 + a_tox_Cxy * Cx2y1 + a_tox_Cxz * Cx2z1",
-          "y2 + a_1 * Cx2y1 + a_3 * Cx2z1",
-          "z2 + a_2 * Cx2z1 + a_4 * Cx2y1 ")
+observables <-  c("x2 + a_Cxy * Cx2y1 + a_Cxz * Cx2z1 + a_tox_Cxy * Cx2y1 + a_tox_Cxz * Cx2z1",
+          "y2 + a_Cxy * Cx2y1 + a_toy_Cxz * Cx2z1",
+          "z2 + a_Cxz * Cx2z1 + a_toz_Cxy * Cx2y1 ")
 g <-   Y(as.eqnvec(structure(observables, names = modules)), x, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
 ```
 
@@ -84,12 +84,12 @@ k7       	=	0.05	, # 20
 k8       	=	100	, # 21
 v8       	=	5	, # 22
 
-a_1      	=	.Machine$double.eps	, # 23
-a_2      	=	.Machine$double.eps	, # 24
+a_Cxy      	=	.Machine$double.eps	, # 23
+a_Cxz      	=	.Machine$double.eps	, # 24
 a_tox_Cxy	=	.Machine$double.eps	, # 25
 a_tox_Cxz	=	.Machine$double.eps	, # 26
-a_3      	=	.Machine$double.eps	, # 27
-a_4      	=	.Machine$double.eps	  # 28
+a_toy_Cxz      	=	.Machine$double.eps	, # 27
+a_toz_Cxy      	=	.Machine$double.eps	  # 28
 ) %>% log 
 alpha_pars <- pars[str_detect(names(pars), "^a_")]
 ```
@@ -111,9 +111,9 @@ perturbations_module_x <- c("x1", "k1", "v1", "k2", "v2")
 perturbations_module_y <- c("y1", "k5", "v5", "k31", "k32", "k4")
 perturbations_module_z <- c("z1", "k8", "v8", "k61", "k62", "k7")
 
-perturbations_module_x <- c("x1")
-perturbations_module_y <- c("y1")
-perturbations_module_z <- c("z1")
+# perturbations_module_x <- c("x1")
+# perturbations_module_y <- c("y1")
+# perturbations_module_z <- c("z1")
 
 perturbation_combinations <- expand.grid(perturbations_module_x, perturbations_module_y, perturbations_module_z, stringsAsFactors = F) 
 
@@ -125,16 +125,18 @@ perturbations <- map(1:nrow(perturbation_combinations), function(i) {
   .[!map_lgl(., is.null)]
 
 
-# myrunbg_job <- runbg({
+myrunbg_job <- runbg({
   cores <- detectFreeCores()
-  alphas <- c(-3, -2, -1, 0, 1, 2, 3)
+  # alphas <- c(-3, -2, -1, 0, 1, 2, 3)
+  # perturbations<-perturbations[1:2]
+  alphas <- seq(-3,3,0.5)
   dose_pars <- pars[1]
   alpha_par_settings <- list(upstream = c("a_tox_Cxy", "a_tox_Cxz"),
        both = c("a_Cxy", "a_Cxz"))
 
-  devtools::load_all("~/Promotion/Projects/MRA/MRAr/")
-    restuls <- run_different_perturbations(dose_pars = dose_pars, 
+    results <- run_different_perturbations(dose_pars = dose_pars, 
                               pars0 = pars, 
+                              alpha_pars = alpha_pars,
                               alphas = alphas, 
                               perturbations = perturbations,
                               xs = xs,
@@ -143,18 +145,11 @@ perturbations <- map(1:nrow(perturbation_combinations), function(i) {
                               g = g, 
                               cores = cores,
                               alpha_par_settings = alpha_par_settings)
-# }, machine = c("fermi"), input = ls(pos=.GlobalEnv), filename = "2018_09_24_hub"
-# # , recover = T
-# )
+    results 
+}, machine = c("fermi"), input = ls(pos=.GlobalEnv), filename = "2018_09_24_hub"
+, recover = T
+)
 ```
-
-```{r}
-restuls %>% filter(alpha == 0) %>% unlist(F)
-```
-```{r}
-results %>% filter(alpha == 0) %>% .[1,] %>% unlist(F)
-```
-
 
 Check if results are ready. Uncomment if needed
 ```{r}
@@ -174,52 +169,98 @@ Purge files from the remote computing job.  Uncomment if needed
 # myrunbg_job$purge()
 ```
 
+```{r}
+results <- results %>% 
+  as.tibble() %>% 
+  # rowwise() %>% 
+  # mutate(r_0 = list(unlist(r_0,F))) %>% 
+  mutate(r_0 = map(r_0, ~.x[[1]]),
+         pars_perturbed = map(pars_perturbed, ~.x[[1]]),
+         alpha = unlist(alpha),
+         dose_name = unlist(dose_name),
+         dose_par = unlist(dose_par),
+         upstream = map(algo_results, ~.x[[1]]),
+         both = map(algo_results, ~.x[[2]])
+         ) %>% 
+  unnest(upstream) %>% 
+  unnest(both)
+
+```
+
+```{r}
+map(results, ~map_lgl(.x, function(i) inherits(i, "try-error")) %>% any)
+```
+
 
 # Explore results
 ```{r Prepare data for clustering}
 results_unnested_matrices <-
   results %>%
-  rename(upstreamropt = r_opt, 
-         bothropt = r_opt1,
-         rzero = r_0) %>% 
+  rename(upstreamropt = r_optupstream, 
+         bothropt = r_optboth,
+         upstreamrkept = r_keptupstream, 
+         bothrkept = r_keptboth,
+         rzero = r_0
+         ) %>% 
   filter(map_lgl(upstreamropt, is.double), 
          map_lgl(bothropt, is.double),
          map_lgl(rzero, is.double)) %>% 
-  mutate(upstreamropt = map(upstreamropt, matrix_2_wide_df, nm = (paste0("up_r", outer(1:3,1:3, paste0)))),
-         bothropt = map(bothropt, . %>% matrix_2_wide_df(paste0("both_r", outer(1:3,1:3, paste0)))),
+  mutate(upstreamropt = map(upstreamropt, matrix_2_wide_df, nm = (paste0("up_ropt", outer(1:3,1:3, paste0)))),
+         bothropt = map(bothropt, . %>% matrix_2_wide_df(paste0("both_ropt", outer(1:3,1:3, paste0)))),
+         upstreamrkept = map(upstreamrkept, matrix_2_wide_df, nm = (paste0("up_rkept", outer(1:3,1:3, paste0)))),
+         bothrkept = map(bothrkept, . %>% matrix_2_wide_df(paste0("both_rkept", outer(1:3,1:3, paste0)))),
          rzero = map(rzero, . %>% matrix_2_wide_df(paste0("rzero_", outer(1:3,1:3, paste0)))),
          pars_perturbed = map(pars_perturbed, . %>% names %>% `names<-`(LETTERS[24:26]) %>% t %>% as.data.frame(stringsAsFactors = F)),
          perturbed_set = seq_along(alpha),
          alpha = as.numeric(alpha)) %>% 
-  unnest(upstreamropt, bothropt, rzero, pars_perturbed)
+  unnest(upstreamropt, bothropt,upstreamrkept, bothrkept, rzero, pars_perturbed)
 
 
 ```
 
 ```{r}
-cluster_by_rzero <- cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, "rzero_", 3, 3)
+cluster_by_rzero <- cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, "rzero_", 3, 1)
 cluster_representative_r0_cl1 <- c("x1", "y1", "k8")
 cluster_representative_r0_cl2 <- c("k1", "k5", "k8")
 cluster_representative_r0_cl3 <- c("x1", "y1", "z1")
 ```
 
 ```{r}
-cluster_by_ropt <- cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, "up_", 4, 2)
+cluster_by_ropt <- cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, "up_ropt", 2, 1)
 cluster_representative_by_ropt_cl1 <- c("x1", "y1", "z1")
 cluster_representative_by_ropt_cl2 <- c("x1", "y1", "k8")
 ```
 
 ```{r}
-alpha <- 0
-get_r0_r1_ropt_rkept(results, alpha, cluster_representative_r0_cl1, pars, xs, obs_fun, p_log) %>%
-  imap(~.x %>% {cbind(c(.y, rep("", nrow(.x)-1)), .)}) %>%
-  print2word_matrixlist("matrices_cluster1")
-get_r0_r1_ropt_rkept(results, alpha, cluster_representative_r0_cl2, pars, xs, obs_fun, p_log) %>%
-  imap(~.x %>% {cbind(c(.y, rep("", nrow(.x)-1)), .)}) %>%
-  print2word_matrixlist("matrices_cluster2")
-get_r0_r1_ropt_rkept(results, alpha, cluster_representative_r0_cl3, pars, xs, obs_fun, p_log) %>% 
-  imap(~.x %>% {cbind(c(.y, rep("", nrow(.x)-1)), .)}) %>%
-  print2word_matrixlist("matrices_cluster3")
+cluster_by_rkept <- cluster_matrices_and_print_perturbations(results_unnested_matrices, 2, "up_rkept", 4, 10)
+
+map(unique(results$alpha),~ cluster_matrices_and_print_perturbations(results_unnested_matrices, .x, "up_rkept", 4, 10)$.cluster)
+```
+
+```{r}
+get_r0_r1_ropt_rkept <- function(results, a, pp) {
+  myresults <- filter(results, alpha == a, map_lgl(pars_perturbed, . %>% names %>% identical(pp)))
+  list(perturbed_parameters = t(pp), 
+       r_0 = myresults$r_0[[1]], 
+       r_1 =  myresults$r_1upstream[[1]] %>% round(2), 
+       r_opt = myresults$r_optupstream[[1]] %>% round(2), 
+       r_kept = myresults$r_keptupstream[[1]])
+}
+```
+
+
+
+```{r}
+alpha <- -3
+get_r0_r1_ropt_rkept(results, alpha, cluster_representative_r0_cl1) %>%
+  imap(~.x %>% {cbind(c(.y, rep("", nrow(.x)-1)), .)}) #%>%
+  # print2word_matrixlist("matrices_cluster1")
+get_r0_r1_ropt_rkept(results, alpha, cluster_representative_r0_cl2) %>%
+  imap(~.x %>% {cbind(c(.y, rep("", nrow(.x)-1)), .)}) #%>%
+  # print2word_matrixlist("matrices_cluster2")
+get_r0_r1_ropt_rkept(results, alpha, cluster_representative_r0_cl3) %>% 
+  imap(~.x %>% {cbind(c(.y, rep("", nrow(.x)-1)), .)}) #%>%
+  # print2word_matrixlist("matrices_cluster3")
 ```
 
 

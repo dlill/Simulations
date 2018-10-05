@@ -44,7 +44,7 @@ loadDLL(x)
 Observation function which depends also on the optimization parameters. With their help, the complexes can smoothly be switched on in the observation.
 
 ```{r Most general observation function}
-modules <-  c("X","Y", "Z")
+modules <-  c("X", "Y", "Z")
 
 alpha_parameters <- paste0("a_", outer(paste0("to", c("x","y","z"), "_C"), c("xy","yz","zx"), paste0)) %>% matrix(ncol=3)
 alpha_parameters[c(3,4,8)] <- "0"
@@ -231,7 +231,7 @@ myrunbg_job <- runbg({
     do.call(rbind,.)
   
 }, machine = c("fermi"), input = ls(pos=.GlobalEnv), filename = "2018_07_18_33_10_u1"
-# , recover = T
+, recover = T
 )
 
 ```
@@ -243,8 +243,8 @@ myrunbg_job$check()
 
 Fetch/save/restore results
 ```{r}
-myrunbg <- myrunbg_job$get()[[1]]
-saveRDS(myrunbg, file = "2018_07_18_33_10_u1myrunbg.rds")
+# myrunbg <- myrunbg_job$get()[[1]]
+# saveRDS(myrunbg, file = "2018_07_18_33_10_u1myrunbg.rds")
 results <- readRDS("2018_07_18_33_10_u1myrunbg.rds")
 
 ```

@@ -597,3 +597,14 @@ plotly::ggplotly(myplot)
 #        device = "png")
 
 ```
+
+
+## Clean up Workdir
+```{r}
+unlink(paste0("*.", c("c", "o", "so", "tex", "lnk", "RData", "rds")))
+unlink("Fits/", T)
+unlink(".pars_controlled/", T)
+```
+
+
+

@@ -7,122 +7,75 @@ output:
 ---
 
 # Load libraries and define some useful paths
-
 ```{r setup, results='hide', echo=FALSE, message=FALSE}
-rm(list = ls())
-library(MRAr)
-library(scales)
 library(xtable)
 library(parallel)
-path <- paste0(getwd(), "/")
-pathout <- paste0(path, "Output/")
+library(MRAr)
 ```
 
-# Cascade
+# Model setup
 
-## Setup Model 
-This is the setup of the ODE model.
-
-### Prediction function
-odemodel writes a C-function, which is executed in x and xs.
-x is a regular prediction function while xs only finds and returns the steady states.
-If the odemodel has been calculated already, it can be loaded with "load".
+## ODE model setup
 ```{r Prediction function Cascade, results='asis'}
-modelname   <- "Cascade"
-mymodel     <- as.eqnlist(read.csv(paste0( modelname, ".csv")))
+reactions <- NULL %>% 
+  addReaction(from = "x1", to = "x2", rate = "((v1 *  x1)/(k1 + x1))*(1 + u1*z2/k9)/(1 + z2/k9)", description = "act_x") %>% 
+  addReaction(from = "x2", to = "x1", rate = "((v2 * x2 )/(k2 + x2))", description = "deact_x") %>% 
+  addReaction(from = "x2 + y1", to = "Cx2y1", rate = "(k31 * y1 *x2) * (1 + u2*z2/k10)/(1 + z2/k10) - (k32 *Cx2y1)", description = "x2_y_to_comp") %>% 
+  addReaction(from = "Cx2y1", to = "x2 + y2", rate = "(k4 * Cx2y1)", description = "y2_formation") %>% 
+  addReaction(from = "y2", to = "y1", rate = "((v5 * y2)/(k5 + y2))", description = "deact_y") %>% 
+  addReaction(from = "y2 + z1", to = "Cy2z1", rate = "((k61 *z1 *y2) - (k62 * Cy2z1))", description = "y2_z_to_comp") %>% 
+  addReaction(from = "Cy2z1", to = "y2 + z2", rate = "(k7 * Cy2z1)", description = "z2_formation") %>% 
+  addReaction(from = "z2", to = "z1", rate = "((v8 * z2)/(k8 + z2))", description = "z_deact") %>% 
+  addReaction(from = "x2 + z2", to = "Cx2z2", rate = "k111*x2*z2-k112*Cx2z2", description = "z2_x2_to_comp") %>% 
+  addReaction(from = "Cx2z2", to = "x1 + z2", rate = "k12*Cx2z2", description = "deact_x_by_z2") 
 
-# myodemodel <- odemodel(mymodel, modelname = paste0(modelname), deriv = T)
-# save(myodemodel, file = paste0( "odemodel",modelname, ".RData"))
-load(paste0( "odemodel",modelname, ".RData"))
+compiled_model <- odemodel(reactions, modelname = "Cascade", estimate = c("x1", "k1"))
 
 # Prediction function
-x <- Xs(odemodel = myodemodel)
+x <- Xs(odemodel = compiled_model) 
 # Prediction function for steady states
-xs <- Xs_steady(myodemodel) # When computing steady states, set deriv = F
-loadDLL(x)
-# print(mymodel)
-# mymodel %>% as.eqnvec() %>% print(pander = T)
-# myodemodel[[1]] %>% attr("eq")
+xs <- Xs_steady(compiled_model) # When computing steady states, set deriv = F
 ```
-
-
-
-
-
 
 ### Modules, their observables and the observation function
 Observation function which depends also on the optimization parameters. With their help, the complexes can smoothly be switched on in the observation.
 
-
-```{r Observation function with Cx2z2 in x-module}
-# modules <- modules0 <- c("x2","y2", "z2")
-# 
-# obs <- obs0 <- c("x2+a_1*Cx2y1",
-#           "y2+a_2*Cy2z1",
-#           "z2+a_3*Cx2z2")
-# g <- g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), mymodel, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
-```
-
-
 ```{r Most general observation function}
-modules <- modules0 <- c("X","Y", "Z")
+modules <-  c("X", "Y", "Z")
 
-mypars_opt <- paste0("a_", outer(paste0("to", c("x","y","z"), "_C"), c("xy","yz","zx"), paste0)) %>% matrix(ncol=3)
-mypars_opt[c(3,4,8)] <- "0"
+alpha_parameters <- paste0("a_", outer(paste0("to", c("x","y","z"), "_C"), c("xy","yz","zx"), paste0)) %>% matrix(ncol=3)
+alpha_parameters[c(3,4,8)] <- "0"
+
+complexes <- matrix(c("Cx2y1", "Cy2z1", "Cx2z2"), ncol = 1)
+
+alpha_parameters_to_both_modules <- paste0("a_", outer(rep("C",3), c("xy","yz","zx"), paste0)) %>% matrix(ncol=3)
+alpha_parameters_to_both_modules[c(3,4,8)] <- "0"
+
+observables <- paste(c("x2", "y2", "z2"), "+", prodSymb(alpha_parameters, complexes), "+", prodSymb(alpha_parameters_to_both_modules, complexes))
 
 
-mycomplexes <- matrix(c("Cx2y1", "Cy2z1", "Cx2z2"), ncol = 1)
-
-samepars_opt <- paste0("a_", outer(rep("C",3), c("xy","yz","zx"), paste0)) %>% matrix(ncol=3)
-samepars_opt[c(3,4,8)] <- "0"
-
-obs <- obs0 <- paste(c("x2", "y2", "z2"), "+", prodSymb(mypars_opt, mycomplexes), "+", prodSymb(samepars_opt, mycomplexes))
-
-
-g <- g0 <- Y(as.eqnvec(structure(obs0, names = modules0)), mymodel, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
-
+g <- Y(g = as.eqnvec(structure(observables, names = modules)), 
+       f = reactions, 
+       compile = TRUE, 
+       modelname = "obsfn0", 
+       attach.input = FALSE)
 ```
 
-
-### Inner parameters
-Load all parameters and format them for further use.
-```{r Parameters Cascade}
-pars_raw <- read.csv(paste0( "pars.csv"), header = FALSE)  # dynamical parameters
-pars_raw <- structure(pars_raw$V2, names = as.character(pars_raw$V1))
-ic_raw <- read.csv(paste0( "IC.csv"), header = F)          # initial conditions
-ic_raw <- structure(ic_raw$V2, names = as.character(ic_raw$V1))
-# sort ics like they appear in x, so it can be used in stode()
-vars_x <- attr(x, "parameters")[attr(x, "parameters") %in% names(ic_raw)]
-ic_raw <- ic_raw[vars_x]
-
-pars_inner_opt_0 <- setdiff(attr(g, "parameters"),names(c(pars_raw,ic_raw)))
-pars_inner_opt_0 <- structure(rep(0, length(pars_inner_opt_0)), 
-                              names = pars_inner_opt_0)
-
-pars_inner_0 <- pars_inner <- c(ic_raw, pars_raw, pars_inner_opt_0)
-```
 
 
 ### General log transformation and setting some pars to zero
 It's better to do a logtransformation for all Fitting purposes and work with the log-Parameters.
-The way to implement is this, is
-log_pars %>% p_log %>% p_other %>% p_other_2 %>% ...
 ```{r}
 trafo <- getParameters(x,g) %>% 
   setNames(.,.) %>% 
-  insert("x~0", x = getSymbols(mytrafo[[i]]) %>% str_subset("deg|syn")) %>% # set synthesis and degradations to zero
-  insert("x~0", x = getSymbols(mytrafo[[i]]) %>% str_subset("^C*[xyz](2|1.2)")) %>% # set inits to zero
-  insert("x~0", x = c("k131", "k132", "k14")) %>% 
-  insert("x~exp(x)", x = getSymbols(mytrafo[[i]])) %>%
+  insert("x~0", x = str_subset(.currentSymbols, "^C*[xyz](2|1.2)")) %>% # set inits to zero
+  insert("x~exp(x)", x = .currentSymbols) %>%
   # {.} %T>% print %>% 
   {.} 
 
 p_log <- P(trafo = trafo,
            modelname = "p_log",
            compile = T)
-
-pars <- getParameters(p_log) %>% are_names_of(0) %>% sort_by_name()
-pars_opt <- names(pars_inner_opt_0) %>% are_names_of(.Machine$double.eps) %>% log
 ```
 
 
@@ -137,32 +90,27 @@ a_toy_Cxy	=	.Machine$double.eps	, # 6
 a_toy_Cyz	=	.Machine$double.eps	, # 7
 a_toz_Cyz	=	.Machine$double.eps	, # 8
 a_toz_Czx	=	.Machine$double.eps	, # 9
-
-gainlf   	=	1	, # 10
-gainuf   	=	1	, # 11
-k9       	=	100	, # 29
-k10      	=	100	, # 13
-
 k1       	=	100	, # 12
 v1       	=	1.5	, # 30
 k2       	=	100	, # 20
 v2       	=	1	, # 31
-
 k31      	=	0.002	, # 21
 k32      	=	0.4	, # 22
 k4       	=	0.05	, # 23
 k5       	=	100	, # 24
 v5       	=	5	, # 32
-
 k61      	=	0.005	, # 25
 k62      	=	0.4	, # 26
 k7       	=	0.05	, # 27
 k8       	=	100	, # 28
 v8       	=	1	, # 33
-
 k111     	=	0.002	, # 14
 k112     	=	0.4	, # 15
 k12      	=	0.05	, # 16
+u1   	    =	1	, # 10
+u2   	    =	1	, # 11
+k9       	=	50	, # 29
+k10      	=	50	, # 13
 
 x1       	=	100	, # 34
 y1       	=	100	, # 35
@@ -170,25 +118,33 @@ z1       	=	100	  # 36
 ) %>% 
   log
 
+alpha_pars <- pars[str_detect(names(pars), "^a_")]
 ```
 
 
 
 
-# Apply different perturbations
-```{r job}
-pp_x = c("x1", "k1", "v1", "k2", "v2", "k111", "k112", "k12") 
-pp_y = c("y1", "k5", "v5", "k31", "k32", "k4") 
-pp_z = c("z1", "k8", "v8", "k61", "k62", "k7")
+# Apply different perturbations and run the algorithm
+Since all possible combinations of paramter perturbations are many, these computations are done in a parallelized manner on a remote server.
+If you want to quickly check the implementation with only one perturbation per module, uncomment the lower three lines assigning "perturbations_module_*", if you want to check the full set of perturbations, uncomment the upper three lines
+```{r}
+perturbations_module_x <- c("x1", "k1", "v1", "k2", "v2")
+perturbations_module_y <- c("y1", "k5", "v5", "k31", "k32", "k4")
+perturbations_module_z <- c("z1", "k8", "v8", "k61", "k62", "k7", "k111", "k112", "k12")
 
-mygrid <- expand.grid(pp_x, pp_y, pp_z, stringsAsFactors = F) 
-pp_list <- map(1:nrow(mygrid), function(i) {
-  mynames <- mygrid[i,] %>% unlist() %>% unname() %>% unique()
+# perturbations_module_x <- c("x1")
+# perturbations_module_y <- c("y1")
+# perturbations_module_z <- c("z1")
+
+perturbation_combinations <- expand.grid(perturbations_module_x, perturbations_module_y, perturbations_module_z, stringsAsFactors = F) 
+
+perturbations <- map(1:nrow(perturbation_combinations), function(i) {
+  mynames <- perturbation_combinations[i,] %>% unlist() %>% unname() %>% unique()
   if(length(mynames)<3) return(NULL)
   mynames %>% are_names_of(log(0.9))
 }) %>% 
   .[!map_lgl(., is.null)]
-# alpha <- 0
+
 
 myrunbg_job <- runbg({
   cores <- detectFreeCores()
@@ -198,6 +154,7 @@ myrunbg_job <- runbg({
     p_pert <- p_pert_fun(pp, pars = pars, modelname = NULL)
 
     myframe <- dMod.frame("1", g, x, p_log, NULL, NULL, p_pert = list(p_pert), xs = list(xs), pars = list(pars))
+
 
     g <- myframe$g[[1]]
     p_pert <- myframe$p_pert[[1]]
@@ -258,188 +215,40 @@ myrunbg_job <- runbg({
   }) %>% 
     do.call(rbind,.)  
   
-}, machine = c("knecht1"), input = ls(pos=.GlobalEnv), filename = "2018_07_17_16_10_myrunbg_job"
+}, machine = c("fermi"), input = ls(pos=.GlobalEnv), filename = "2018_07_17_16_10_myrunbg_job"
   , recover = T
 )
-# myrunbg_job$check()
-# runbg(wait_for_runbg(myrunbg_job), filename = "wait", input = "myrunbg_job")
-# myrunbg <- myrunbg_job$get()[[1]]
-# saveRDS(myrunbg, file = "myrunbg_new.rds")
-results <- readRDS("myrunbg_new.rds")
-# results <- readRDS("myrunbg.rds")
-# myrunbg_job$purge()
-
-# saveRDS(results, "test_different_perturbations.rds")
 ```
 
+Check if results are ready.
+```{r}
+myrunbg_job$check()
+```
 
-# Analysis of results
+Fetch/save/restore results
+```{r}
+# myrunbg <- myrunbg_job$get()[[1]]
+# saveRDS(myrunbg, file = "2018_07_18_33_10_u2myrunbg.rds")
+results <- readRDS("2018_07_18_33_10_u2myrunbg.rds")
+```
 
-The result of the runbg job is a tibble of lists, which contain the r_opt for different perturbations and different alphas and different observation function (add complex to upstream or to both modules)
-To use clustering, I first have to flatten these matrices. This cost me about a day, because I set out to write an unnest-function for lists of matrices. Now I resorted to turning the matrices into a wide data.frame first and then unnesting them. This is quicker
-
-```{r unnest runbg job}
-# helper functions
-matrix_2_wide_df <- function(mat, nm) {mat %>% 
-  `dim<-`(NULL) %>% 
-  t %>% 
-  as.data.frame %>% 
-  `names<-`(nm)}
-
-
-
-# prepare data for clustering
-results_unnested_matrices <-
-  results %>%
-  filter(map_lgl(upstreamropt, is.double), map_lgl(bothropt, is.double)) %>% 
-  
-  mutate(upstreamropt = map(upstreamropt, matrix_2_wide_df, nm = (paste0("up_r", outer(1:3,1:3, paste0)))),
-         bothropt = map(bothropt, . %>% matrix_2_wide_df(paste0("both_r", outer(1:3,1:3, paste0)))),
-         pars_perturbed = map(pars_perturbed, . %>% names %>% `names<-`(LETTERS[24:26]) %>% t %>% as.data.frame(stringsAsFactors = F)),
-         perturbed_set = seq_along(alpha),
-         alpha = as.numeric(alpha)) %>% 
-  unnest(upstreamropt, bothropt, pars_perturbed)
-
-# clustering and print function
-cluster_matrices_and_print_perturbations <- function(results_unnested_matrices, a,col_start, nclust, which_clust) {
-  kclusts <- results_unnested_matrices %>% 
-    filter(near(alpha, a)) %>% 
-    select(starts_with(col_start)) %>% 
-    {.} %T>% {set.seed(1)} %>%
-    kmeans(nclust) %>% 
-    {.} %T>% print(digits = 2) %>%
-    {.}
-  
-  kclusts$centers %>% 
-    round(2) %>% 
-    apply(1, . %>% matrix( nrow = 3) %>% print %>% {NULL}) 
-    
-  augmented <- broom::augment(kclusts, results_unnested_matrices %>% filter(near(alpha, a)))
-  
-  augmented %>% 
-    filter(.cluster %in% which_clust) %>% 
-    select(X,Y,Z) 
-}
+Purge files from the remote computing job.
+```{r}
+# myrunbg_job$purge()
 ```
 
 
 # Description of results
-
 ```{r}
-pp_x <-  c("x1", "k1", "v1", "k2", "v2", "k111", "k112", "k12")  %>% print
-pp_y <- c("y1", "k5", "v5", "k31", "k32", "k4") %>% print 
-pp_z <- c("z1", "k8", "v8", "k61", "k62", "k7") %>% print
-
-results_unnested_matrices %>% select(alpha) %>% map(unique)
+# helper functions/objects for exporting to ms word
+communicating_species <- paste0(LETTERS[24:26],"*")
 ```
 
 
-## Upstream:
-* Adding complex to upstream works well, perturbations of k\*1, k\*2 and kcat are eligible for downstream modules, not for upstream modules
+## Clean up Workdir
 ```{r}
-cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, "up_", 10, (1:10)[-(1:2)])%>% 
-    print(n = 1000)
+unlink(paste0("*.", c("c", "o", "so", "tex", "lnk")))
+unlink("Fits/", T)
+unlink(".pars_controlled/", T)
 ```
-
-## Both
-
-* alpha = 0 is too low
-```{r}
-cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, "both_", 10, 1)%>% 
-    print(n = 1000)
-```
-
-* alpha = 3 is better, but there is still no "unique network", cluster 9/15 looks ok, though
-```{r}
-cluster_matrices_and_print_perturbations(results_unnested_matrices, 3, "both_", 15, 9)%>% 
-    print(n = 1000)
-```
-
-* alpha = 4 is a bit better, cluster 3/5 looks quite good, but the others don't
-```{r}
-cluster_matrices_and_print_perturbations(results_unnested_matrices, 4, "both_", 5, 3) %>% 
-  # write_csv("selected_perturbations.csv")
-print(n = 1000)
-
-
-
-mygrid %>% `names<-`(LETTERS[24:26]) %>% 
-  write_csv("all_pertubrations.csv")
-
-
-# clustering and print function
-wup <- function(results_unnested_matrices, a,col_start, nclust, which_clust) {
-  kclusts <- results_unnested_matrices %>% 
-    filter(near(alpha, a)) %>% 
-    select(starts_with(col_start)) %>% 
-    {.} %T>% {set.seed(1)} %>%
-    kmeans(nclust) %>% 
-    {.} %T>% print(digits = 2) %>%
-    {.}
-  
-  kclusts$centers %>% 
-    round(2) %>% 
-    apply(1, . %>% matrix( nrow = 3) %>% print %>% {NULL}) 
-    
-  augmented <- broom::augment(kclusts, results_unnested_matrices %>% filter(near(alpha, a)))
-  
-  augmented %>% 
-    filter(.cluster %in% which_clust) %>% 
-    select(starts_with(col_start)) %>% 
-    apply(1, . %>% unlist %>% matrix(ncol = 3) %>% print %>% {NULL})
-}
-wup(results_unnested_matrices, 4, "both_", 5, 3)
-```
-
-
-```{r}
-cluster_matrices_and_print_perturbations(results_unnested_matrices, 5, "both_", 10, 2) %>% 
-  arrange(X,Y,Z) %>% 
-  group_by(X) %>% 
-  summarise(n = n())
-  print(n = 1000)
-```
-
-
-
-
-### which r_kept are the "correct" ones?
-```{r}
-results_unnested_rkept <- results_unnested_matrices %>% 
-  mutate(bothrkept=map(bothr_kept, matrix_2_wide_df, nm = (paste0("bothrkept_r", outer(1:3,1:3, paste0))))) %>% 
-  unnest(bothrkept)
-```
-
-```{r}
-results_unnested_rkept %>% 
-    filter(near(alpha, 3)) %>% 
-    select(starts_with("bothrkept_r")) %>% 
-  unique() %>% 
-  nrow
-
-kclusts <- results_unnested_rkept %>% 
-    filter(near(alpha, 3)) %>% 
-    select(starts_with("bothrkept_r")) %>% 
-    {.} %T>% {set.seed(1)} %>%
-    kmeans(19) %>% 
-    {.} %T>% print(digits = 2) %>%
-    {.}
-
-
-augmented <- broom::augment(kclusts, results_unnested_matrices %>% filter(near(alpha, 3)))
-  
-augmented %>% 
-  filter((.cluster %in% 11)) %>% 
-  select(X,Y,Z) %>% 
-    print(n = 1000)
-
-```
-
-
-
-
-
-
-
-
 

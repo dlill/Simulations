@@ -1,5 +1,5 @@
 ---
-title: "Cascade - x2z2 mass action feedback"
+title: "Cascade - regulatory feedback"
 author: "Daniel Lill"
 output:
   pdf_document:
@@ -8,9 +8,9 @@ output:
 
 # Load libraries and define some useful paths
 ```{r setup, results='hide', echo=FALSE, message=FALSE}
+library(xtable)
 library(parallel)
 library(MRAr)
-library(xtable)
 ```
 
 # Model setup
@@ -27,28 +27,24 @@ reactions <- NULL %>%
   addReaction(from = "Cy2z1", to = "y2 + z2", rate = "(k7 * Cy2z1)", description = "z2_formation") %>% 
   addReaction(from = "z2", to = "z1", rate = "((v8 * z2)/(k8 + z2))", description = "z_deact") %>% 
   addReaction(from = "x2 + z2", to = "Cx2z2", rate = "k111*x2*z2-k112*Cx2z2", description = "z2_x2_to_comp") %>% 
-  addReaction(from = "Cx2z2", to = "x1 + z2", rate = "k12*Cx2z2", description = "deact_x_by_z2") %>% 
-  addReaction(from = "x1 + z2", to = "Cx1z2", rate = "k131*x1*z2-k132*Cx1z2", description = "z2_x1_to_comp") %>% 
-  addReaction(from = "Cx1z2", to = "x2 + z2", rate = "k14*Cx1z2", description = "act_x_by_z2")
+  addReaction(from = "Cx2z2", to = "x1 + z2", rate = "k12*Cx2z2", description = "deact_x_by_z2") 
 
-compiled_model <- odemodel(reactions, modelname = "Cascade")
+compiled_model <- odemodel(reactions, modelname = "Cascade", estimate = c("x1", "k1"))
 
 # Prediction function
 x <- Xs(odemodel = compiled_model) 
 # Prediction function for steady states
 xs <- Xs_steady(compiled_model) # When computing steady states, set deriv = F
-loadDLL(x)
 ```
 
 ### Modules, their observables and the observation function
 Observation function which depends also on the optimization parameters. With their help, the complexes can smoothly be switched on in the observation.
 
 ```{r Most general observation function}
-modules <-  c("X","Y", "Z")
+modules <-  c("X", "Y", "Z")
 
 alpha_parameters <- paste0("a_", outer(paste0("to", c("x","y","z"), "_C"), c("xy","yz","zx"), paste0)) %>% matrix(ncol=3)
 alpha_parameters[c(3,4,8)] <- "0"
-
 
 complexes <- matrix(c("Cx2y1", "Cy2z1", "Cx2z2"), ncol = 1)
 
@@ -63,20 +59,16 @@ g <- Y(g = as.eqnvec(structure(observables, names = modules)),
        compile = TRUE, 
        modelname = "obsfn0", 
        attach.input = FALSE)
-
 ```
 
 
 
 ### General log transformation and setting some pars to zero
 It's better to do a logtransformation for all Fitting purposes and work with the log-Parameters.
-The way to implement is this, is
-log_pars %>% p_log %>% p_other %>% p_other_2 %>% ...
 ```{r}
 trafo <- getParameters(x,g) %>% 
   setNames(.,.) %>% 
   insert("x~0", x = str_subset(.currentSymbols, "^C*[xyz](2|1.2)")) %>% # set inits to zero
-  insert("x~0", x = c("k131", "k132", "k14")) %>% 
   insert("x~0", x = c("k111", "k112", "k12")) %>% 
   insert("x~exp(x)", x = .currentSymbols) %>%
   # {.} %T>% print %>% 
@@ -127,7 +119,7 @@ pars <- c(
   y1       	=	100	, # 35
   z1       	=	100	  # 36 
 ) %>% 
-  log 
+  log
 
 alpha_pars <- pars[str_detect(names(pars), "^a_")]
 ```
@@ -232,7 +224,7 @@ myrunbg_job <- runbg({
     do.call(rbind,.)
   
 }, machine = c("knecht4"), input = ls(pos=.GlobalEnv), filename = "2018_07_18_33_10_u1"
-# , recover = T
+, recover = T
 )
 ```
 
@@ -243,10 +235,9 @@ myrunbg_job$check()
 
 Fetch/save/restore results
 ```{r}
-myrunbg <- myrunbg_job$get()[[1]]
-saveRDS(myrunbg, file = "2018_07_18_33_10_u2myrunbg.rds")
+# myrunbg <- myrunbg_job$get()[[1]]
+# saveRDS(myrunbg, file = "2018_07_18_33_10_u2myrunbg.rds")
 results <- readRDS("2018_07_18_33_10_u2myrunbg.rds")
-
 ```
 
 Purge files from the remote computing job.
@@ -255,27 +246,10 @@ Purge files from the remote computing job.
 ```
 
 
-
 # Description of results
 ```{r}
 # helper functions/objects for exporting to ms word
 communicating_species <- paste0(LETTERS[24:26],"*")
-print_msword_table <- function(x, path, digits = 2) {
-  tables <- map(x, . %>% xtable::xtable(digits = digits) %>% {xtable:::print.xtable(invisible(.), include.rownames = F)}) %>% 
-    paste0(collapse = "\n\n")
-  
-  tables %>%
-    paste("\\documentclass[10pt,a4paper]{article}
-\\usepackage[latin1]{inputenc}
-\\usepackage{amsmath}
-\\usepackage{amsfonts}
-\\usepackage{amssymb}
-\\usepackage{graphicx}
-\\begin{document}", ., "\\end{document}") %>%
-    write_lines(paste0(path,".tex"))
-  system2("pandoc", c(paste0("-o ",path,".docx"), paste0(path,".tex")))
-  }
-
 ```
 
 Export some tables for the publication
@@ -287,7 +261,7 @@ results %>%
   unlist(F) %>% #.[t(matrix(1:6, nrow = 3))] %>% 
   {mymatrix <- .; `names<-`(mymatrix, names(mymatrix) %>% str_replace_all(c("1$" = "gl = -10", "2$" = "gl = 0", "3$" = "gl = 2",
                                                "r_0" = "a = 0, ", "r_1" = "a = 1, ", "r_opt" = "a = a_opt, ")))} %>%
-  imap(~ .x  %>% round(2) %>% as.tibble() %>% `names<-`(communicating_species) %>% bind_cols(aopt = rep(.y ,3), module = communicating_species,.) ) %>% print_msword_table("matrices_u2_positive_detected")
+  imap(~ .x  %>% round(2) %>% as.tibble() %>% `names<-`(communicating_species) %>% bind_cols(aopt = rep(.y ,3), module = communicating_species,.) ) %>% print2word_matrixlist("matrices_u2_positive_detected")
 
 
 results %>% 
@@ -297,16 +271,16 @@ results %>%
   unlist(F) %>% #.[t(matrix(1:6, nrow = 3))] %>% 
   {mymatrix <- .; `names<-`(mymatrix, names(mymatrix) %>% str_replace_all(c("1$" = "gl = -10", "2$" = "gl = 0", "3$" = "gl = 2",
                                                "r_0" = "a = 0, ", "r_1" = "a = 1, ", "r_opt" = "a = a_opt, ")))} %>%
-  imap(~ .x  %>% round(2) %>% as.tibble() %>% `names<-`(communicating_species) %>% bind_cols(aopt = rep(.y ,3), module = communicating_species,.) ) %>% print_msword_table("matrices_u2_negative_detected")
+  imap(~ .x  %>% round(2) %>% as.tibble() %>% `names<-`(communicating_species) %>% bind_cols(aopt = rep(.y ,3), module = communicating_species,.) ) %>% print2word_matrixlist("matrices_u2_negative_detected")
 
 ```
 
 
 
-
-results %>%
-  filter(alpha == 0, u2 %in% c(-1)) %>%
-  .[c("r_opt", "r_opt1")] %>% unlist(F) %>%
- imap(~.x %>% round(2) %>% xtable(align = rep("",4)) %>% print(tabular.environment="pmatrix", include.colnames = F, include.rownames = F, floating = F, hline.after = NULL) %>%  mypublish_mat(.y))
+## Clean up Workdir
+```{r}
+unlink(paste0("*.", c("c", "o", "so", "tex", "lnk")))
+unlink("Fits/", T)
+unlink(".pars_controlled/", T)
 ```
 
