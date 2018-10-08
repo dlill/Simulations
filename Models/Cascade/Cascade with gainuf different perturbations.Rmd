@@ -142,9 +142,9 @@ perturbations <- map(1:nrow(perturbation_combinations), function(i) {
 }) %>% 
   .[!map_lgl(., is.null)]
 
-dose_pars <- log(c(0.001, 0.1, 1, 2, 10))
+dose_pars <- log(c(0.001, 0.5, 2, 10))
 names(dose_pars) <- rep("u1", length(dose_pars))
-alphas <- c(-3, -1, 0, 1, 3)
+alphas <- c(0, 1)
 alpha_par_settings <- list(upstream = c("a_tox_Cxy", "a_toy_Cyz"),
                            both = c("a_Cxy", "a_Cyz"))
 
@@ -152,7 +152,7 @@ alpha_par_settings <- list(upstream = c("a_tox_Cxy", "a_toy_Cyz"),
 
 If you quickly want to check, how the algorithm works, set run_subset to F
 ```{r}
-run_subset <- T
+run_subset <- F
 if (run_subset) {
   perturbations <- perturbations[1:5]
   dose_pars <- dose_pars[c(1,4,5)]
@@ -163,7 +163,7 @@ if (run_subset) {
 
 Send the computations via ssh to a cluster or a server. Requires the R-packages to be installed there as well and that ssh is set up to use aliases. Replace "localhost" by the respective ssh alias. See ?runbg for more details.
 ```{r}
-ssh_machine <- "localhost"
+ssh_machine <- "fermi"
 
 remote_computing_job <- runbg({
   cores <- detectFreeCores()
@@ -186,13 +186,15 @@ remote_computing_job <- runbg({
 
 Check if results are ready.
 ```{r}
-remote_computing_job$check()
+while(!remote_computing_job$check()) {
+  Sys.sleep(60)
+}
 ```
 
 Fetch/save/restore results
 ```{r}
-# myrunbg <- remote_computing_job$get()[[1]]
-# saveRDS(myrunbg, file = "results_cascade_zx_feedback.rds")
+results <- remote_computing_job$get()[[1]]
+saveRDS(results, file = "results_cascade_zx_feedback.rds")
 results <- readRDS("results_cascade_zx_feedback.rds")
 ```
 
@@ -226,25 +228,39 @@ results_unnested_matrices <- results %>%
 
 ```{r}
 results_unnested_matrices %>% 
-  filter(dose_par == -.5) %>% 
+  filter(dose_par == log(.5)) %>% 
 cluster_matrices_and_print_perturbations(0, "r_0", 4,NULL)
 ```
 
 ```{r}
 results_unnested_matrices %>% 
-  filter(dose_par == -0.5) %>% 
+  filter(dose_par == log(0.5)) %>% 
 cluster_matrices_and_print_perturbations(0, "upstream_r1", 4,NULL)
 ```
 
 ```{r}
 results_unnested_matrices %>% 
-  filter(dose_par == -0.5) %>% 
+  filter(dose_par == log(0.5)) %>% 
 cluster_matrices_and_print_perturbations(0, "upstream_ropt", 2,NULL)
 ```
 
 
+# Export of results
 
-# Export matrices for the main text
+## Parameters/ODEs
+```{r}
+reactions %>% 
+  as.eqnvec() %>% 
+  print2word_eqnvec("odes_cascade_zx_fb")
+```
+
+```{r}
+pars %>% 
+  exp %>% 
+  print2word_namedvec("pars_cascade_zx_fb", names_in_mathenv = T)
+```
+
+## Export matrices for the main text
 ```{r}
 mypars <- pars
 mypars["u1"] <- log(0.5)
@@ -253,6 +269,13 @@ matrices_weak_fb <- algo(mypars, paste0(letters[24:26], "1"), c("a_tox_Cxy", "a_
 print2word_matrixlist(matrices_weak_fb, "cascade_zx_feedback")
 ```
 
+```{r}
+mypars <- pars
+mypars["u1"] <- log(0.5)
+matrices_weak_fb <- algo(mypars, paste0(letters[24:26], "1"), c("a_Cxy", "a_Cyz"), alpha_pars, 0, g, xs, p_log) %>% unlist(F) %>% .[-4]
+
+print2word_matrixlist2(matrices_weak_fb, "cascade_zx_feedback_CS20")
+```
 
 ## Clean up Workdir
 ```{r}
