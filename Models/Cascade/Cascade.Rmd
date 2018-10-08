@@ -33,7 +33,6 @@ compiled_model <- odemodel(reactions, modelname = "Cascade", estimate = c("x1", 
 x <- Xs(odemodel = compiled_model) 
 # Prediction function for steady states
 xs <- Xs_steady(compiled_model) # When computing steady states, set deriv = F
-loadDLL(x)
 ```
 
 ### Modules, their observables and the observation function
@@ -44,7 +43,6 @@ modules <-  c("X", "Y", "Z")
 
 alpha_parameters <- paste0("a_", outer(paste0("to", c("x","y","z"), "_C"), c("xy","yz","zx"), paste0)) %>% matrix(ncol=3)
 alpha_parameters[c(3,4,8)] <- "0"
-
 
 complexes <- matrix(c("Cx2y1", "Cy2z1", "Cx2z2"), ncol = 1)
 
@@ -59,20 +57,15 @@ g <- Y(g = as.eqnvec(structure(observables, names = modules)),
        compile = TRUE, 
        modelname = "obsfn0", 
        attach.input = FALSE)
-
 ```
 
 
 ### General log transformation and setting some pars to zero
 It's better to do a logtransformation for all Fitting purposes and work with the log-Parameters.
-The way to implement is this, is
-log_pars %>% p_log %>% p_other %>% p_other_2 %>% ...
 ```{r}
 trafo <- getParameters(x,g) %>% 
   setNames(.,.) %>% 
   insert("x~0", x = str_subset(.currentSymbols, "^C*[xyz](2|1.2)")) %>% # set inits to zero
-  insert("x~0", x = c("k131", "k132", "k14")) %>% 
-  insert("x~0", x = c("k111", "k112", "k12")) %>% 
   insert("x~exp(x)", x = .currentSymbols) %>%
   # {.} %T>% print %>% 
   {.} 
@@ -126,26 +119,44 @@ unlist(test, recursive = F)
 ```
 
 # Apply different perturbations and run the algorithm
-Since all possible combinations of paramter perturbations are many, these computations are done in a parallelized manner on a remote server. This is done by "rungb()". 
-```{r}
+Since all possible combinations of paramter perturbations are many, these computations are done in a parallelized manner on a remote server.
+
+```{r Prepare computations}
 perturbations_module_x <- c("x1", "k1", "v1", "k2", "v2")
 perturbations_module_y <- c("y1", "k5", "v5", "k31", "k32", "k4")
 perturbations_module_z <- c("z1", "k8", "v8", "k61", "k62", "k7")
-
 perturbation_combinations <- expand.grid(perturbations_module_x, perturbations_module_y, perturbations_module_z, stringsAsFactors = F) 
+
 perturbations <- map(1:nrow(perturbation_combinations), function(i) {
   mynames <- perturbation_combinations[i,] %>% unlist() %>% unname() %>% unique()
   if(length(mynames)<3) return(NULL)
   mynames %>% are_names_of(log(0.9))
-}) %>% .[!map_lgl(., is.null)]
+}) %>% 
+  .[!map_lgl(., is.null)]
 
-myrunbg_job <- runbg({
+dose_pars <- pars["x1"]
+alphas <- c(-3, -1, 0, 1, 3)
+alpha_par_settings <- list(upstream = c("a_tox_Cxy", "a_toy_Cyz"),
+                           both = c("a_Cxy", "a_Cyz"))
+
+```
+
+If you quickly want to check, how the algorithm works, set run_subset to F
+```{r}
+run_subset <- T
+if (run_subset) {
+  perturbations <- perturbations[1:5]
+  alphas <- alphas[c(3,5)]
+  alpha_par_settings <- alpha_par_settings[1]
+}
+```
+
+Send the computations via ssh to a cluster or a server. Requires the R-packages to be installed there as well and that ssh is set up to use aliases. Replace "localhost" by the respective ssh alias. See ?runbg for more details.
+```{r}
+ssh_machine <- "localhost"
+
+remote_computing_job <- runbg({
   cores <- detectFreeCores()
-  alphas <- seq(-3, 3, 1)
-  dose_pars <- pars["x1"]
-  alpha_par_settings <- list(upstream = c("a_tox_Cxy", "a_toy_Cyz"),
-                             both = c("a_Cxy", "a_Cyz"))
-  
   results <- run_different_perturbations(dose_pars = dose_pars, 
                                          pars0 = pars, 
                                          alpha_pars = alpha_pars,
@@ -158,32 +169,32 @@ myrunbg_job <- runbg({
                                          cores = cores,
                                          alpha_par_settings = alpha_par_settings)
   results 
-}, machine = c("fermi"), input = ls(pos=.GlobalEnv), filename = "cascade_different_perturbations" 
-, recover = T
+}, machine = ssh_machine, input = ls(pos=.GlobalEnv), filename = "cascade"
+# , recover = T
 )
 ```
 
 Check if results are ready.
 ```{r}
-# myrunbg_job$check()
+remote_computing_job$check()
 ```
 
 Fetch/save/restore results
 ```{r}
-# myrunbg <- myrunbg_job$get()[[1]]
-# saveRDS(myrunbg, file = "results_cascade_different_perturbations.rds")
-results <- readRDS("results_cascade_different_perturbations.rds")
-
+# myrunbg <- remote_computing_job$get()[[1]]
+# saveRDS(myrunbg, file = "results_cascade.rds")
+results <- readRDS("results_cascade.rds")
 ```
 
 Purge files from the remote computing job.
 ```{r}
-# myrunbg_job$purge()
+# remote_computing_job$purge()
 ```
 
 
-
 # Explore results
+Cluster matrices by similarity across different perturbations.
+This section assumes that all perturbations have been computed (run_subset == F).
 ```{r Prepare data for clustering}
 results_unnested_matrices <- results %>%
   mutate(r_optupstream = map(r_optupstream, matrix_2_wide_df, nm = (paste0("upstream_ropt", outer(1:3,1:3, paste0)))),
@@ -205,11 +216,11 @@ results_unnested_matrices <- results %>%
 
 There are about 4 different clusters of local response matrices when no complexes are measured:
 ```{r}
-cluster_by_r_0 <- cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, "r_0", 8,NULL)
+cluster_by_r_0 <- cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, "r_0", 4,NULL)
 ```
 Also 4 clusters when total phosphorylated species are measured.
 ```{r}
-cluster_by_r_1 <- cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, "upstream_r1", 8,NULL)
+cluster_by_r_1 <- cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, "upstream_r1", 4,NULL)
 ```
 
 When the complexes are measured independently, the matrices are similar after detecting the sequestration elements and optimizing the free parameters to minimize these elements.
