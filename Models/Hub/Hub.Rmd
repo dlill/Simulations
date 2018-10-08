@@ -94,12 +94,10 @@ a_toz_Cxy      	=	.Machine$double.eps	  # 28
 alpha_pars <- pars[str_detect(names(pars), "^a_")]
 ```
 
-
 ```{r}
-
-# p_pert <- letters[24:26] %>% paste0("1") %>% are_names_of(log(0.9)) %>% p_pert_fun(pars = pars, modelname = NULL)
-# model <- dMod.frame("1", g, x, p_log, NULL, NULL, p_pert = list(p_pert), pars = list(pars), xs = list(xs))
-# ropt_gadget(c("a_tox_Cxy", "a_tox_Cxz"), model)
+# test the algorithm.
+test <- algo(pars, c("x1", "y1", "z1"), c("a_tox_Cxy", "a_tox_Cxz"), alpha_pars, 0, g, xs, p_log)
+unlist(test[-4], recursive = F)
 ```
 
 
@@ -125,19 +123,16 @@ perturbations <- map(1:nrow(perturbation_combinations), function(i) {
   .[!map_lgl(., is.null)]
 
 
+dose_pars <- pars["x1"]
+alphas <- c(0)
+  alpha_par_settings <- list(upstream = c("a_tox_Cxy", "a_tox_Cxz"),
+       both = c("a_Cxy", "a_Cxz"))
 ```
 
 ```{r}
 ssh_machine <- "fermi"
 remote_computing_job <- runbg({
   cores <- detectFreeCores()
-  # alphas <- c(-3, -2, -1, 0, 1, 2, 3)
-  # perturbations<-perturbations[1:2]
-  alphas <- seq(-3,3,0.5)
-  dose_pars <- pars[1]
-  alpha_par_settings <- list(upstream = c("a_tox_Cxy", "a_tox_Cxz"),
-       both = c("a_Cxy", "a_Cxz"))
-
     results <- run_different_perturbations(dose_pars = dose_pars, 
                               pars0 = pars, 
                               alpha_pars = alpha_pars,
@@ -231,6 +226,35 @@ differences <- function(matrices) {
 summary(differences(r_0))
 summary(differences(r_1))
 summary(differences(r_opt))
+```
+
+# Export of results
+
+## Parameters/ODEs
+```{r}
+reactions %>% 
+  as.eqnvec() %>% 
+  print2word_eqnvec("odes_hub")
+```
+
+```{r}
+pars %>% 
+  exp %>% 
+  print2word_namedvec("pars_hub", names_in_mathenv = T)
+```
+
+# Matrices
+
+```{r}
+# test the algorithm.
+hub <- algo(pars, c("x1", "y1", "z1"), c("a_tox_Cxy", "a_tox_Cxz"), alpha_pars, 0, g, xs, p_log) %>% unlist(F) %>% .[-4]
+print2word_matrixlist2(hub, "hub_matrices")
+```
+
+```{r}
+# test the algorithm.
+hub <- algo(pars, c("v1", "k31", "z1"), c("a_tox_Cxy", "a_tox_Cxz"), alpha_pars, 0, g, xs, p_log) %>% unlist(F) %>% .[-4]
+print2word_matrixlist2(hub, "hub_matrices_perturbation_set_2")
 ```
 
 
