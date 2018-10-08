@@ -141,9 +141,9 @@ alpha_par_settings <- list(upstream = c("a_tox_Cxy", "a_toy_Cyz"),
 
 ```
 
-If you quickly want to check, how the algorithm works, set run_subset to F
+If you quickly want to check, how the algorithm works, set run_subset to T
 ```{r}
-run_subset <- T
+run_subset <- F
 if (run_subset) {
   perturbations <- perturbations[1:5]
   alphas <- alphas[c(3,5)]
@@ -176,19 +176,21 @@ remote_computing_job <- runbg({
 
 Check if results are ready.
 ```{r}
-remote_computing_job$check()
+while(!remote_computing_job$check()) {
+  Sys.sleep(60)
+}
 ```
 
 Fetch/save/restore results
 ```{r}
-# myrunbg <- remote_computing_job$get()[[1]]
-# saveRDS(myrunbg, file = "results_cascade.rds")
+results <- remote_computing_job$get()[[1]]
+saveRDS(results, file = "results_cascade.rds")
 results <- readRDS("results_cascade.rds")
 ```
 
 Purge files from the remote computing job.
 ```{r}
-# remote_computing_job$purge()
+remote_computing_job$purge()
 ```
 
 
@@ -270,7 +272,6 @@ to_export <-  results %>%
 
 to_export[c("r_optupstream", "r_optboth")] %>% 
  print2word_matrixlist2("cascade_matrices_SI")
-  
 ```
 
 
