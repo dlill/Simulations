@@ -198,7 +198,7 @@ cluster_by_r1 <- cluster_matrices_and_print_perturbations(results_unnested_matri
 ```
 
 ```{r}
-cluster_by_ropt <- cluster_matrices_and_print_perturbations(results_unnested_matrices, 2, "upstream_ropt", 4, NULL)
+cluster_by_ropt <- cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, "upstream_ropt", 4, NULL)
 ```
 
 Calculate difference between matrices: The smallest differences are between matrices with optimal free parameters
@@ -222,9 +222,11 @@ differences <- function(matrices) {
     matrix(nrow = 180) %>% 
     .[upper.tri(.)]
 }
-
+cat("Differences between matrices, no complexes\n")
 summary(differences(r_0))
+cat("\nDifferences between matrices, total active species\n")
 summary(differences(r_1))
+cat("\nDifferences between matrices, optimal parameters\n")
 summary(differences(r_opt))
 ```
 
