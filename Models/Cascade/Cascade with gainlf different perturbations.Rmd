@@ -281,9 +281,24 @@ matrices_strong_fb <- algo(mypars, paste0(letters[24:26], "1"), c("a_tox_Cxy", "
 print2word_matrixlist(matrices_strong_fb, "matrices_zy_strong")
 ```
 
-```{r}
 
+## Comparison of strong and weak positive feedback
+```{r}
+mypars <- pars
+mypars["u2"] <- log(0.1)
+matrices_weak_negative_fb <- algo(mypars, paste0(letters[24:26], "1"), c("a_tox_Cxy", "a_toy_Cyz"), alpha_pars, 0, g, xs, p_log) %>% 
+  unlist(F) %>% .[-4]
+print2word_matrixlist(matrices_weak_negative_fb, "matrices_zy_weak_negative")
 ```
+
+```{r}
+mypars <- pars
+mypars["u2"] <- log(0.01)
+matrices_strong_negative_fb <- algo(mypars, paste0(letters[24:26], "1"), c("a_tox_Cxy", "a_toy_Cyz"), alpha_pars, 0, g, xs, p_log) %>% unlist(F) %>% .[-4]
+
+print2word_matrixlist(matrices_strong_negative_fb, "matrices_zy_strong_negative")
+```
+
 
 
 
