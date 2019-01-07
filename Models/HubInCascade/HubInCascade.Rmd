@@ -131,7 +131,7 @@ Print parameters
 ```{r}
 pars_inner %>% 
   .[!str_detect(names(.), "^a")] %>% 
-  print2word_namedvec("odes_hub_within_cascade", names_in_mathenv = T)
+  print2word_namedvec("pars_hub_within_cascade", names_in_mathenv = T)
 ```
 
 Print ODEs

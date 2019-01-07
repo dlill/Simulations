@@ -259,8 +259,6 @@ hub <- algo(pars, c("v1", "k31", "z1"), c("a_tox_Cxy", "a_tox_Cxz"), alpha_pars,
 print2word_matrixlist2(hub, "hub_matrices_perturbation_set_2")
 ```
 
-
-
 ## Clean up Workdir
 ```{r}
 unlink(paste0("*.", c("c", "o", "so", "tex", "lnk")))
