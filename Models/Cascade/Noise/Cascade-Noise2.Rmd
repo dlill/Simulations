@@ -182,7 +182,7 @@ remote_computing_job <- runbg({
                                          N = N)
   results 
 }, machine = ssh_machine, input = ls(pos=.GlobalEnv), filename = "cascade"
-# , recover = T
+, recover = T
 )
 ```
 
@@ -201,35 +201,102 @@ results <- readRDS("results_cascade.rds")
 ```
 
 ```{r}
-summary.list <- function(object) length(object)
-map(results, summary)  
+results$pars_perturbed %>% unique()
 ```
 
-```{r}
-results %>% map(unique)
-```
-
-
-```{r}
-results %>% 
-  filter(alpha == 0) %>% 
-  filter(srel == 0.001) %>% 
-  .$r_optupstream %>% 
-  map(matrix_2_wide_df, nm = (paste0("r", outer(1:3,1:3, paste0)))) %>% 
-  do.call(rbind,.) %>% gather(rij, value, everything()) %>% 
-  ggplot(aes(x = rij, y = value)) + 
-  geom_violin(draw_quantiles = 0.5) + 
-  facet_wrap(~rij, scales = "free")+
-  # coord_cartesian(ylim = c(-2,2))+
-  ggtitle("ropt") + 
-  geom_blank() 
-```
 
 
 
 Purge files from the remote computing job.
 ```{r}
 remote_computing_job$purge()
+```
+
+
+```{r}
+
+print_distribution_plots <- function(results, a, s, perturbation_strength) {
+  plotopt <- results %>% 
+    filter(srel == s) %>% 
+    filter(map_lgl(pars_perturbed, ~near(.x[1], perturbation_strength))) %>% 
+    .$r_optupstream %>% 
+    map(matrix_2_wide_df, nm = (paste0("r", outer(1:3,1:3, paste0)))) %>% 
+    do.call(rbind,.) %>% gather(rij, value, everything()) %>% 
+    ggplot(aes(x = rij, y = value)) + 
+    geom_violin(draw_quantiles = 0.5) + 
+    facet_wrap(~rij, scales = "free")+
+    # coord_cartesian(ylim = c(-2,2))+
+    # coord_cartesian(ylim = c(-5,5))+
+    ggtitle(paste0("r(a=a_opt), srel = ",s, ", parameter pertubation = ", round(exp(perturbation_strength),2), " * p")) +
+    geom_blank() 
+  ggsave(paste0("r_opt_srel_",s, "delta_p_", round(exp(perturbation_strength),2), "_alpha_", alpha, ".png"), plotopt)
+  ggsave(paste0("r_opt_srel_",s, "delta_p_", round(exp(perturbation_strength),2), "_alpha_", alpha, "coord2", ".png"), plotopt +
+           coord_cartesian(ylim = c(-2,2)))
+  
+  
+  plot0 <- results %>% 
+    filter(alpha == a) %>% 
+    filter(srel == s) %>% 
+    filter(map_lgl(pars_perturbed, ~near(.x[1], perturbation_strength))) %>% 
+    .$r_0upstream %>% 
+    map(matrix_2_wide_df, nm = (paste0("r", outer(1:3,1:3, paste0)))) %>% 
+    do.call(rbind,.) %>% gather(rij, value, everything()) %>% 
+    ggplot(aes(x = rij, y = value)) + 
+    geom_violin(draw_quantiles = 0.5) + 
+    facet_wrap(~rij, scales = "free")+
+    # coord_cartesian(ylim = c(-2,2))+
+    # coord_cartesian(ylim = c(-5,5))+
+    ggtitle(paste0("r(a=0), srel = ",s, ", parameter pertubation = ", round(exp(perturbation_strength),2), " * p")) +
+    geom_blank() 
+  ggsave(paste0("r_0_srel_",s, "delta_p_", round(exp(perturbation_strength),2), "_alpha_", alpha, ".png"), plot0)
+  ggsave(paste0("r_0_srel_",s, "delta_p_", round(exp(perturbation_strength),2), "_alpha_", alpha, "coord2", ".png"), plot0 +
+           coord_cartesian(ylim = c(-2,2)))
+  
+  
+  plot1 <- results %>% 
+    filter(alpha == a) %>% 
+    filter(srel == s) %>% 
+    filter(map_lgl(pars_perturbed, ~near(.x[1], perturbation_strength))) %>% 
+    .$r_1upstream %>% 
+    map(matrix_2_wide_df, nm = (paste0("r", outer(1:3,1:3, paste0)))) %>% 
+    do.call(rbind,.) %>% gather(rij, value, everything()) %>% 
+    ggplot(aes(x = rij, y = value)) + 
+    geom_violin(draw_quantiles = 0.5) + 
+    facet_wrap(~rij, scales = "free")+
+    # coord_cartesian(ylim = c(-2,2))+
+    # coord_cartesian(ylim = c(-5,5))+
+    ggtitle(paste0("r(a=",a,"), srel = ",s, ", parameter pertubation = ", round(exp(perturbation_strength),2), " * p")) +
+    geom_blank() 
+  ggsave(paste0("r_1_srel_",s, "delta_p_", round(exp(perturbation_strength),2), "_alpha_", alpha, ".png"), plot1)
+  ggsave(paste0("r_1_srel_",s, "delta_p_", round(exp(perturbation_strength),2), "_alpha_", alpha, "coord2", ".png"), plot1 +
+           coord_cartesian(ylim = c(-2,2)))
+  
+  
+  plotkept <- results %>% 
+    filter(alpha == a) %>% 
+    filter(srel == s) %>% 
+    filter(map_lgl(pars_perturbed, ~near(.x[1], perturbation_strength))) %>% 
+    .$r_optupstream %>% 
+    map(matrix_2_wide_df, nm = (paste0("r", outer(1:3,1:3, paste0)))) %>% 
+    map(test$r_kept, matrix_2_wide_df, nm = (paste0("r", outer(1:3,1:3, paste0)))) %>% 
+    do.call(rbind,.) %>% gather(rij, value, everything()) %>% 
+    ggplot(aes(x = value)) + 
+    geom_histogram(aes(y = ..prop..), stat = "count") + 
+    facet_wrap(~rij, scales = "free")+
+    ggtitle(paste0("Matrix element is minimized, srel = ",s, ", parameter pertubation = ", round(exp(perturbation_strength),2), " * p")) +
+    geom_blank() 
+  ggsave(paste0("r_kept_srel_",s, "delta_p_", round(exp(perturbation_strength),2), "_alpha_", alpha, ".png"), plotkept)
+  ggsave(paste0("r_kept_srel_",s, "delta_p_", round(exp(perturbation_strength),2), "_alpha_", alpha, "coord2", ".png"), plotkept +
+           coord_cartesian(ylim = c(-2,2)))
+  return(invisible(NULL))
+}
+
+
+```
+
+
+```{r}
+
 ```
 
 
