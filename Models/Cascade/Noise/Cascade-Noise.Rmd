@@ -1,5 +1,5 @@
 ---
-title: "Enzymatic Cascade"
+title: "Enzymatic Cascade with noisy data"
 author: "Daniel Lill"
 output:
   pdf_document:
