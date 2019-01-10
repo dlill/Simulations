@@ -11,8 +11,6 @@ output:
 library(parallel)
 library(MRAr)
 library(xtable)
-
-source("/home/denial/Promotion/Projects/MRA/Simulations/S2 different settings-noisy.R")
 ```
 
 # Model setup
@@ -197,146 +195,14 @@ Fetch/save/restore results
 ```{r}
 results <- remote_computing_job$get()[[1]]
 # saveRDS(results, file = "results.rds")
-results <- readRDS("results_cascade.rds")
+results <- readRDS("results.rds")
 ```
-
-```{r}
-results$pars_perturbed %>% unique()
-```
-
-
-```{r}
-names(results)
-```
-
 
 Purge files from the remote computing job.
 ```{r}
 remote_computing_job$purge()
 ```
 
-
-```{r}
-
-print_distribution_plots <- function(results, a, s, perturbation_strength) {
-  plotopt <- results %>%
-    filter(alpha == a) %>%
-    filter(srel == s) %>%
-    filter(map_lgl(pars_perturbed, ~near(.x[1], perturbation_strength))) %>%
-    .$r_optupstream %>%
-    {.[!map_lgl(., is.null)]} %>%
-    map(matrix_2_wide_df, nm = (paste0("r", outer(1:3,1:3, paste0)))) %>%
-    do.call(rbind,.) %>% gather(rij, value, everything()) %>%
-    ggplot(aes(x = rij, y = value)) +
-    geom_violin(draw_quantiles = 0.5) +
-    facet_wrap(~rij, scales = "free")+
-    # coord_cartesian(ylim = c(-2,2))+
-    # coord_cartesian(ylim = c(-5,5))+
-    ggtitle(paste0("r(a=a_opt), srel = ",s, ", parameter pertubation = ", round(exp(perturbation_strength),2), " * p")) +
-    geom_blank()
-  # ggsave(paste0("r_opt_srel_",s, "delta_p_", round(exp(perturbation_strength),2), "_alpha_", a, ".png"), plotopt)
-  # ggsave(paste0("srel_",s, "delta_p_", round(exp(perturbation_strength),2), "_alpha_", a, "_r_opt", ".png"), plotopt)
-  # ggsave(paste0("r_opt_srel_",s, "delta_p_", round(exp(perturbation_strength),2), "_alpha_", a, "coord2", ".png"), plotopt +
-  #          coord_cartesian(ylim = c(-2,2)))
-  print(plotopt)
-  
-  plot0 <- results %>%
-    filter(alpha == a) %>%
-    filter(srel == s) %>%
-    filter(map_lgl(pars_perturbed, ~near(.x[1], perturbation_strength))) %>%
-    .$r_0 %>%
-    {.[!map_lgl(., is.null)]} %>%
-    map(matrix_2_wide_df, nm = (paste0("r", outer(1:3,1:3, paste0)))) %>%
-    do.call(rbind,.) %>% gather(rij, value, everything()) %>%
-    ggplot(aes(x = rij, y = value)) +
-    geom_violin(draw_quantiles = 0.5) +
-    facet_wrap(~rij, scales = "free")+
-    # coord_cartesian(ylim = c(-2,2))+
-    # coord_cartesian(ylim = c(-5,5))+
-    ggtitle(paste0("r(a=0), srel = ",s, ", parameter pertubation = ", round(exp(perturbation_strength),2), " * p")) +
-    geom_blank()
-  # ggsave(paste0("r_0_srel_",s, "delta_p_", round(exp(perturbation_strength),2), "_alpha_", a, ".png"), plot0)
-  # ggsave(paste0("srel_",s, "delta_p_", round(exp(perturbation_strength),2), "_alpha_", a, "_r_0", ".png"), plot0)
-  # ggsave(paste0("r_0_srel_",s, "delta_p_", round(exp(perturbation_strength),2), "_alpha_", a, "coord2", ".png"), plot0 +
-  #          coord_cartesian(ylim = c(-2,2)))
-  print(plot0)
-  
-  plot1 <- results %>%
-    filter(alpha == a) %>%
-    filter(srel == s) %>%
-    filter(map_lgl(pars_perturbed, ~near(.x[1], perturbation_strength))) %>%
-    .$r_1upstream %>%
-    {.[!map_lgl(., is.null)]} %>%
-    map(matrix_2_wide_df, nm = (paste0("r", outer(1:3,1:3, paste0)))) %>%
-    do.call(rbind,.) %>% gather(rij, value, everything()) %>%
-    ggplot(aes(x = rij, y = value)) +
-    geom_violin(draw_quantiles = 0.5) +
-    facet_wrap(~rij, scales = "free")+
-    # coord_cartesian(ylim = c(-2,2))+
-    # coord_cartesian(ylim = c(-5,5))+
-    ggtitle(paste0("r(a=",a,"), srel = ",s, ", parameter pertubation = ", round(exp(perturbation_strength),2), " * p")) +
-    geom_blank()
-  # ggsave(paste0("r_1_srel_",s, "delta_p_", round(exp(perturbation_strength),2), "_alpha_", a, ".png"), plot1)
-  # ggsave(paste0("srel_",s, "delta_p_", round(exp(perturbation_strength),2), "_alpha_", a, "_r_1", ".png"), plot1)
-  # ggsave(paste0("r_1_srel_",s, "delta_p_", round(exp(perturbation_strength),2), "_alpha_", a, "coord2", ".png"), plot1 +
-  #          coord_cartesian(ylim = c(-2,2)))
-  # 
-  # 
-  # a <- asp$a[1]
-  # s <- asp$s[1]
-  # perturbation_strength <- asp$perturbation_strength[1]
-  print(plot1)
-  
-  plotkept <-
-    results %>% 
-    filter(alpha == a) %>% 
-    filter(srel == s) %>% 
-    filter(map_lgl(pars_perturbed, ~near(.x[1], perturbation_strength))) %>% 
-    .$r_keptupstream %>% 
-    {.[!map_lgl(., is.null)]} %>% 
-    map(matrix_2_wide_df, nm = (paste0("r", outer(1:3,1:3, paste0)))) %>% 
-    do.call(rbind,.) %>% gather(rij, value, everything()) %>% 
-    ggplot(aes(x = value, group = rij)) + 
-    geom_bar(aes(y = ..prop..)) + 
-    facet_wrap(~rij)+
-    ggtitle(paste0("Matrix element is minimized, srel = ",s, ", parameter pertubation = ", round(exp(perturbation_strength),2), " * p")) +
-    geom_blank() 
-  # ggsave(paste0("r_kept_srel_",s, "delta_p_", round(exp(perturbation_strength),2), "_alpha_", a, ".png"), plotkept)
-  # ggsave(paste0("srel_",s, "delta_p_", round(exp(perturbation_strength),2), "_alpha_", a, "_r_kept", ".png"), plotkept)
-  
-  print(plotkept)
-  return(invisible(NULL))
-}
-
-
-asp <- expand.grid(a = alphas[2:4], s = map_dbl(error_pars, 2), perturbation_strength = map_dbl(perturbations,1))
-
-dir.create("~/Promotion/Projects/MRA/Simulations/Models/Cascade/Noise/plots")
-setwd("~/Promotion/Projects/MRA/Simulations/Models/Cascade/Noise/plots")
-
-walk(seq_len(nrow(asp)), function(.x) {
-  pdf(paste0("srel_",s, "delta_p_", round(exp(perturbation_strength),2), "_alpha_", a, ".pdf"))
-  with(asp[.x,], print_distribution_plots(results, a, s, perturbation_strength))
-  dev.off()
-})
-
-```
-
-
-```{r}
-results %>% nrow
-results %>% filter(alpha == 0) %>% nrow
-results  %>% 
-  filter(alpha == 0) %>%
-  filter(!(map_lgl(r_0, is.null) ||
-             map_lgl(r_1upstream, is.null) ||
-             map_lgl(r_keptupstream, is.null) ||
-             map_lgl(r_optupstream, is.null) ||
-             map_lgl(r_1both, is.null) ||
-             map_lgl(r_keptboth, is.null) ||
-             map_lgl(r_optboth, is.null))) %>% nrow
-# .$r_0 %>% map(dim) %>% reduce(rbind)
-```
 
 
 # Explore results
@@ -375,15 +241,10 @@ results_unnested_matrices <- results_unnested_matrices %>%
   gather(key, value, matches("upstream|both|r_0")) %>% 
   mutate(par_opt_setting = str_extract(key, "upstream|both"),
          mat = str_extract(key, "r(opt|kept|1)|r_0") %>% str_remove("^r_?"),
-         element = str_extract(key, "\\d{2}$"))
-
-results_unnested_matrices <- results_unnested_matrices %>% 
+         element = str_extract(key, "\\d{2}$")) %>% 
   mutate(mat = replace(mat, mat == "opt", "aopt")) %>% 
   mutate(mat = paste0("r(a=", mat, ")")) %>% 
-  mutate(mat = replace(mat, mat == "r(a=kept)", "r_kept"))
-
-
-results_unnested_matrices <- results_unnested_matrices %>% 
+  mutate(mat = replace(mat, mat == "r(a=kept)", "r_kept"))%>% 
   mutate(element = paste0("r", element))
 
   
@@ -392,8 +253,8 @@ results_unnested_matrices <- results_unnested_matrices %>%
 ```{r}
 
 results_unnested_matrices %>% 
-  filter(srel == s) %>%
-  filter(map_lgl(pars_perturbed, ~near(.x[1], perturbation_strength))) %>%
+  filter(srel == 0.01) %>%
+  filter(map_lgl(pars_perturbed, ~near(.x[1], log(0.5)))) %>%
   filter(par_opt_setting == "upstream"|is.na(par_opt_setting)) %>%
   filter(!mat %in% c("r_kept","r(a=1)")) %>%
   mutate(mat = factor(mat))%>% 
@@ -414,40 +275,41 @@ results_unnested_matrices %>%
 
 
 # Export of results
-
-## Parameters/ODEs
 ```{r}
-reactions %>% 
-  as.eqnvec() %>% 
-  print2word_eqnvec("odes_cascade")
+print_distribution_plots <- function(results_unnested_matrices, s, perturbation_strength) {
+
+p1 <-
+  results_unnested_matrices %>% 
+  filter(srel == s) %>%
+  filter(map_lgl(pars_perturbed, ~near(.x[1], perturbation_strength))) %>%
+  filter(par_opt_setting == "upstream"|is.na(par_opt_setting)) %>%
+  filter(!mat %in% c("r_kept","r(a=1)")) %>%
+  mutate(mat = factor(mat))%>% 
+  ggplot(aes(x = mat, y = value)) +
+  # geom_violin(draw_quantiles = 0.5) +
+  geom_boxplot() +
+  facet_wrap(~element, scales = "free")+
+  xlab("Local response Matrix") + 
+  ylab("Local response coefficient") +
+  theme_dMod()+
+  ggtitle(paste0("Noise level = ",s*100, "%")) +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    geom_blank()
+  
+  ggsave(paste0("boxcombined_srel-", s, "_deltap-", round(exp(perturbation_strength),2), ".png"), p1)
+  ggsave(paste0("boxcombined_srel-", s, "_deltap-", round(exp(perturbation_strength),2), "zoom.png"), p1 +
+           coord_cartesian(ylim = c(-2,2)))
+}
 ```
 
+# dir.create("~/Promotion/Projects/MRA/Simulations/Models/Cascade/Noise/plots")
 ```{r}
-pars %>% 
-  exp %>% 
-  print2word_namedvec("pars_cascade", names_in_mathenv = T)
-```
-
-## Matrices
-Export some tables for the publication
-```{r}
-to_export <-  results %>% 
-  filter(alpha == 0) %>% 
-  filter(map_lgl(pars_perturbed, ~identical(names(.x), c("x1", "y1", "z1")))) %>% 
-  unlist(recursive = F)
-
-to_export[c("r_0", "r_1upstream", "r_optupstream")] %>% 
-  print2word_matrixlist("cascade_matrices")
-```
-
-```{r}
-to_export <-  results %>% 
-  filter(alpha == 0) %>% 
-  filter(map_lgl(pars_perturbed, ~identical(names(.x), c("x1", "y1", "z1")))) %>% 
-  unlist(recursive = F)
-
-to_export[c("r_optupstream", "r_optboth")] %>% 
-  print2word_matrixlist2("cascade_matrices_SI")
+dir.create("~/Promotion/Projects/MRA/Simulations/Models/Cascade/Noise/plots2")
+setwd("~/Promotion/Projects/MRA/Simulations/Models/Cascade/Noise/plots2")
+sp <- expand.grid(s = c(0.001,0.01,0.05,0.1), perturbation_strength = log(c(0.9,0.5)))
+walk(seq_len(nrow(sp)), function(.x) {
+  with(sp[.x,], print_distribution_plots(results_unnested_matrices, s, perturbation_strength))
+})
 ```
 
 
