@@ -230,7 +230,7 @@ When the complexes are measured independently, the matrices are similar after de
 cluster_by_ropt_complex_to_upstream <- cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, "upstream_ropt", 2,NULL)
 ```
 
-When the complex is measured independently, some combinations of parameter perturbations don't work out anymore, but most of them do.
+When the complex is measured independently, but added to both modules, some combinations of parameter perturbations don't work out anymore, but most of them do.
 ```{r}
 clustered <- cluster_by_ropt_complex_to_both <- cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, "both_ropt", 5,NULL)
 ```
@@ -273,6 +273,29 @@ to_export <-  results %>%
 to_export[c("r_optupstream", "r_optboth")] %>% 
  print2word_matrixlist2("cascade_matrices_SI")
 ```
+
+
+
+```{r}
+cluster_by_ropt_complex_to_upstream <- cluster_matrices_and_print_perturbations(results_unnested_matrices, 0, "upstream_ropt", 2,NULL)
+set.seed(2)
+perturbations <- sort(c(1,sample(2:180, 9)))
+
+to_export <- results %>% 
+  filter(alpha == 0) %>% 
+  .[perturbations,]
+
+r_opt_export <- to_export$r_optupstream %>% setNames(paste0("Perturbed:", 
+                                                            map_chr(to_export$pars_perturbed,~paste0(names(.x), collapse = ","))))
+print2word_matrixlist2(r_opt_export, "cascade_ropt_many_different_perturbations")
+r_0_export <- to_export$r_0 %>% setNames(paste0("Perturbed:", 
+                                                            map_chr(to_export$pars_perturbed,~paste0(names(.x), collapse = ","))))
+print2word_matrixlist2(r_0_export, "cascade_r0_many_different_perturbations")
+x <- r_opt_export
+
+# Call Script S7
+```
+
 
 
 # Clean up working directory

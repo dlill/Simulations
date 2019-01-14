@@ -216,4 +216,11 @@ image_composite(fig, image_scale(mat1, geometry_size_percent(perc2)), offset = p
   image_composite(image_scale(mat3, geometry_size_percent(perc2)), offset = paste0("+",X[6],"+",Y[2])) %>% 
 image_write("algotoboth.png")
 
+# ---------------------------------------------------------- #
+# Documentation ----
+# ---------------------------------------------------------- #
+
+writeLines("algotoboth.png was created by Script S5 in the main folder.", "algotoboth.txt")
+writeLines("algotoupper.png was created by Script S5 in the main folder.", "algotoupper.txt")
+
 unlink_dMod(c("aux", "log", "gz"))
