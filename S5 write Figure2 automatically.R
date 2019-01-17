@@ -1,12 +1,14 @@
 library(magick)
-
+setwd("~/Promotion/Projects/MRA/Simulations/")
 setwd("Models/Prabakaran/")
 
 print_matrices_at_point_locations <- function(point_locations, plot_data, path) {
   map(point_locations, function(i) {
     plot_data  %>%
       filter(near(alpha, i, tol = 1e-6)) %>%
-      .$value %>% c(-1, ., -1) %>%  round(2) %>% paste0(c("", "\\textcolor{red}{", "\\textcolor{blue}{", ""),.,c("", "}", "}", "")) %>% matrix(ncol = 2) %>% 
+      .$value %>% c(-1, ., -1) %>%  round(2) %>% 
+      paste0("\\mathbf{",., "}") %>% 
+      paste0(c("", "\\textcolor{red}{", "\\textcolor{blue}{", ""),.,c("", "}", "}", "")) %>% matrix(ncol = 2) %>% 
       xtable() %>% print(tabular.enivronment = "pmatrix", floating = FALSE, hline.after=NULL, include.rownames=FALSE, include.colnames=FALSE, sanitize.text.function = function(x){x}) %>%
       str_replace_all(c("tabular"= "pmatrix", "\\{rr\\}" = "", "\\\\begin" = "$\\\\begin", "\\{ll\\}" = "")) %>% paste0(., "$") 
   }) %>% 
@@ -28,6 +30,10 @@ print_matrices_at_point_locations <- function(point_locations, plot_data, path) 
 # ---------------------------------------------------------- #
 # plots2upper ----
 # ---------------------------------------------------------- #
+
+# ----------------------------------------------- #
+# .. Plot ----
+# ----------------------------------------------- #
 plot_data <-
   dr_list %>%   
   combine_dr_list() %>% 
@@ -80,25 +86,28 @@ myplot <- plot_data %>%
   ylab("Connection coefficient") +
   scale_x_continuous(breaks = sort(c(0:5, point_locations[2])), labels = c("0", expression(a[opt]), 1:5))
 
-
+# ----------------------------------------------- #
+# .. matrices ----
+# ----------------------------------------------- #
 
 print_matrices_at_point_locations(point_locations, plot_data, path = "matrices_of_plot2upper_Prabakaran")
 
-# 
-# 
+# ----------------------------------------------- #
+# .. imagemagick ----
+# ----------------------------------------------- #
 mat1 <- image_read_pdf("matrices_of_plot2upper_Prabakaran.pdf") %>%
-  image_crop("266x100+590+524")
+  image_crop("284x100+590+524")
 mat2 <- image_read_pdf("matrices_of_plot2upper_Prabakaran.pdf") %>%
-  image_crop("266x100+590+626")
+  image_crop("284x100+590+626")
 mat3 <- image_read_pdf("matrices_of_plot2upper_Prabakaran.pdf") %>%
-  image_crop("266x100+590+728")
-
+  image_crop("284x100+590+728")
+# ----
 perc1 <- 80
-perc2 <- 40
+perc2 <- 48
 
-X <- (c(x1 = 100, x2 = 20, x3 = 166, x4 = 160, x5 = 725, x6 = 700) + 10) * perc1/100
-DX = c(dx1 = 45, dx2 = 125, dx3 = -15) * perc1/100
-Y <- c(y1 = 685, y2 = 752, y3 = 564, y4 = 490) * perc1/100  - 12
+X <- (c(x1 = 100, x2 = 10, x3 = 166, x4 = 185, x5 = 725, x6 = 700) + 10) * perc1/100
+DX = c(dx1 = 45, dx2.1 = 155, dx2 = 125, dx4 = -10, dx5 = 0, dx6 = -10) * perc1/100
+Y <- c(y1 = 685, y2 = 752, y3 = 564, y4 = 490, y5 = 727) * perc1/100  - 12
 
 fig <- image_graph(1000 * perc1 / 100, 800 * perc1/100, res = 96 /3 * 5)
 myplot
@@ -107,22 +116,25 @@ fig <- image_draw(fig)
 lines(seq(X[1], X[2], length.out = 100), seq(Y[1],Y[2], length.out = 100), lty = 2)
 lines(seq(X[1]+DX[1], X[2] + DX[2], length.out = 100), seq(Y[1],Y[2], length.out = 100), lty = 2)
 
-lines(seq(X[3], X[4], length.out = 100), seq(Y[3],Y[2], length.out = 100), lty = 2)
-lines(seq(X[3] + DX[1], X[4] + DX[2], length.out = 100), seq(Y[3],Y[2], length.out = 100), lty = 2)
+lines(seq(X[3], X[4], length.out = 100), seq(Y[3],Y[5], length.out = 100), lty = 2)
+lines(seq(X[3] + DX[1], X[4] + DX[3], length.out = 100), seq(Y[3],Y[2], length.out = 100), lty = 2)
 
 lines(seq(X[5], X[6], length.out = 100), seq(Y[4],Y[2], length.out = 100), lty = 2)
-lines(seq(X[5] + DX[1], X[6] + DX[2], length.out = 100), seq(Y[4],Y[2], length.out = 100), lty = 2)
+lines(seq(X[5] + DX[1], X[6] + DX[3], length.out = 100), seq(Y[4],Y[2], length.out = 100), lty = 2)
 dev.off()
-image_composite(fig, image_scale(mat1, geometry_size_percent(perc2)), offset = paste0("+",X[2]+DX[3],"+",Y[2])) %>% 
-  image_composite(image_scale(mat2, geometry_size_percent(perc2)), offset = paste0("+",X[4], "+",Y[2])) %>% 
-  image_composite(image_scale(mat3, geometry_size_percent(perc2)), offset = paste0("+",X[6],"+",Y[2])) %>% 
+fig %>% 
+  image_composite(image_scale(mat1, geometry_size_percent(perc2)), offset = paste0("+",X[2]+DX[4],"+",Y[2])) %>% 
+  image_composite(image_scale(mat2, geometry_size_percent(perc2)), offset = paste0("+",X[4]+DX[5], "+",Y[2])) %>% 
+  image_composite(image_scale(mat3, geometry_size_percent(perc2)), offset = paste0("+",X[6] + DX[6],"+",Y[2])) %>% 
 image_write("algotoupper.png")
 
 # ---------------------------------------------------------- #
 # plots2upper ----
 # ---------------------------------------------------------- #
 
-
+# ----------------------------------------------- #
+# .. Plot ----
+# ----------------------------------------------- #
 
 plot_data <-
   dr_list %>%   
@@ -179,18 +191,52 @@ myplot <- plot_data %>%
 
 myplot
 
+# ----------------------------------------------- #
+# .. matrices ----
+# ----------------------------------------------- #
+
 
 print_matrices_at_point_locations(point_locations, plot_data, path = "matrices_of_plot2both")
 
-# 
-# 
+# ----------------------------------------------- #
+# .. imagemagick ----
+# ----------------------------------------------- #
 mat1 <- image_read_pdf("matrices_of_plot2both.pdf") %>%
-  image_crop("266x100+590+524")
+  image_crop("284x100+590+524")
 mat2 <- image_read_pdf("matrices_of_plot2both.pdf") %>%
-  image_crop("266x100+590+626")
+  image_crop("284x100+590+626")
 mat3 <- image_read_pdf("matrices_of_plot2both.pdf") %>%
-  image_crop("266x100+590+728")
+  image_crop("284x100+590+728")
+# ----
+perc1 <- 80
+perc2 <- 48
 
+X <- (c(x1 = 100, x2 = 10, x3 = 166, x4 = 185, x5 = 725, x6 = 700) + 10) * perc1/100
+DX = c(dx1 = 45, dx2.1 = 155, dx2 = 125, dx4 = -10, dx5 = 0, dx6 = -10) * perc1/100
+Y <- c(y1 = 685, y2 = 752, y3 = 524, y4 = 390, y5 = 727) * perc1/100  - 12
+
+fig <- image_graph(1000 * perc1 / 100, 800 * perc1/100, res = 96 /3 * 5)
+myplot
+fig <- image_draw(fig)
+
+lines(seq(X[1], X[2], length.out = 100), seq(Y[1],Y[2], length.out = 100), lty = 2)
+lines(seq(X[1]+DX[1], X[2] + DX[2], length.out = 100), seq(Y[1],Y[2], length.out = 100), lty = 2)
+
+lines(seq(X[3], X[4], length.out = 100), seq(Y[3],Y[5], length.out = 100), lty = 2)
+lines(seq(X[3] + DX[1], X[4] + DX[3], length.out = 100), seq(Y[3],Y[2], length.out = 100), lty = 2)
+
+lines(seq(X[5], X[6], length.out = 100), seq(Y[4],Y[2], length.out = 100), lty = 2)
+lines(seq(X[5] + DX[1], X[6] + DX[3], length.out = 100), seq(Y[4],Y[2], length.out = 100), lty = 2)
+dev.off()
+fig %>% 
+  image_composite(image_scale(mat1, geometry_size_percent(perc2)), offset = paste0("+",X[2]+DX[4],"+",Y[2])) %>% 
+  image_composite(image_scale(mat2, geometry_size_percent(perc2)), offset = paste0("+",X[4]+DX[5], "+",Y[2])) %>% 
+  image_composite(image_scale(mat3, geometry_size_percent(perc2)), offset = paste0("+",X[6] + DX[6],"+",Y[2])) %>% 
+  image_write("algotoboth.png")
+
+# ---------------------------------------------------------- #
+# old ----
+# ---------------------------------------------------------- #
 perc1 <- 80
 perc2 <- 40
 
@@ -206,12 +252,12 @@ lines(seq(X[1], X[2], length.out = 100), seq(Y[1],Y[2], length.out = 100), lty =
 lines(seq(X[1]+DX[1], X[2] + DX[2], length.out = 100), seq(Y[1],Y[2], length.out = 100), lty = 2)
 
 lines(seq(X[3], X[4], length.out = 100), seq(Y[3],Y[2], length.out = 100), lty = 2)
-lines(seq(X[3] + DX[1], X[4] + DX[2], length.out = 100), seq(Y[3],Y[2], length.out = 100), lty = 2)
+lines(seq(X[3] + DX[1], X[4] + DX[3], length.out = 100), seq(Y[3],Y[2], length.out = 100), lty = 2)
 
 lines(seq(X[5], X[6], length.out = 100), seq(Y[4],Y[2], length.out = 100), lty = 2)
-lines(seq(X[5] + DX[1], X[6] + DX[2], length.out = 100), seq(Y[4],Y[2], length.out = 100), lty = 2)
+lines(seq(X[5] + DX[1], X[6] + DX[3], length.out = 100), seq(Y[4],Y[2], length.out = 100), lty = 2)
 dev.off()
-image_composite(fig, image_scale(mat1, geometry_size_percent(perc2)), offset = paste0("+",X[2]+DX[3],"+",Y[2])) %>% 
+image_composite(fig, image_scale(mat1, geometry_size_percent(perc2)), offset = paste0("+",X[2]+DX[4],"+",Y[2])) %>% 
   image_composite(image_scale(mat2, geometry_size_percent(perc2)), offset = paste0("+",X[4], "+",Y[2])) %>% 
   image_composite(image_scale(mat3, geometry_size_percent(perc2)), offset = paste0("+",X[6],"+",Y[2])) %>% 
 image_write("algotoboth.png")
