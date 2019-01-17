@@ -98,7 +98,7 @@ print_matrices_at_point_locations(point_locations, plot_data, path = "matrices_o
 mat1 <- image_read_pdf("matrices_of_plot2upper_Prabakaran.pdf") %>%
   image_crop("284x100+590+524")
 mat2 <- image_read_pdf("matrices_of_plot2upper_Prabakaran.pdf") %>%
-  image_crop("284x100+590+626")
+  image_crop("234x100+590+626")
 mat3 <- image_read_pdf("matrices_of_plot2upper_Prabakaran.pdf") %>%
   image_crop("284x100+590+728")
 # ----
@@ -204,7 +204,7 @@ print_matrices_at_point_locations(point_locations, plot_data, path = "matrices_o
 mat1 <- image_read_pdf("matrices_of_plot2both.pdf") %>%
   image_crop("284x100+590+524")
 mat2 <- image_read_pdf("matrices_of_plot2both.pdf") %>%
-  image_crop("284x100+590+626")
+  image_crop("234x100+590+626")
 mat3 <- image_read_pdf("matrices_of_plot2both.pdf") %>%
   image_crop("284x100+590+728")
 # ----
@@ -212,8 +212,8 @@ perc1 <- 80
 perc2 <- 48
 
 X <- (c(x1 = 100, x2 = 10, x3 = 166, x4 = 185, x5 = 725, x6 = 700) + 10) * perc1/100
-DX = c(dx1 = 45, dx2.1 = 155, dx2 = 125, dx4 = -10, dx5 = 0, dx6 = -10) * perc1/100
-Y <- c(y1 = 685, y2 = 752, y3 = 524, y4 = 390, y5 = 727) * perc1/100  - 12
+DX = c(dx1 = 45, dx2.1 = 155, dx2 = 125, dx4 = -10, dx5 = 0, dx6 = -5) * perc1/100
+Y <- c(y1 = 685, y2 = 752, y3 = 530, y4 = 400, y5 = 727) * perc1/100  - 12
 
 fig <- image_graph(1000 * perc1 / 100, 800 * perc1/100, res = 96 /3 * 5)
 myplot
