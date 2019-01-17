@@ -269,4 +269,9 @@ image_write("algotoboth.png")
 writeLines("algotoboth.png was created by Script S5 in the main folder.", "algotoboth.txt")
 writeLines("algotoupper.png was created by Script S5 in the main folder.", "algotoupper.txt")
 
+file.copy("algotoupper.png", "~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/Revision1/Figure2-1.png")
+file.copy("algotoboth.png", "~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/Revision1/Figure2-2.png")
+file.copy("algotoupper.txt", "~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/Revision1/Figure2-1.txt")
+file.copy("algotoboth.txt", "~/Promotion/Writing/Papers/2017 02 MRA optimization procedure Paper/Revision1/Figure2-2.txt")
+
 unlink_dMod(c("aux", "log", "gz"))
