@@ -1,0 +1,407 @@
+---
+title: "Enzymatic Cascade with noisy data"
+author: "Daniel Lill"
+output:
+  pdf_document:
+    keep_tex: yes
+---
+
+# Load libraries and define some useful paths
+```{r setup, results='hide', echo=FALSE, message=FALSE}
+library(parallel)
+library(conveniencefunctions)
+library(MRAr)
+library(xtable)
+```
+
+# Model setup
+
+## ODE model setup
+```{r Prediction function Cascade, results='asis'}
+reactions <- NULL %>% 
+  addReaction(from = "x1", to = "x2", rate = "((v1 *  x1)/(k1 + x1))", description = "act_x") %>% 
+  addReaction(from = "x2", to = "x1", rate = "((v2 * x2 )/(k2 + x2))", description = "deact_x") %>% 
+  addReaction(from = "x2 + y1", to = "Cx2y1", rate = "(k31 * y1 *x2) - (k32 *Cx2y1)", description = "x2_y_to_comp") %>% 
+  addReaction(from = "Cx2y1", to = "x2 + y2", rate = "(k4 * Cx2y1)", description = "y2_formation") %>% 
+  addReaction(from = "y2", to = "y1", rate = "((v5 * y2)/(k5 + y2))", description = "deact_y") %>% 
+  addReaction(from = "y2 + z1", to = "Cy2z1", rate = "((k61 *z1 *y2) - (k62 * Cy2z1))", description = "y2_z_to_comp") %>% 
+  addReaction(from = "Cy2z1", to = "y2 + z2", rate = "(k7 * Cy2z1)", description = "z2_formation") %>% 
+  addReaction(from = "z2", to = "z1", rate = "((v8 * z2)/(k8 + z2))", description = "z_deact") 
+
+compiled_model <- odemodel(reactions, modelname = "Cascade", estimate = c("x1", "k1"))
+
+# Prediction function
+x <- Xs(odemodel = compiled_model) 
+# Prediction function for steady states
+xs <- Xs_steady(compiled_model) # When computing steady states, set deriv = F
+```
+
+### Modules, their observables and the observation function
+Observation function which depends also on the optimization parameters. With their help, the complexes can smoothly be switched on in the observation.
+
+```{r Most general observation function}
+modules <-  c("X", "Y", "Z")
+
+alpha_parameters <- paste0("a_", outer(paste0("to", c("x","y","z"), "_C"), c("xy","yz","zx"), paste0)) %>% matrix(ncol=3)
+alpha_parameters[c(3,4,8)] <- "0"
+
+complexes <- matrix(c("Cx2y1", "Cy2z1", "Cx2z2"), ncol = 1)
+
+alpha_parameters_to_both_modules <- paste0("a_", outer(rep("C",3), c("xy","yz","zx"), paste0)) %>% matrix(ncol=3)
+alpha_parameters_to_both_modules[c(3,4,8)] <- "0"
+
+observables <- paste(c("x2", "y2", "z2"), "+", prodSymb(alpha_parameters, complexes), "+", prodSymb(alpha_parameters_to_both_modules, complexes))
+
+
+g <- Y(g = as.eqnvec(structure(observables, names = modules)), 
+       f = reactions, 
+       compile = TRUE, 
+       modelname = "obsfn0", 
+       attach.input = FALSE)
+```
+
+
+### General log transformation and setting some pars to zero
+It's better to do a logtransformation for all Fitting purposes and work with the log-Parameters.
+```{r}
+trafo <- getParameters(x,g) %>% 
+  setNames(.,.) %>% 
+  insert("x~0", x = str_subset(.currentSymbols, "^C*[xyz](2|1.2)")) %>% # set inits to zero
+  insert("x~exp(x)", x = .currentSymbols) %>%
+  # {.} %T>% print %>% 
+  {.} 
+
+p_log <- P(trafo = trafo,
+           modelname = "p_log",
+           compile = T)
+```
+
+
+```{r}
+pars <- c(
+  a_Cxy    	=	.Machine$double.eps	, # 1
+  a_Cyz    	=	.Machine$double.eps	, # 2
+  a_Czx    	=	.Machine$double.eps	, # 3
+  a_tox_Cxy	=	.Machine$double.eps	, # 4
+  a_tox_Czx	=	.Machine$double.eps	, # 5
+  a_toy_Cxy	=	.Machine$double.eps	, # 6
+  a_toy_Cyz	=	.Machine$double.eps	, # 7
+  a_toz_Cyz	=	.Machine$double.eps	, # 8
+  a_toz_Czx	=	.Machine$double.eps	, # 9
+  
+  x1 = 100,      # 30
+  y1 = 100,      # 31
+  z1 = 100,       # 32
+  
+  k1       	=	100	, # 11
+  v1       	=	1.5	, # 12
+  k2       	=	100	, # 13
+  v2       	=	1	, # 14
+  k31      	=	0.01	, # 15
+  k32      	=	0.4	, # 16
+  k4       	=	0.05	, # 17
+  k5       	=	100	, # 18
+  v5       	=	5	, # 19
+  k61      	=	0.05	, # 20
+  k62      	=	0.4	, # 21
+  k7       	=	0.008	, # 22
+  k8       	=	100	, # 23
+  v8       	=	1	
+) %>% 
+  log
+
+alpha_pars <- pars[str_detect(names(pars), "^a_")]
+```
+
+```{r}
+# test the algorithm.
+# test <- algo(pars, c("x1", "y1", "z1"), c("a_tox_Cxy", "a_toy_Cyz"), alpha_pars, 0, g, xs, p_log)
+```
+
+
+
+# Apply different perturbations and run the algorithm
+Since all possible combinations of paramter perturbations are many, these computations are done in a parallelized manner on a remote server.
+
+```{r Prepare perturbations}
+perturbations_module_x <- c("x1", "k1", "v1", "k2", "v2")
+perturbations_module_y <- c("y1", "k5", "v5", "k31", "k32", "k4")
+perturbations_module_z <- c("z1", "k8", "v8", "k61", "k62", "k7")
+perturbation_combinations <- expand.grid(perturbations_module_x, perturbations_module_y, perturbations_module_z, stringsAsFactors = F) 
+
+perturbations <- map(1:nrow(perturbation_combinations), function(i) {
+  mynames <- perturbation_combinations[i,] %>% unlist() %>% unname() %>% unique()
+  if(length(mynames)<3) return(NULL)
+  mynames %>% are_names_of(log(0.9))
+}) %>% 
+  .[!map_lgl(., is.null)]
+
+```
+
+```{r prepare error model parameters}
+error_pars <- expand.grid(sabs = c(0), srel = (c(0.001, 0.01, 0.05, 0.1)))
+error_pars <- map(1:nrow(error_pars), function(i) unlist(error_pars[i,]))
+```
+
+```{r}
+alphas <- c(0)
+alpha_par_settings <- list(upstream = c("a_tox_Cxy", "a_toy_Cyz")
+                           # ,
+                           # both = c("a_Cxy", "a_Cyz")
+                           )
+```
+
+
+```{r collect all input information for the full simulations}
+dose_pars <- pars["x1"]
+alphas <- alphas
+perturbations <- list(c(x1 = log(0.9), y1 = log(0.9), z1 =log(0.9)), 
+                      c(x1 = log(0.5), y1 = log(0.5), z1 =log(0.5)))
+alpha_par_settings <- alpha_par_settings
+
+error_pars <- error_pars
+N <- 1000
+nreplicates <- 3
+```
+
+```{r}
+length(alphas) * length(perturbations) * length(alpha_par_settings) * length(error_pars) * N
+```
+
+
+Send the computations via ssh to a cluster or a server. Requires the R-packages to be installed there as well and that ssh is set up to use aliases. Replace "localhost" by the respective ssh alias. See ?runbg for more details.
+```{r}
+ssh_machine <- "knecht1"
+
+remote_computing_job <- runbg({
+  cores <- detectFreeCores()
+  results <- run_different_perturbations_noisy_with_replicates(dose_pars = dose_pars, 
+                                               pars0 = pars, 
+                                               alpha_pars = alpha_pars,
+                                               alphas = alphas, 
+                                               perturbations = perturbations,
+                                               xs = xs,
+                                               p_log = p_log,
+                                               p_pert = p_pert,
+                                               g = g, 
+                                               cores = cores,
+                                               alpha_par_settings = alpha_par_settings,
+                                               errorpars =  error_pars,
+                                               N = N, 
+                                               nreplicates = nreplicates)
+  results 
+}, machine = ssh_machine, input = ls(pos=.GlobalEnv), filename = "cascade3rep"
+, recover = T
+)
+```
+
+
+
+Check if results are ready.
+```{r}
+while(!remote_computing_job$check()) {
+  Sys.sleep(60)
+}
+```
+
+Fetch/save/restore results
+```{r}
+results <- remote_computing_job$get()[[1]]
+saveRDS(results, file = "results.rds")
+results <- readRDS("results.rds")
+```
+
+Purge files from the remote computing job.
+```{r}
+remote_computing_job$purge()
+```
+
+
+
+# Explore results
+Cluster matrices by similarity across different perturbations.
+This section assumes that all perturbations have been computed (run_subset == F).
+```{r Prepare data for clustering}
+
+results_unnested_matrices <- results %>%
+  filter(alpha == 0) %>% 
+  filter(!map_lgl(r_0, is.null) && 
+           !map_lgl(r_1upstream, is.null) && 
+           !map_lgl(r_keptupstream, is.null) && 
+           !map_lgl(r_optupstream, is.null) 
+           # &&
+           # !map_lgl(r_1both, is.null) &&
+           # !map_lgl(r_keptboth, is.null) &&
+           # !map_lgl(r_optboth, is.null)
+           ) %>% 
+  mutate(r_optupstream = map(r_optupstream, matrix_2_wide_df, nm = (paste0("upstream_ropt", outer(1:3,1:3, paste0)))),
+         # r_optboth = map(r_optboth, . %>% matrix_2_wide_df(paste0("both_ropt", outer(1:3,1:3, paste0)))),
+         
+         r_keptupstream = map(r_keptupstream, matrix_2_wide_df, nm = (paste0("upstream_rkept", outer(1:3,1:3, paste0)))),
+         # r_keptboth = map(r_keptboth, . %>% matrix_2_wide_df(paste0("both_rkept", outer(1:3,1:3, paste0)))),
+         
+         r_1upstream = map(r_1upstream, matrix_2_wide_df, nm = (paste0("upstream_r1", outer(1:3,1:3, paste0)))),
+         # r_1both = map(r_1both, . %>% matrix_2_wide_df(paste0("both_r1", outer(1:3,1:3, paste0)))),
+         
+         r_0 = map(r_0, . %>% matrix_2_wide_df(paste0("r_0", outer(1:3,1:3, paste0)))),
+         
+         alpha = as.numeric(alpha)) %>% 
+  unnest(r_optupstream,# r_optboth,
+         r_keptupstream, #r_keptboth,
+         r_1upstream, #r_1both, 
+         r_0)
+```
+
+
+```{r}
+results_unnested_matrices <- results_unnested_matrices %>% 
+  select(-parframesupstream) %>%
+  gather(key, value, matches("upstream|r_0")) %>% 
+  mutate(par_opt_setting = str_extract(key, "upstream"),
+         mat = str_extract(key, "r(opt|kept|1)|r_0") %>% str_remove("^r_?"),
+         element = str_extract(key, "\\d{2}$")) %>% 
+  mutate(mat = replace(mat, mat == "opt", "aopt")) %>% 
+  mutate(mat = paste0("r(a=", mat, ")")) %>% 
+  mutate(mat = replace(mat, mat == "r(a=kept)", "r_kept"))%>% 
+  mutate(element = paste0("r", element))
+
+
+```
+
+```{r}
+
+results_unnested_matrices %>% 
+  filter(srel == 0.01) %>%
+  filter(map_lgl(pars_perturbed, ~near(.x[1], log(0.5)))) %>%
+  filter(par_opt_setting == "upstream"|is.na(par_opt_setting)) %>%
+  filter(!mat %in% c("r_kept","r(a=1)")) %>%
+  mutate(mat = factor(mat))%>% 
+  ggplot(aes(x = mat, y = value)) +
+  # geom_violin(draw_quantiles = 0.5) +
+  geom_boxplot() +
+  facet_wrap(~element, scales = "free")+
+  xlab("Local response Matrix") + 
+  ylab("Local response coefficient") +
+  theme_dMod()+
+  # coord_cartesian(ylim = c(-2,2))+
+  # coord_cartesian(ylim = c(-5,5))+
+  # ggtitle(paste0("r(a=a_opt), srel = ",s, ", parameter pertubation = ", round(exp(perturbation_strength),2), " * p")) +
+  geom_blank()
+```
+
+
+
+
+# Export of results
+```{r}
+print_distribution_plots <- function(results_unnested_matrices, s, perturbation_strength) {
+  
+  p1 <-
+    results_unnested_matrices %>% 
+    filter(srel == s) %>%
+    filter(map_lgl(pars_perturbed, ~near(.x[1], perturbation_strength))) %>%
+    filter(par_opt_setting == "upstream"|is.na(par_opt_setting)) %>%
+    filter(!mat %in% c("r_kept","r(a=1)")) %>%
+    mutate(mat = factor(mat))%>% 
+    ggplot(aes(x = mat, y = value)) +
+    # geom_violin(draw_quantiles = 0.5) +
+    geom_boxplot() +
+    facet_wrap(~element, scales = "free")+
+    xlab("Local response Matrix") + 
+    ylab("Local response coefficient") +
+    theme_dMod()+
+    ggtitle(paste0("Noise level = ",s*100, "%")) +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    geom_blank()
+  
+  ggsave(paste0("boxcombined_srel-", s, "_deltap-", round(exp(perturbation_strength),2), ".png"), p1)
+  ggsave(paste0("boxcombined_srel-", s, "_deltap-", round(exp(perturbation_strength),2), "zoom.png"), p1 +
+           coord_cartesian(ylim = c(-2,2)))
+}
+```
+
+# dir.create("~/Promotion/Projects/MRA/Simulations/Models/Cascade/Noise/plots")
+```{r}
+dir.create("~/Promotion/Projects/MRA/Simulations/Models/Cascade/Noise3replicates/plots2")
+setwd("~/Promotion/Projects/MRA/Simulations/Models/Cascade/Noise3replicates/plots2")
+sp <- expand.grid(s = c(0.001,0.01,0.05,0.1), perturbation_strength = log(c(0.9,0.5)))
+walk(seq_len(nrow(sp)), function(.x) {
+  with(sp[.x,], print_distribution_plots(results_unnested_matrices, s, perturbation_strength))
+})
+```
+
+
+# Confirm that the right elements are kept in the optimization
+```{r}
+s <- 0.01
+perturbation_strength <- log(0.5)
+
+print_r_kept_plots <- function(results_unnested_matrices, s, perturbation_strength) {
+  p1 <- results_unnested_matrices %>% 
+    filter(srel == s) %>%
+    filter(map_lgl(pars_perturbed, ~near(.x[1], perturbation_strength))) %>%
+    filter(par_opt_setting == "upstream"|is.na(par_opt_setting)) %>%
+    # filter(!mat %in% c("r_kept","r(a=1)")) %>%
+    # mutate(mat = factor(mat))
+    filter(mat == "r_kept") %>% 
+    mutate(mat = factor(mat),
+           value = factor(value, levels = c(0,1), labels = c("not minimized", "minimized")))%>% 
+    ggplot(aes(x = value)) +
+    # geom_violin(draw_quantiles = 0.5) +
+    # geom_boxplot() +
+    geom_bar()+
+    facet_wrap(~element, scales = "fixed")+
+    xlab("Local response Matrix") + 
+    ylab("N") +
+    theme_dMod()+
+    ggtitle(paste0("Noise level = ",s*100, "%")) +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    geom_blank()
+  
+  ggsave(paste0("count_n_minimized-", s, "_deltap-", round(exp(perturbation_strength),2), ".png"), p1)
+}
+
+setwd("~/Promotion/Projects/MRA/Simulations/Models/Cascade/Noise3replicates/plots2")
+sp <- expand.grid(s = c(0.001,0.01,0.05,0.1), perturbation_strength = log(c(0.9,0.5)))
+walk(seq_len(nrow(sp)), function(.x) {
+  with(sp[.x,], print_r_kept_plots(results_unnested_matrices, s, perturbation_strength))
+})
+
+```
+
+
+
+
+# Clean up working directory
+```{r}
+unlink(paste0("*.", c("c", "o", "so", "tex")))
+unlink("Fits/", T)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

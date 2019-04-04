@@ -1,17 +1,19 @@
-algo_noisy <- function(pars,
-         which_pars_perturbed,
-         which_alpha_pars,
-         alpha_pars,
-         alpha,
-         g,
+algo_noisy <- function(pars, # parameters to simulate the model
+         which_pars_perturbed, # names of parameters which are perturbed
+         which_alpha_pars, # names of alpha parameters
+         alpha_pars, # named alpha parameters ?
+         alpha, # the alpha such that ralpha is compared against r0
+         
+         g,  # the functions
          xs,
          p_log,
          
-         srel = 0.1,
-         sabs = 0.1,
-         N = 1000,
+         srel = 0.1, # parameters for error parameters sig = srel * y + sabs
+         sabs = 0.1, 
+         N = 1000,   # N simulated experiments
+         nreplicates = 1, # nreplicates in each experiment
          
-         perturbation_effect = 0.9
+         perturbation_effect = 0.9 # fold change of the inner which_pars_perturbed
          ) {
   if (any(!(which_alpha_pars %in% names(alpha_pars))))
     stop("some alpha_pars in alpha_pars_settings which don't exist in alpha_pars")

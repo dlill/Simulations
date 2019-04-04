@@ -13,7 +13,10 @@ file_index <- c(Cascade.Rmd = "Cascade/Cascade.Rmd",
   Phosphatase.Rmd = "Phosphatase/Phosphatase.Rmd",
   Prabakaran.Rmd = "Prabakaran/Prabakaran.Rmd",
   `Prabakaran_model_com_spec.nb` = "Prabakaran/Mathematica/Prabakaran_model_com_spec.nb",
-  `Cascade-noise.Rmd` = "Cascade/Noise/Cascade-Noise.Rmd")
+  `Cascade-noise.Rmd` = "Cascade/Noise/Cascade-Noise.Rmd",
+  `Cascade-noise-3replicates` = "Cascade/Noise3replicates/Cascade-Noise-3replicates.Rmd",
+  `Cascade-noise-3replicates_many_alphas` = "Cascade/Noise3replicates/manyalphas/Cascade-Noise-3replicates-manyalphas.Rmd"
+)
 iwalk(file_index, ~file.copy(.x, paste0(dir_final, "/Scripts/",.y), overwrite = T))
 
 setwd("~/Promotion/Projects/MRA/")
