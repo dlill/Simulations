@@ -144,11 +144,9 @@ error_pars <- map(1:nrow(error_pars), function(i) unlist(error_pars[i,]))
 ```
 
 ```{r}
-alphas <- c(0)
-alpha_par_settings <- list(upstream = c("a_tox_Cxy", "a_toy_Cyz")
-                           # ,
-                           # both = c("a_Cxy", "a_Cyz")
-                           )
+alphas <- c(0,1)
+alpha_par_settings <- list(upstream = c("a_tox_Cxy", "a_toy_Cyz"),
+                           both = c("a_Cxy", "a_Cyz"))
 ```
 
 
@@ -161,17 +159,33 @@ alpha_par_settings <- alpha_par_settings
 
 error_pars <- error_pars
 N <- 1000
-nreplicates <- 3
+nreplicates <- 20
 ```
 
+
 ```{r}
-length(alphas) * length(perturbations) * length(alpha_par_settings) * length(error_pars) * N
+# test_noisy <- run_different_perturbations_noisy_with_replicates(dose_pars = dose_pars, 
+#                                   pars0 = pars, 
+#                                   alpha_pars = alpha_pars,
+#                                   alphas = alphas[3], 
+#                                   perturbations = perturbations[1],
+#                                   xs = xs,
+#                                   p_log = p_log,
+#                                   p_pert = p_pert,
+#                                   g = g, 
+#                                   cores = 3,
+#                                   alpha_par_settings = alpha_par_settings[1],
+#                                   errorpars =  error_pars,
+#                                   N = 2,
+#                                   nreplicates = nreplicates
+# )
+
 ```
 
 
 Send the computations via ssh to a cluster or a server. Requires the R-packages to be installed there as well and that ssh is set up to use aliases. Replace "localhost" by the respective ssh alias. See ?runbg for more details.
 ```{r}
-ssh_machine <- "knecht1"
+ssh_machine <- "knecht5"
 
 remote_computing_job <- runbg({
   cores <- detectFreeCores()
@@ -190,12 +204,10 @@ remote_computing_job <- runbg({
                                                N = N, 
                                                nreplicates = nreplicates)
   results 
-}, machine = ssh_machine, input = ls(pos=.GlobalEnv), filename = "cascade3rep"
+}, machine = ssh_machine, input = ls(pos=.GlobalEnv), filename = "cascade"
 , recover = T
 )
 ```
-
-
 
 Check if results are ready.
 ```{r}
@@ -206,8 +218,8 @@ while(!remote_computing_job$check()) {
 
 Fetch/save/restore results
 ```{r}
-# results <- remote_computing_job$get()[[1]]
-# saveRDS(results, file = "results.rds")
+results <- remote_computing_job$get()[[1]]
+saveRDS(results, file = "results.rds")
 results <- readRDS("results.rds")
 ```
 
@@ -228,36 +240,31 @@ results_unnested_matrices <- results %>%
   filter(!map_lgl(r_0, is.null) && 
            !map_lgl(r_1upstream, is.null) && 
            !map_lgl(r_keptupstream, is.null) && 
-           !map_lgl(r_optupstream, is.null) 
-           # &&
-           # !map_lgl(r_1both, is.null) &&
-           # !map_lgl(r_keptboth, is.null) &&
-           # !map_lgl(r_optboth, is.null)
-           ) %>% 
+           !map_lgl(r_optupstream, is.null) &&
+           !map_lgl(r_1both, is.null) &&
+           !map_lgl(r_keptboth, is.null) &&
+           !map_lgl(r_optboth, is.null)) %>% 
   mutate(r_optupstream = map(r_optupstream, matrix_2_wide_df, nm = (paste0("upstream_ropt", outer(1:3,1:3, paste0)))),
-         # r_optboth = map(r_optboth, . %>% matrix_2_wide_df(paste0("both_ropt", outer(1:3,1:3, paste0)))),
+         r_optboth = map(r_optboth, . %>% matrix_2_wide_df(paste0("both_ropt", outer(1:3,1:3, paste0)))),
          
          r_keptupstream = map(r_keptupstream, matrix_2_wide_df, nm = (paste0("upstream_rkept", outer(1:3,1:3, paste0)))),
-         # r_keptboth = map(r_keptboth, . %>% matrix_2_wide_df(paste0("both_rkept", outer(1:3,1:3, paste0)))),
+         r_keptboth = map(r_keptboth, . %>% matrix_2_wide_df(paste0("both_rkept", outer(1:3,1:3, paste0)))),
          
          r_1upstream = map(r_1upstream, matrix_2_wide_df, nm = (paste0("upstream_r1", outer(1:3,1:3, paste0)))),
-         # r_1both = map(r_1both, . %>% matrix_2_wide_df(paste0("both_r1", outer(1:3,1:3, paste0)))),
+         r_1both = map(r_1both, . %>% matrix_2_wide_df(paste0("both_r1", outer(1:3,1:3, paste0)))),
          
          r_0 = map(r_0, . %>% matrix_2_wide_df(paste0("r_0", outer(1:3,1:3, paste0)))),
          
          alpha = as.numeric(alpha)) %>% 
-  unnest(r_optupstream,# r_optboth,
-         r_keptupstream, #r_keptboth,
-         r_1upstream, #r_1both, 
-         r_0)
+  unnest(r_optupstream, r_optboth,r_keptupstream, r_keptboth,r_1upstream, r_1both, r_0)
 ```
 
 
 ```{r}
 results_unnested_matrices <- results_unnested_matrices %>% 
-  select(-parframesupstream) %>%
-  gather(key, value, matches("upstream|r_0")) %>% 
-  mutate(par_opt_setting = str_extract(key, "upstream"),
+  select(-parframesupstream, -parframesboth) %>% 
+  gather(key, value, matches("upstream|both|r_0")) %>% 
+  mutate(par_opt_setting = str_extract(key, "upstream|both"),
          mat = str_extract(key, "r(opt|kept|1)|r_0") %>% str_remove("^r_?"),
          element = str_extract(key, "\\d{2}$")) %>% 
   mutate(mat = replace(mat, mat == "opt", "aopt")) %>% 
@@ -322,54 +329,13 @@ print_distribution_plots <- function(results_unnested_matrices, s, perturbation_
 
 # dir.create("~/Promotion/Projects/MRA/Simulations/Models/Cascade/Noise/plots")
 ```{r}
-dir.create("~/Promotion/Projects/MRA/Simulations/Models/Cascade/Noise3replicates/plots2")
-setwd("~/Promotion/Projects/MRA/Simulations/Models/Cascade/Noise3replicates/plots2")
+dir.create("~/Promotion/Projects/MRA/Simulations/Models/Cascade/Noise20replicates/plots2")
+setwd("~/Promotion/Projects/MRA/Simulations/Models/Cascade/Noise20replicates/plots2")
 sp <- expand.grid(s = c(0.001,0.01,0.05,0.1), perturbation_strength = log(c(0.9,0.5)))
 walk(seq_len(nrow(sp)), function(.x) {
   with(sp[.x,], print_distribution_plots(results_unnested_matrices, s, perturbation_strength))
 })
 ```
-
-
-# Confirm that the right elements are kept in the optimization
-```{r}
-s <- 0.01
-perturbation_strength <- log(0.5)
-
-print_r_kept_plots <- function(results_unnested_matrices, s, perturbation_strength) {
-  p1 <- results_unnested_matrices %>% 
-    filter(srel == s) %>%
-    filter(map_lgl(pars_perturbed, ~near(.x[1], perturbation_strength))) %>%
-    filter(par_opt_setting == "upstream"|is.na(par_opt_setting)) %>%
-    # filter(!mat %in% c("r_kept","r(a=1)")) %>%
-    # mutate(mat = factor(mat))
-    filter(mat == "r_kept") %>% 
-    mutate(mat = factor(mat),
-           value = factor(value, levels = c(0,1), labels = c("not minimized", "minimized")))%>% 
-    ggplot(aes(x = value)) +
-    # geom_violin(draw_quantiles = 0.5) +
-    # geom_boxplot() +
-    geom_bar()+
-    facet_wrap(~element, scales = "fixed")+
-    xlab("Local response Matrix") + 
-    ylab("N") +
-    theme_dMod()+
-    ggtitle(paste0("Noise level = ",s*100, "%")) +
-    theme(plot.title = element_text(hjust = 0.5)) +
-    geom_blank()
-  
-  ggsave(paste0("count_n_minimized-", s, "_deltap-", round(exp(perturbation_strength),2), ".png"), p1)
-}
-
-setwd("~/Promotion/Projects/MRA/Simulations/Models/Cascade/Noise3replicates/plots2")
-sp <- expand.grid(s = c(0.001,0.01,0.05,0.1), perturbation_strength = log(c(0.9,0.5)))
-walk(seq_len(nrow(sp)), function(.x) {
-  with(sp[.x,], print_r_kept_plots(results_unnested_matrices, s, perturbation_strength))
-})
-
-```
-
-
 
 
 # Clean up working directory

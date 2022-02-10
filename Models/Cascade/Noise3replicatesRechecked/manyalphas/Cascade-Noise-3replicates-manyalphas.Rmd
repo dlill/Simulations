@@ -143,34 +143,22 @@ error_pars <- expand.grid(sabs = c(0), srel = (c(0.001, 0.01, 0.05, 0.1)))
 error_pars <- map(1:nrow(error_pars), function(i) unlist(error_pars[i,]))
 ```
 
+
 ```{r}
-alphas <- c(0)
+alphas <- seq(-4,4,.1)
 alpha_par_settings <- list(upstream = c("a_tox_Cxy", "a_toy_Cyz")
                            # ,
                            # both = c("a_Cxy", "a_Cyz")
                            )
-```
-
-
-```{r collect all input information for the full simulations}
 dose_pars <- pars["x1"]
-alphas <- alphas
 perturbations <- list(c(x1 = log(0.9), y1 = log(0.9), z1 =log(0.9)), 
                       c(x1 = log(0.5), y1 = log(0.5), z1 =log(0.5)))
 alpha_par_settings <- alpha_par_settings
 
 error_pars <- error_pars
-N <- 1000
+N <- 10
 nreplicates <- 3
-```
-
-```{r}
-length(alphas) * length(perturbations) * length(alpha_par_settings) * length(error_pars) * N
-```
-
-
-Send the computations via ssh to a cluster or a server. Requires the R-packages to be installed there as well and that ssh is set up to use aliases. Replace "localhost" by the respective ssh alias. See ?runbg for more details.
-```{r}
+# length(alphas) * length(perturbations) * length(alpha_par_settings) * length(error_pars) * N
 ssh_machine <- "knecht1"
 
 remote_computing_job <- runbg({
@@ -190,12 +178,10 @@ remote_computing_job <- runbg({
                                                N = N, 
                                                nreplicates = nreplicates)
   results 
-}, machine = ssh_machine, input = ls(pos=.GlobalEnv), filename = "cascade3rep"
+}, machine = ssh_machine, input = ls(pos=.GlobalEnv), filename = "cascade3rep_manyalphas"
 , recover = T
 )
 ```
-
-
 
 Check if results are ready.
 ```{r}
@@ -221,10 +207,12 @@ remote_computing_job$purge()
 # Explore results
 Cluster matrices by similarity across different perturbations.
 This section assumes that all perturbations have been computed (run_subset == F).
+# Explore results
+Cluster matrices by similarity across different perturbations.
+This section assumes that all perturbations have been computed (run_subset == F).
 ```{r Prepare data for clustering}
 
 results_unnested_matrices <- results %>%
-  filter(alpha == 0) %>% 
   filter(!map_lgl(r_0, is.null) && 
            !map_lgl(r_1upstream, is.null) && 
            !map_lgl(r_keptupstream, is.null) && 
@@ -250,10 +238,7 @@ results_unnested_matrices <- results %>%
          r_keptupstream, #r_keptboth,
          r_1upstream, #r_1both, 
          r_0)
-```
 
-
-```{r}
 results_unnested_matrices <- results_unnested_matrices %>% 
   select(-parframesupstream) %>%
   gather(key, value, matches("upstream|r_0")) %>% 
@@ -265,8 +250,59 @@ results_unnested_matrices <- results_unnested_matrices %>%
   mutate(mat = replace(mat, mat == "r(a=kept)", "r_kept"))%>% 
   mutate(element = paste0("r", element))
 
-
+results_unnested_matrices
 ```
+
+
+```{r}
+results_unnested_matrices %>% 
+  filter(srel == 0.1) %>%
+  filter(map_lgl(pars_perturbed, ~near(.x[1], log(0.5)))) %>%
+  filter(mat == "r(a=1)") %>% 
+  mutate(mat = factor(mat))%>% 
+  filter(abs(value)<10) %>% 
+  ggplot(aes(x = alpha, y = value, color = factor(realization)), alpha = 0.5) + 
+    geom_line() + 
+    facet_wrap(~element, scales = "free") + 
+  geom_hline(yintercept = 0, color = "black", size = 1)+ 
+  xlab("Log Alpha") + 
+  ylab("Local response coefficient") +
+  scale_color_dMod(guide = FALSE) + 
+  theme_dMod()
+```
+
+
+# Export plots r(a=1) vs alpha
+```{r}
+print_distribution_plots <- function(results_unnested_matrices, s, perturbation_strength) {
+  
+  p1 <- results_unnested_matrices %>% 
+  filter(srel == s) %>%
+  filter(map_lgl(pars_perturbed, ~near(.x[1], perturbation_strength))) %>%
+  filter(mat == "r(a=1)") %>% 
+  mutate(mat = factor(mat))%>% 
+  filter(abs(value)<10) %>% 
+  ggplot(aes(x = alpha, y = value, color = factor(realization)), alpha = 0.5) + 
+    geom_line() + 
+    facet_wrap(~element, scales = "free") + 
+  geom_hline(yintercept = 0, color = "black", size = 1)+ 
+  xlab("Log Alpha") + 
+  ylab("Local response coefficient") +
+  scale_color_dMod(guide = FALSE) + 
+  theme_dMod()
+  
+  ggsave(paste0("ralpha_vs_alpha-", s, "_deltap-", round(exp(perturbation_strength),2), ".png"), p1)
+  
+}
+
+dir.create("~/Promotion/Projects/MRA/Simulations/Models/Cascade/Noise3replicates/manyalphas/plots_ralphavsalpha")
+setwd("~/Promotion/Projects/MRA/Simulations/Models/Cascade/Noise3replicates/manyalphas/plots_ralphavsalpha")
+sp <- expand.grid(s = c(0.001,0.01,0.05,0.1), perturbation_strength = log(c(0.9,0.5)))
+walk(seq_len(nrow(sp)), function(.x) {
+  with(sp[.x,], print_distribution_plots(results_unnested_matrices, s, perturbation_strength))
+})
+```
+
 
 ```{r}
 
@@ -322,54 +358,13 @@ print_distribution_plots <- function(results_unnested_matrices, s, perturbation_
 
 # dir.create("~/Promotion/Projects/MRA/Simulations/Models/Cascade/Noise/plots")
 ```{r}
-dir.create("~/Promotion/Projects/MRA/Simulations/Models/Cascade/Noise3replicates/plots2")
-setwd("~/Promotion/Projects/MRA/Simulations/Models/Cascade/Noise3replicates/plots2")
+dir.create("~/Promotion/Projects/MRA/Simulations/Models/Cascade/Noise3replicates/manyalphas/plots")
+setwd("~/Promotion/Projects/MRA/Simulations/Models/Cascade/Noise3replicates/manyalphas/plots")
 sp <- expand.grid(s = c(0.001,0.01,0.05,0.1), perturbation_strength = log(c(0.9,0.5)))
 walk(seq_len(nrow(sp)), function(.x) {
   with(sp[.x,], print_distribution_plots(results_unnested_matrices, s, perturbation_strength))
 })
 ```
-
-
-# Confirm that the right elements are kept in the optimization
-```{r}
-s <- 0.01
-perturbation_strength <- log(0.5)
-
-print_r_kept_plots <- function(results_unnested_matrices, s, perturbation_strength) {
-  p1 <- results_unnested_matrices %>% 
-    filter(srel == s) %>%
-    filter(map_lgl(pars_perturbed, ~near(.x[1], perturbation_strength))) %>%
-    filter(par_opt_setting == "upstream"|is.na(par_opt_setting)) %>%
-    # filter(!mat %in% c("r_kept","r(a=1)")) %>%
-    # mutate(mat = factor(mat))
-    filter(mat == "r_kept") %>% 
-    mutate(mat = factor(mat),
-           value = factor(value, levels = c(0,1), labels = c("not minimized", "minimized")))%>% 
-    ggplot(aes(x = value)) +
-    # geom_violin(draw_quantiles = 0.5) +
-    # geom_boxplot() +
-    geom_bar()+
-    facet_wrap(~element, scales = "fixed")+
-    xlab("Local response Matrix") + 
-    ylab("N") +
-    theme_dMod()+
-    ggtitle(paste0("Noise level = ",s*100, "%")) +
-    theme(plot.title = element_text(hjust = 0.5)) +
-    geom_blank()
-  
-  ggsave(paste0("count_n_minimized-", s, "_deltap-", round(exp(perturbation_strength),2), ".png"), p1)
-}
-
-setwd("~/Promotion/Projects/MRA/Simulations/Models/Cascade/Noise3replicates/plots2")
-sp <- expand.grid(s = c(0.001,0.01,0.05,0.1), perturbation_strength = log(c(0.9,0.5)))
-walk(seq_len(nrow(sp)), function(.x) {
-  with(sp[.x,], print_r_kept_plots(results_unnested_matrices, s, perturbation_strength))
-})
-
-```
-
-
 
 
 # Clean up working directory

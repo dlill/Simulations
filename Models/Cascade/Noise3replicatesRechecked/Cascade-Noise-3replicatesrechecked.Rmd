@@ -190,7 +190,7 @@ remote_computing_job <- runbg({
                                                N = N, 
                                                nreplicates = nreplicates)
   results 
-}, machine = ssh_machine, input = ls(pos=.GlobalEnv), filename = "cascade3rep"
+}, machine = ssh_machine, input = ls(pos=.GlobalEnv), filename = "cascade3rep_rechecked"
 , recover = T
 )
 ```
@@ -322,8 +322,8 @@ print_distribution_plots <- function(results_unnested_matrices, s, perturbation_
 
 # dir.create("~/Promotion/Projects/MRA/Simulations/Models/Cascade/Noise/plots")
 ```{r}
-dir.create("~/Promotion/Projects/MRA/Simulations/Models/Cascade/Noise3replicates/plots2")
-setwd("~/Promotion/Projects/MRA/Simulations/Models/Cascade/Noise3replicates/plots2")
+dir.create("~/Promotion/Projects/MRA/Simulations/Models/Cascade/Noise3replicatesRechecked/plots2")
+setwd("~/Promotion/Projects/MRA/Simulations/Models/Cascade/Noise3replicatesRechecked/plots2")
 sp <- expand.grid(s = c(0.001,0.01,0.05,0.1), perturbation_strength = log(c(0.9,0.5)))
 walk(seq_len(nrow(sp)), function(.x) {
   with(sp[.x,], print_distribution_plots(results_unnested_matrices, s, perturbation_strength))
