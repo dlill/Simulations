@@ -1,0 +1,462 @@
+---
+title: "MEK-ERK-Model"
+author: "Daniel Lill"
+output: 
+  pdf_document:
+    keep_tex: true
+---
+
+# Load libraries and define some useful paths
+
+```{r setup, results='hide', echo=FALSE, message=FALSE}
+library(MRAr)
+library(scales)
+library(xtable)
+```
+
+# Model Setup
+
+## ODE model setup
+```{r Prediction function}
+reactions <- NULL %>% 
+  addReaction(from = "m1", to = "m2", rate = "k1*m1", description = "act_m") %>% 
+  addReaction(from = "m2", to = "m1", rate = "k2*m2", description = "deact_m") %>% 
+  addReaction(from = "m2 + e1", to = "Cm2e1", rate = "(k31 * e1 *m2)", description = "m2_e1_to_comp") %>% 
+  addReaction(from = "Cm2e1", to = "m2 + e1", rate = "(k32 *Cm2e1)", description = "comp_to_m2_e1") %>% 
+  addReaction(from = "Cm2e1", to = "m2 + e2", rate = "(k4 * Cm2e1)", description = "e2_formation") %>% 
+  addReaction(from = "e2 + p1", to = "Ce2p1", rate = "((k61 *p1 *e2))", description = "e2_p1_to_comp") %>% 
+  addReaction(from = "Ce2p1", to = "e2 + p1", rate = "(k62 * Ce2p1)", description = "compt_to_e2_p1") %>% 
+  addReaction(from = "Ce2p1", to = "e1 + p1", rate = "k5*Ce2p1", description = "e2_deact") %>% {.}
+
+compiled_model <- odemodel(reactions, modelname = "Prabakaran", estimate = c("m1", "k1"))
+
+# Prediction function
+x <- Xs(odemodel = compiled_model)
+# Prediction function for steady states
+xs <- Xs_steady(compiled_model)
+```
+
+
+## Observation function
+Observation function which returns our communicating species. 
+The free parameters a_ij are introduced here to perform the linear combination of states which we wish to observe.
+We chose to call them alpha_oars, since they will be used to optimize the objective function later on.
+```{r Naive observation function}
+modules <- c("X","Y")
+observables <-  c("m2+a_xy*Cm2e1+a_tox_xy*Cm2e1",
+                 "e2+a_xy*Cm2e1+a_toy_xy*Cm2e1")
+g <- Y(as.eqnvec(structure(observables, names = modules)), x, compile = TRUE, modelname = "obsfn0", attach.input = FALSE)
+```
+
+
+## Parameter transformation function
+Define logtrafo, define initial conditions
+```{r}
+trafo <- getParameters(x,g) %>% 
+  setNames(.,.) %>% 
+  insert("x~0", x = str_subset(.currentSymbols, "^C*[me](2|1.2)")) %>% # set inits to zero
+  insert("x~exp(x)", x = .currentSymbols)
+
+p_log <- P(trafo = trafo,
+           compile = T,
+           modelname = "p_log")
+```
+
+```{r}
+pars <- c(
+  m1      	=	100	, # 1
+  e1      	=	1000	, # 2
+  p1      	=	100	, # 3
+  k1      	=	0.1	, # 4
+  k2      	=	0.1	, # 5
+  k31     	=	0.01	, # 6
+  k32     	=	1	, # 7
+  k4      	=	1	, # 8
+  k5      	=	1	, # 9
+  k61     	=	0.01	, # 10
+  k62     	=	1	, # 11
+  a_xy    	=	.Machine$double.eps	, # 12
+  a_tox_xy	=	.Machine$double.eps	, # 13
+  a_toy_xy	=	.Machine$double.eps	  # 14 
+) %>% 
+  log
+
+alpha_pars <- pars[str_detect(names(pars), "^a_")]
+```
+
+# Simulate perturbation data
+For the perturbation experiments we use another parameter transformation to scale some parameters.
+p_pert_fun automatically generates a parameter transformation function, which returns different sets of parameters for different conditions and a control condition.
+Eg. if we have pars_perturbed = c("x1" = log(0.9)), p_pert_fun(pars_perturbed) will return a parameter transformation with the control condition with unchanged parameters and one condition in which x' = x + log(0.9)
+
+"log(0.9)" corresponds to a ~10% reduction of the original parameter value.
+```{r which pars are perturbed}
+# Which pars shall be perturbed?
+pars_perturbed <- c(m1 = log(0.9), p1 = log(0.9))
+
+p_pert <- p_pert_fun(pars_perturbed = pars_perturbed,
+                     pars = pars)
+```
+
+## Generate the perturbation data and run the algorithm
+
+```{r}
+perturbation_prediction <-  (xs*p_log*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
+
+r_0 <-   R_fun(pars_opt = alpha_pars[c("loga_tox_xy")],
+               perturbation_prediction = perturbation_prediction,
+               obs_fun = g,
+               p_fun = (p_log*p_pert),
+               pars = pars) %>% local_response_matrix_eq10()
+r_0 %>% round(2)
+
+r_kept <- r_kept_fun(pars_opt = alpha_pars, 
+                     perturbation_prediction = perturbation_prediction,
+                     obs_fun = g, 
+                     p_fun = (p_log*p_pert),
+                     pars = pars)
+
+
+myfits <- mstrust(obj_alpha,
+                  center = alpha_pars["a_tox_xy"] * 0 ,
+                  studyname = "Fits",
+                  cores = 3,
+                  fits = 3,
+                  sd = 3, 
+                  r_kept = r_kept,
+                  mypars = pars,
+                  obs_fun = g,
+                  p_fun = (p_log*p_pert),
+                  perturbation_prediction = perturbation_prediction)
+
+best_fit <- myfits %>% as.parframe %>% as.parvec
+r_opt <- r_alpha_fun(best_fit, pars = pars, p_fun = (p_log*p_pert), obs_fun = g, perturbation_prediction = perturbation_prediction) %>% round(3)
+r_opt %>% round(2)
+```
+
+
+
+# Run through all ERK perturbations, a = 1
+
+```{r which pars are perturbed}
+# Which pars shall be perturbed?
+
+pars_perturbed_list <- list(
+  e1 = c(m1 = log(0.9), e1 = log(0.9)),
+  k31 = c(m1 = log(0.9), k31 = log(0.9)),
+  k32 = c(m1 = log(0.9), k32 = log(0.9)),
+  k4 = c(m1 = log(0.9), k4 = log(0.9)),
+  p1 = c(m1 = log(0.9), p1 = log(0.9)),
+  k5 = c(m1 = log(0.9), k5 = log(0.9)),
+  k61 = c(m1 = log(0.9), k61 = log(0.9)),
+  k62 = c(m1 = log(0.9), k62 = log(0.9))
+  )
+
+r_list <- lapply(pars_perturbed_list, function(pars_perturbed) {
+p_pert <- p_pert_fun(pars_perturbed = pars_perturbed,
+                     pars = pars)
+## Generate the perturbation data and run the algorithm
+perturbation_prediction <-  (xs*p_log*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
+r_1 <-   R_fun(pars_opt = alpha_pars[c("a_tox_xy")] * 0,
+               perturbation_prediction = perturbation_prediction,
+               obs_fun = g,
+               p_fun = (p_log*p_pert),
+               pars = pars) %>% local_response_matrix_eq10()
+r_1 %>% round(2)
+})
+
+r_list
+```
+# Pmatrix function
+```{r}
+pmatrix = function(x, digits=NULL, ...) {
+  library(xtable)
+  default_args = list(include.colnames=FALSE, only.contents=TRUE,
+                      include.rownames=FALSE, hline.after=NULL, comment=FALSE,
+                      print.results=FALSE)
+  passed_args = list(...)
+  calling_args = c(list(x=xtable(x, digits=digits)),
+                   c(passed_args,
+                     default_args[setdiff(names(default_args), names(passed_args))]))
+  cat("\\begin{pmatrix}\n",
+      do.call(print.xtable, calling_args),
+      "\\end{pmatrix}\n")
+}
+
+
+pmatrix(r_list[["p1"]])
+
+```
+
+# Run through all ERK perturbations, a = aopt
+
+```{r which pars are perturbed}
+# Which pars shall be perturbed?
+pars_perturbed_list <- list(
+  e1 = c(m1 = log(0.9), e1 = log(0.9)),
+  k31 = c(m1 = log(0.9), k31 = log(0.9)),
+  k32 = c(m1 = log(0.9), k32 = log(0.9)),
+  k4 = c(m1 = log(0.9), k4 = log(0.9)),
+  p1 = c(m1 = log(0.9), p1 = log(0.9)),
+  k5 = c(m1 = log(0.9), k5 = log(0.9)),
+  k61 = c(m1 = log(0.9), k61 = log(0.9)),
+  k62 = c(m1 = log(0.9), k62 = log(0.9))
+  )
+
+r_list <- lapply(pars_perturbed_list, function(pars_perturbed) {
+p_pert <- p_pert_fun(pars_perturbed = pars_perturbed,
+                     pars = pars)
+## Generate the perturbation data and run the algorithm
+perturbation_prediction <-  (xs*p_log*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
+r_1 <-   R_fun(pars_opt = alpha_pars[c("a_tox_xy")] * 0 + log(0.5),
+               perturbation_prediction = perturbation_prediction,
+               obs_fun = g,
+               p_fun = (p_log*p_pert),
+               pars = pars) %>% local_response_matrix_eq10()
+r_1 %>% round(2)
+})
+
+r_list
+```
+
+
+
+# Compute the local response matrix in dependence of a
+Use par_opt_setting to define, to which module(s) the complex should be added.
+```{r, warning=FALSE}
+par_opt_settings <- list("a_xy", "a_tox_xy") %>% `names<-`(1:2)
+# debugonce(r_opt_dose_response)
+dr_list <- lapply(par_opt_settings, function(i) {
+  r_opt_dose_response(which_par = "k1",
+                      dosages = pars["k1"],
+                      pars_opt = alpha_pars[i],
+                      alpha_scan_range = sort(unique(seq(-10,10,by = .1))),
+                      pars = pars,
+                      obs_fun = g,
+                      p_fun = (p_log * p_pert),
+                      cores = 4
+  )
+})
+
+```
+
+
+# Run through all MEK perturbations a=aopt
+
+```{r which pars are perturbed}
+# Which pars shall be perturbed?
+pars_perturbed_list <- list(
+  m1 = c(m1 = log(0.9), e1 = log(0.9)),
+  k1 = c(k1 = log(0.9), e1 = log(0.9)),
+  k2 = c(k2 = log(0.9), e1 = log(0.9))
+  )
+
+r_list <- lapply(pars_perturbed_list, function(pars_perturbed) {
+p_pert <- p_pert_fun(pars_perturbed = pars_perturbed,
+                     pars = pars)
+## Generate the perturbation data and run the algorithm
+perturbation_prediction <-  (xs*p_log*p_pert)(times = c(0,Inf), pars = pars, deriv = F)
+r_1 <-   R_fun(pars_opt = alpha_pars[c("a_tox_xy")] * 0 + log(0.5),
+               perturbation_prediction = perturbation_prediction,
+               obs_fun = g,
+               p_fun = (p_log*p_pert),
+               pars = pars) %>% local_response_matrix_eq10()
+r_1 %>% round(2)
+})
+
+r_list
+```
+
+
+# Outputs
+
+```{r plotting helpers}
+fancify_labels <- . %>% 
+  {.$matrix[.$matrix == "r_alpha"] <- "r"
+    .$matrix[.$matrix == "r_opt"] <- "r(a = a_opt)"
+    .$matrix <- .$matrix %>% factor(levels = c("r", "r(a = a_opt)", "r_kept"))
+    .} %>% 
+  mutate(Element = r_element) %>% 
+  {
+    .$par_opt_setting[.$par_opt_setting == 1] <- "X* and Y*"
+    .$par_opt_setting[.$par_opt_setting == 2] <- "X*"
+    .$par_opt_setting <- .$par_opt_setting %>% factor(levels = c("X* and Y*","X*"))
+    .}
+
+assign_point_locations <- . %>% {.} %T>% {assign("point_locations", 
+                                                 c(min(.$alpha), 
+                                                   .$alpha[near(.$value,0,tol = 0.01)], 
+                                                   max(.$alpha)), 
+                                                 envir = .GlobalEnv)} %>% #assign values where points should be to .GlobalEnv
+  mutate(points = replace(value, map_lgl(alpha, . %>% near(point_locations, tol = 1e-6) %>% any %>% `!`), NA))
+
+
+remove_diags <- . %>% filter(! (r_element %in% paste0("r", c(11,22,33))))
+
+
+print_matrices_at_point_locations <- function(point_locations, plot_data, path) {
+  map(point_locations, function(i) {
+    plot_data  %>%
+      filter(near(alpha, i, tol = 1e-6)) %>%
+      .$value %>% c(-1, ., -1) %>% matrix(ncol = 2) %>% round(2) %>%
+      xtable() %>% print(tabular.enivronment = "pmatrix", floating = FALSE, hline.after=NULL, include.rownames=FALSE, include.colnames=FALSE) %>%
+      str_replace_all(c("tabular"= "pmatrix", "\\{rr\\}" = "", "\\\\begin" = "$\\\\begin")) %>% paste0(., "$") 
+  }) %>% 
+    paste0(collapse = "\n\n") %>% 
+    write_lines(paste0(path, ".tex"))
+  system2("pandoc", c(paste0("-o ", path, ".docx"), paste0(path, ".tex")))
+}
+```
+
+## Plot adding the complex to upper module
+```{r}
+plot_data <-
+  dr_list %>%   
+  combine_dr_list() %>% 
+  filter(!is.na(value)) %>%
+  remove_diags %>% 
+
+  filter(matrix == "r_alpha") %>%
+
+  mutate(alpha = exp(alpha)) %>%
+  filter(alpha<5) %>% #.$alpha
+  
+  fancify_labels %>%
+  filter(par_opt_setting %in% "X*") %>%
+
+  assign_point_locations %>% 
+  {.}
+
+geom_rect_data <- plot_data %>% 
+  filter(alpha %in% point_locations) %>% 
+  group_by(alpha) %>% 
+  summarise(maxval = max(value), minval = min(value))
+
+text_data <- geom_rect_data %>% 
+  mutate(label=rank(alpha)) %>% 
+  group_by(alpha) %>% 
+  mutate(value = c(minval-0.12, maxval+0.12)[which.min(abs(c(minval, maxval)))]) %>% 
+  ungroup
+
+plot_data <- plot_data %>% left_join(geom_rect_data)
+
+
+myplot <- plot_data %>%   
+  ggplot(mapping = aes(x = alpha, y = value, color = Element
+                       # uncomment for one par_opt_setting only
+                       # , alpha = par_opt_setting
+                       )) +
+
+
+  geom_rect(aes(xmin = alpha - 0.17, xmax = alpha + 0.17, ymin = minval - 0.07, ymax = maxval + 0.07), alpha = 1, fill = "#E9E9E9", color = "black", size = 0.3) + 
+  geom_text(aes(label = label), data = text_data, color = "black", size = 5, fontface = "bold") +
+
+  geom_line() +
+  theme_dMod() +
+  scale_colour_manual(values = c("blue", "red", "green")) +
+  geom_abline(slope = 0,intercept = 0, linetype = 3) +
+  geom_point(aes(y = points), size = 3)+
+  scale_alpha_discrete(name = "Complex \nadded to", range = c(0.3,1)) +
+  xlab("\tFree parameter a") +
+  ylab("Connection coefficient")
+
+myplot
+ggsave("plot2upper.png", myplot)
+print_matrices_at_point_locations(point_locations, plot_data, path = "matrices_of_plot2upper_Prabakaran")
+```
+
+
+## Plot adding the complex to both modules
+```{r}
+plot_data <-
+  dr_list %>%   
+  combine_dr_list() %>% 
+  filter(!is.na(value)) %>%
+  remove_diags %>% 
+
+  filter(matrix == "r_alpha") %>%
+
+  mutate(alpha = exp(alpha)) %>%
+  filter(alpha<5) %>% #.$alpha
+  
+  fancify_labels %>%
+  filter(par_opt_setting %in% "X* and Y*") %>%
+
+  assign_point_locations %>% 
+  {.}
+
+geom_rect_data <- plot_data %>% 
+  filter(alpha %in% point_locations) %>% 
+  group_by(alpha) %>% 
+  summarise(maxval = max(value), minval = min(value))
+
+text_data <- geom_rect_data %>% 
+  mutate(label=rank(alpha)) %>% 
+  group_by(alpha) %>% 
+  mutate(value = c(minval-0.12, maxval+0.12)[which.min(abs(c(minval, maxval)))]) %>% 
+  ungroup
+
+plot_data <- plot_data %>% left_join(geom_rect_data)
+
+# print_matrices_at_point_locations(point_locations, plot_data)
+
+myplot <- plot_data %>%   
+  ggplot(mapping = aes(x = alpha, y = value, color = Element
+                       # uncomment for one par_opt_setting only
+                       # , alpha = par_opt_setting
+                       )) +
+
+  geom_rect(aes(xmin = alpha - 0.17, xmax = alpha + 0.17, ymin = minval - 0.07, ymax = maxval + 0.07), alpha = 1, fill = "#E9E9E9", color = "black", size = 0.3) + 
+  geom_text(aes(label = label), data = text_data, color = "black", size = 5, fontface = "bold") +
+
+  geom_line() +
+  theme_dMod() +
+  scale_colour_manual(values = c("blue", "red", "green")) +
+  geom_abline(slope = 0,intercept = 0, linetype = 3) +
+  geom_point(aes(y = points), size = 3)+
+  scale_alpha_discrete(name = "Complex \nadded to", range = c(0.3,1)) +
+  xlab("\tFree parameter a") +
+  ylab("Connection coefficient")
+
+myplot
+ggsave("plot2both.png", myplot)
+print_matrices_at_point_locations(point_locations, plot_data, path = "matrices_of_plot2both_Prabakaran")
+```
+
+## Tables
+Print parameters
+```{r}
+pars %>% 
+  .[!str_detect(names(.), "^a")] %>% 
+  exp %>% 
+  print2word_namedvec("pars_Prabakaran", names_in_mathenv = T)
+```
+
+Print ODEs
+```{r}
+reactions %>% 
+  as.eqnvec() %>% 
+  print2word_eqnvec("odes_Prabakaran")
+```
+
+## Clean up Workdir
+```{r}
+unlink(paste0("*.", c("c", "o", "so", "tex", "lnk")))
+unlink("Fits/", T)
+unlink(".pars_controlled/", T)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

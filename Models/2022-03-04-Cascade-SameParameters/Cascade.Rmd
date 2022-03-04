@@ -1,0 +1,214 @@
+---
+title: "Enzymatic Cascade"
+author: "Daniel Lill"
+output:
+  pdf_document:
+    keep_tex: yes
+---
+
+# Load libraries and define some useful paths
+```{r setup, results='hide', echo=FALSE, message=FALSE}
+library(parallel)
+library(MRAr)
+library(xtable)
+
+postProcess <- function(test) {
+  test <- unlist(test, recursive = F)[c(1,2,3,5)]
+  test <- lapply(test, function(x) cbind(c("x","y","z"), x ))
+  test <- do.call(cbind, test)
+  test <- data.table(test)
+  cfoutput_MdTable(test, FLAGsummaryRow = FALSE)
+}
+```
+
+
+
+
+# Model setup
+
+## ODE model setup
+```{r Prediction function Cascade, results='asis'}
+reactions <- NULL %>% 
+  addReaction(from = "x1", to = "x2", rate = "((v1 *  x1)/(k1 + x1))*(1 + u1*z2/k9)/(1 + z2/k9)", description = "act_x") %>% 
+  addReaction(from = "x2", to = "x1", rate = "((v2 * x2 )/(k2 + x2))", description = "deact_x") %>% 
+  addReaction(from = "x2 + y1", to = "Cx2y1", rate = "(k31 * y1 *x2) * (1 + u2*z2/k10)/(1 + z2/k10) - (k32 *Cx2y1) ", description = "x2_y_to_comp") %>% 
+  addReaction(from = "Cx2y1", to = "x2 + y2", rate = "(k4 * Cx2y1)", description = "y2_formation") %>% 
+  addReaction(from = "y2", to = "y1", rate = "((v5 * y2)/(k5 + y2))", description = "deact_y") %>% 
+  addReaction(from = "y2 + z1", to = "Cy2z1", rate = "((k61 *z1 *y2) - (k62 * Cy2z1))", description = "y2_z_to_comp") %>% 
+  addReaction(from = "Cy2z1", to = "y2 + z2", rate = "(k7 * Cy2z1)", description = "z2_formation") %>% 
+  addReaction(from = "z2", to = "z1", rate = "((v8 * z2)/(k8 + z2))", description = "z_deact") 
+
+compiled_model <- odemodel(reactions, modelname = "Cascade", estimate = c("x1", "k1"))
+
+# Prediction function
+x <- Xs(odemodel = compiled_model) 
+# Prediction function for steady states
+xs <- Xs_steady(compiled_model) # When computing steady states, set deriv = F
+```
+
+### Modules, their observables and the observation function
+Observation function which depends also on the optimization parameters. With their help, the complexes can smoothly be switched on in the observation.
+
+```{r Most general observation function}
+modules <-  c("X", "Y", "Z")
+
+alpha_parameters <- paste0("a_", outer(paste0("to", c("x","y","z"), "_C"), c("xy","yz","zx"), paste0)) %>% matrix(ncol=3)
+alpha_parameters[c(3,4,8)] <- "0"
+
+complexes <- matrix(c("Cx2y1", "Cy2z1", "Cx2z2"), ncol = 1)
+
+alpha_parameters_to_both_modules <- paste0("a_", outer(rep("C",3), c("xy","yz","zx"), paste0)) %>% matrix(ncol=3)
+alpha_parameters_to_both_modules[c(3,4,8)] <- "0"
+
+observables <- paste(c("x2", "y2", "z2"), "+", prodSymb(alpha_parameters, complexes), "+", prodSymb(alpha_parameters_to_both_modules, complexes))
+
+
+g <- Y(g = as.eqnvec(structure(observables, names = modules)), 
+       f = reactions, 
+       compile = TRUE, 
+       modelname = "obsfn0", 
+       attach.input = FALSE)
+```
+
+
+### General log transformation and setting some pars to zero
+It's better to do a logtransformation for all Fitting purposes and work with the log-Parameters.
+```{r}
+trafo <- getParameters(x,g) %>% 
+  setNames(.,.) %>% 
+  insert("x~0", x = str_subset(.currentSymbols, "^C*[xyz](2|1.2)")) %>% # set inits to zero
+  insert("x~exp(x)", x = .currentSymbols) %>%
+  # {.} %T>% print %>% 
+  {.} 
+
+p_log <- P(trafo = trafo,
+           modelname = "p_log",
+           compile = T)
+```
+
+
+```{r}
+pars <- c(
+  a_Cxy    	=	.Machine$double.eps	, # 1
+  a_Cyz    	=	.Machine$double.eps	, # 2
+  a_Czx    	=	.Machine$double.eps	, # 3
+  a_tox_Cxy	=	.Machine$double.eps	, # 4
+  a_tox_Czx	=	.Machine$double.eps	, # 5
+  a_toy_Cxy	=	.Machine$double.eps	, # 6
+  a_toy_Cyz	=	.Machine$double.eps	, # 7
+  a_toz_Cyz	=	.Machine$double.eps	, # 8
+  a_toz_Czx	=	.Machine$double.eps	, # 9
+  
+  x1 = 100,      # 30
+  y1 = 100,      # 31
+  z1 = 100,       # 32
+  
+  u1   	    =	1	, # 10
+  u2   	    =	1	, # 11
+  k9       	=	50	, # 29
+  k10      	=	50	, # 13
+
+  k1       	=	100	, # 11
+  v1       	=	1.5	, # 12
+  k2       	=	100	, # 13
+  v2       	=	1	, # 14
+  
+  # k31      	=	0.01	, # 15
+  # k32      	=	0.4	, # 16
+  # k4       	=	0.05	, # 17
+  # k5       	=	100	, # 18
+  # v5       	=	5	, # 19
+  # k61      	=	0.05	, # 20
+  # k62      	=	0.4	, # 21
+  # k7       	=	0.008	, # 22
+  
+  # 3-1 and 3-2 feedback
+  k31      	=	0.002	, # 21     # Different than above
+  k32      	=	0.4	, # 22
+  k4       	=	0.05	, # 23
+  k5       	=	100	, # 24
+  v5       	=	5	, # 32
+  k61      	=	0.005	, # 25    # Different than above
+  k62      	=	0.4	, # 26
+  k7       	=	0.05	, # 27    # Different than above
+  
+  k8       	=	100	, # 23
+  v8       	=	1	
+  
+  
+
+  
+) %>% 
+  log
+
+alpha_pars <- pars[str_detect(names(pars), "^a_")]
+```
+
+
+
+# Matrices for different feedbacks
+
+Base parameterization
+```{r}
+test <- algo(pars, c("x1", "y1", "z1"), c("a_tox_Cxy", "a_toy_Cyz"), alpha_pars, 0, g, xs, p_log)
+postProcess(test)
+```
+
+3-1 feedback
+```{r}
+mypars <- pars
+mypars["u1"] <- log(0.5)
+test <- algo(mypars, paste0(letters[24:26], "1"), c("a_tox_Cxy", "a_toy_Cyz"), alpha_pars, 0, g, xs, p_log)
+postProcess(test)
+```
+
+Weak 3-2 feedback
+```{r}
+mypars <- pars
+mypars["u2"] <- log(1.3)
+test <- algo(mypars, paste0(letters[24:26], "1"), c("a_tox_Cxy", "a_toy_Cyz"), alpha_pars, 0, g, xs, p_log)
+postProcess(test)
+```
+Strong 3-2 feedback
+```{r}
+mypars <- pars
+mypars["u2"] <- log(3)
+test <- algo(mypars, paste0(letters[24:26], "1"), c("a_tox_Cxy", "a_toy_Cyz"), alpha_pars, 0, g, xs, p_log)
+postProcess(test)
+```
+
+
+
+# Clean up working directory
+```{r}
+unlink(paste0("*.", c("c", "o", "so", "tex")))
+unlink("Fits/", T)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

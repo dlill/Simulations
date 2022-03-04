@@ -89,60 +89,60 @@ MRAr::r_alpha_fun(pars_opt = pars_opt_0*c(1,0,1) + c(0,0,0),
                   pars = pars)
 
 
-# -------------------------------------------------------------------------#
-# Run predictions to scan complexes ----
-# -------------------------------------------------------------------------#
-# .. Define parameters ----- #
-scan_pars <- expand.grid(
-  logk3on  = seq(-5,5,1), 
-  logk3off = seq(-5,5,1), 
-  logk4    = seq(-5,5,1)
-  )
-pars_list <- lapply(seq_len(nrow(scan_pars)), function(i) {
-  p <- pars
-  pi <- unlist(scan_pars[i,])
-  p[names(pi)] <- pi
-  p
-})
-
-# .. Run ODE predictions ----- #
-ncores <- 8
-prediction_list <- parallel::mclapply(X = seq_len(nrow(scan_pars)), mc.cores = ncores, FUN = function(i) {
-  pred_i <- (xs*p_log*p_pert)(times = c(0,Inf), pars = pars_list[[i]], deriv = T)
-})
-
-# .. Transform predictions ----- #
-ncores <- 8
-prediction_list_long <- parallel::mclapply(X = seq_len(nrow(scan_pars)), mc.cores = ncores, FUN = function(i) {
-  pred_i <- prediction_list[[i]]
-  pred_i <- as.data.frame(pred_i)
-  
-  r <- r_alpha_fun(pars_opt = pars_opt_0*c(1,0,1) + c(0,0,0),
-                   perturbation_prediction = prediction_list[[i]],
-                   obs_fun = g, 
-                   p_fun = (p_log*p_pert),
-                   pars = pars_list[[i]])
-  
-  pred_i <- cbind(pred_i, r21 = r[2], r12 = r[3], parameterSetId = i, scan_pars[i,])
-  pred_i <- data.table(pred_i)
-  pred_i
-})
-predictions <- data.table::rbindlist(prediction_list_long)
-
-# .. Calculate influence of complex ----- #
-d <- copy(predictions)
-d <- d[condition == "Ctr"]
-d <- d[name == "Cm2e1"]
-d[,`:=`(value = log10(value))]
-d <- d[between(r12, 0, 2)]
-dplot <- melt(d, measure.vars = c("r12", "r21"), variable.name = "rId", variable.factor = FALSE, value.name = "rVal")
-
-cfggplot(dplot, aes(value, rVal)) +
-  facet_wrap(~rId) + 
-  geom_point(aes(color = logk4), size = 0.1) + 
-  scale_color_viridis_c() + 
-  labs(x = "log10 species")
-
+# # -------------------------------------------------------------------------#
+# # Run predictions to scan complexes ----
+# # -------------------------------------------------------------------------#
+# # .. Define parameters ----- #
+# scan_pars <- expand.grid(
+#   logk3on  = seq(-5,5,1), 
+#   logk3off = seq(-5,5,1), 
+#   logk4    = seq(-5,5,1)
+#   )
+# pars_list <- lapply(seq_len(nrow(scan_pars)), function(i) {
+#   p <- pars
+#   pi <- unlist(scan_pars[i,])
+#   p[names(pi)] <- pi
+#   p
+# })
+# 
+# # .. Run ODE predictions ----- #
+# ncores <- 8
+# prediction_list <- parallel::mclapply(X = seq_len(nrow(scan_pars)), mc.cores = ncores, FUN = function(i) {
+#   pred_i <- (xs*p_log*p_pert)(times = c(0,Inf), pars = pars_list[[i]], deriv = T)
+# })
+# 
+# # .. Transform predictions ----- #
+# ncores <- 8
+# prediction_list_long <- parallel::mclapply(X = seq_len(nrow(scan_pars)), mc.cores = ncores, FUN = function(i) {
+#   pred_i <- prediction_list[[i]]
+#   pred_i <- as.data.frame(pred_i)
+#   
+#   r <- r_alpha_fun(pars_opt = pars_opt_0*c(1,0,1) + c(0,0,0),
+#                    perturbation_prediction = prediction_list[[i]],
+#                    obs_fun = g, 
+#                    p_fun = (p_log*p_pert),
+#                    pars = pars_list[[i]])
+#   
+#   pred_i <- cbind(pred_i, r21 = r[2], r12 = r[3], parameterSetId = i, scan_pars[i,])
+#   pred_i <- data.table(pred_i)
+#   pred_i
+# })
+# predictions <- data.table::rbindlist(prediction_list_long)
+# 
+# # .. Calculate influence of complex ----- #
+# d <- copy(predictions)
+# d <- d[condition == "Ctr"]
+# d <- d[name == "Cm2e1"]
+# d[,`:=`(value = log10(value))]
+# d <- d[between(r12, 0, 2)]
+# dplot <- melt(d, measure.vars = c("r12", "r21"), variable.name = "rId", variable.factor = FALSE, value.name = "rVal")
+# 
+# cfggplot(dplot, aes(value, rVal)) +
+#   facet_wrap(~rId) + 
+#   geom_point(aes(color = logk4), size = 0.1) + 
+#   scale_color_viridis_c() + 
+#   labs(x = "log10 species")
+# 
 
 
 
@@ -188,7 +188,6 @@ predictions <- data.table::rbindlist(prediction_list_long)
 d <- copy(predictions)
 d <- d[condition == "Ctr"]
 d <- d[name == "Cm2e1"]
-d[,`:=`(value = log10(value))]
 d <- d[between(r12, 0, 2)]
 dplot <- melt(d, measure.vars = c("r12", "r21"), variable.name = "rId", variable.factor = FALSE, value.name = "rVal")
 
@@ -198,21 +197,25 @@ cfggplot(dplot, aes(value, rVal)) +
   facet_wrap(~rId) +
   geom_point(aes(color = logk3on), size = 0.1) +
   scale_color_viridis_c() +
-  labs(x = "log10 species")
+  scale_x_log10() +
+  labs(x = "log10 Complex")
 
 # .. plot all species vs k4 ----- #
 d <- copy(predictions)
 d <- d[condition == "Ctr"]
-d[,`:=`(value = log10(value))]
+# d[,`:=`(value = log10(value))]
 
 # Here it shows that everything is saturated for high logk3on and logk3off values
 cfggplot(d, aes(logk3on, value)) +
   facet_wrap(~name, scales = "free") + 
-  geom_point() + 
+  scale_y_log10(expand = c(0.1,0.1)) + 
+  geom_point() +
   geom_blank()
 
-# 
-
+# .. Calculate kms of scan_pars -----
+sp <- data.table(scan_pars)
+sp[,`:=`(km = (exp(logk3off) + exp(logk4))/ exp(logk3on))]
+sp
 
 # -------------------------------------------------------------------------#
 # Run predictions to scan complexes by scanning k4 only  ----
