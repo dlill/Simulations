@@ -11,6 +11,30 @@ output:
 library(xtable)
 library(parallel)
 library(MRAr)
+
+postProcess <- function(test) {
+  test <- unlist(test, recursive = F)[c(1,2,3,5)]
+  test <- lapply(test, function(x) cbind(c("x","y","z"), x ))
+  test <- do.call(cbind, test)
+  test <- data.table(test)
+  cfoutput_MdTable(test, FLAGsummaryRow = FALSE)
+}
+
+latexTables <- function(test, purplifyIdxs = NULL) {
+  wup <- unlist(test, recursive = F)[c(1,2,3,5)]
+  if (length(purplifyIdxs)) wup <- lapply(wup, function(x) {x[purplifyIdxs] <- paste0("\\mathbf{\\color{darkRed}  ", x[purplifyIdxs], "}");x})
+  wup <- lapply(wup, function(x) xtable::xtable(x))
+  wup <- lapply(wup, function(x) capture.output(print(x,
+                                                      tabular.environment="pmatrix",
+                                                      include.colnames = F,
+                                                      include.rownames = F,
+                                                      floating = F,
+                                                      hline.after = NULL,
+                                                      sanitize.text.function = function(x){x})))
+  wup <- lapply(wup, function(x) {x <- x[-(1:2)]; x[1] <- "$\\begin{pmatrix}"; x[5] <- paste0(x[5], "$");x})
+  lapply(wup[c(1,2,4)], function(x) cat(c(x, "&"), sep = "\n"))
+}
+
 ```
 
 # Model setup
@@ -119,7 +143,9 @@ alpha_pars <- pars[str_detect(names(pars), "^a_")]
 ```{r}
 # test the algorithm.
 test <- algo(pars, c("x1", "y1", "z1"), c("a_tox_Cxy", "a_toy_Cyz", "a_toz_Czx"), alpha_pars, 0, g, xs, p_log)
-unlist(test[-4], recursive = F)
+# unlist(test[-4], recursive = F)
+postProcess(test)
+latexTables(test, purplifyIdxs = c(3,4,8))
 ```
 
 # Apply different perturbations and run the algorithm
