@@ -1,4 +1,21 @@
+try(setwd(dirname(rstudioapi::getSourceEditorContext()$path)))
+library(tidyverse)
+library(conveniencefunctions)
+library(MRAr)
+matrix_2_wide_df <- function(x,nm) {
+  as.data.frame(setNames(as.list(x),nm))
+}
+
+results <- readRDS("results.rds")
+
+
+.outputFolder <- "Models/Cascade/Noise/plots"
+dir.create(.outputFolder)
+setwd(.outputFolder)
+
+# ..  -----
 print_distribution_plots <- function(results, a, s, perturbation_strength) {
+  
   plotopt <- results %>%
     filter(alpha == a) %>%
     filter(srel == s) %>%
@@ -96,13 +113,12 @@ print_distribution_plots <- function(results, a, s, perturbation_strength) {
 }
 
 
-asp <- expand.grid(a = 0, s = map_dbl(error_pars, 2), perturbation_strength = map_dbl(perturbations,1))
-
-dir.create("~/Promotion/Projects/MRA/Simulations/Models/Cascade/Noise/plots")
-setwd("~/Promotion/Projects/MRA/Simulations/Models/Cascade/Noise/plots")
+asp <- expand.grid(a = 0, s = unique(results$srel), perturbation_strength = map_dbl(unique(results$pars_perturbed),1))
 
 walk(seq_len(nrow(asp)), function(.x) {
   pdf(paste0("boxplots_srel_",asp[.x,]$s, "delta_p_", round(exp(asp[.x,]$perturbation_strength),2), "_alpha_", asp[.x,]$a, ".pdf"))
   with(asp[.x,], print_distribution_plots(results, a, s, perturbation_strength))
   dev.off()
 })
+# ..  -----
+
