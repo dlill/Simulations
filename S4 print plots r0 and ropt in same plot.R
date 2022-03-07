@@ -139,5 +139,21 @@ pl <- gridExtra::arrangeGrob(grobs = plots)
 try(setwd(dirname(rstudioapi::getSourceEditorContext()$path)))
 ggsave(file.path(.outputFolder, "007-Classification.pdf"), pl, width = 15.5, height = 16, scale = 1, units = "cm")
 
-
-
+# .. Get frequencies  -----
+plots <- lapply(seq_along(srels), function(x) {
+  
+  y = srels[x]
+  
+  dplot <- copy(d)
+  dplot <- dplot[srel == y]
+  dplot <- dplot[matrixType %in% c("r_keptupstream")]
+  # dplot[,`:=`(matrixType = ifelse(matrixType == "r_0", "r(0)", "r(a_opt)"))]
+  dplot[,`:=`(matrixType = ifelse(matrixType == "r_0", "a=0", "a_opt"))]
+  dplot[,`:=`(matrixType = factor(matrixType, c("a=0", "a_opt")))]
+  # dplot[,`:=`(matrixType2 = factor(matrixType, c("r(a_opt)", "r(0)")))]
+  dplot[,`:=`(classification = c(ifelse(rvalue == 1,"sequestration", "regulatory")))]
+  dplot <- dplot[,`list`(class = c("seq.", "regul."), 
+                         frequency = c(mean(rvalue), 1-mean(rvalue))), by = c("relement")]
+  dplot[,`:=`(elementType = ifelse(relement %in% c("r12", "r13", "r23"), "sequestration", "regulatory"))]
+  dplot[relement %in% c("r11", "r22", "r33") ,`:=`(frequency  = NA)]
+})
