@@ -67,7 +67,14 @@ d <- melt(d, id.vars = c("rowid", "realization", "srel", "sabs", "matrixType"), 
 # Plot ----
 # -------------------------------------------------------------------------#
 # .. Plot distributions  -----
-srels <- setNames(c(0.001,0.01,0.05,0.1), paste0(LETTERS[1:4], " srel = ",c(0.001,0.01,0.05,0.1) * 100, " %"))
+srels <- c(0.001,0.01,0.05,0.1)
+titles <- list(
+  expression(paste("A  ", s[rel], "= 0.1" , " %")),
+  expression(paste("B  ", s[rel], "= 1"   , " %")),
+  expression(paste("C  ", s[rel], "= 5"   , " %")),
+  expression(paste("D  ", s[rel], "= 10"  , " %"))
+)
+
 plots <- lapply(seq_along(srels), function(x) {
   
   y = srels[x]
@@ -92,7 +99,7 @@ plots <- lapply(seq_along(srels), function(x) {
     scale_color_cf() + 
     coord_cartesian(ylim = ylim) + 
     guides(color = FALSE) + 
-    labs(x = NULL, y = NULL, title = names(srels)[x]) + 
+    labs(x = NULL, y = "Local response coefficient", title = titles[[x]]) + 
     theme_cf(7, FLAGbold = FALSE) + 
     theme(title = element_text(face = "bold"))
 })
@@ -103,8 +110,15 @@ try(setwd(dirname(rstudioapi::getSourceEditorContext()$path)))
 ggsave(file.path(.outputFolder, "006-Distributions.pdf"), pl, width = 15.5, height = 16, scale = 1, units = "cm")
 
 # .. plot rkept  -----
-srels <- setNames(c(0.001,0.01,0.05,0.1), paste0(LETTERS[1:4], " srel = ",c(0.001,0.01,0.05,0.1) * 100, " %"))
-x <- (seq_along(srels))[[1]]
+srels <- c(0.001,0.01,0.05,0.1)
+titles <- list(
+  expression(paste("A  ", s[rel], "= 0.1" , " %")),
+  expression(paste("B  ", s[rel], "= 1"   , " %")),
+  expression(paste("C  ", s[rel], "= 5"   , " %")),
+  expression(paste("D  ", s[rel], "= 10"  , " %"))
+)
+
+
 plots <- lapply(seq_along(srels), function(x) {
   
   y = srels[x]
@@ -129,7 +143,7 @@ plots <- lapply(seq_along(srels), function(x) {
     scale_y_continuous(n.breaks = 3, limits = c(0,1.1)) + 
     scale_color_cf(aesthetics = c("fill", "color")) + 
     guides(color = FALSE, fill = FALSE) + 
-    labs(x = NULL, y = NULL, title = names(srels)[x]) + 
+    labs(x = NULL, y = "Frequency", title = titles[[x]]) + 
     theme_cf(7, FLAGbold = FALSE) + 
     theme(title = element_text(face = "bold"))
 })
